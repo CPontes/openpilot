@@ -18,6 +18,7 @@ from openpilot.selfdrive.controls.lib.latcontrol_pid import LatControlPID
 from openpilot.selfdrive.controls.lib.latcontrol_angle import LatControlAngle, STEER_ANGLE_SATURATION_THRESHOLD
 from openpilot.selfdrive.controls.lib.latcontrol_curvature import LatControlCurvature
 from openpilot.selfdrive.controls.lib.latcontrol_torque import LatControlTorque
+from openpilot.selfdrive.controls.lib.lane_offset import LaneOffset
 from openpilot.selfdrive.controls.lib.longcontrol import LongControl
 from openpilot.selfdrive.modeld.modeld import LAT_SMOOTH_SECONDS
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
@@ -47,6 +48,10 @@ class Controls:
     self.curvature = 0.0
     self.desired_curvature = 0.0
 
+    self.lane_offset = LaneOffset()
+    self.lane_offset_enabled = self.params.get_bool("LaneOffsetEnabled")
+    self.frame = 0
+
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
 
@@ -64,6 +69,8 @@ class Controls:
 
   def update(self):
     self.sm.update(15)
+    if self.frame % 100 == 0:
+      self.lane_offset_enabled = self.params.get_bool("LaneOffsetEnabled")
     if self.sm.updated["extrinsicsCalibration"]:
       self.pose_calibrator.feed_extrinsics_calibration(self.sm['extrinsicsCalibration'])
     if self.sm.updated["deviceMotion"]:
@@ -124,6 +131,12 @@ class Controls:
       new_desired_curvature = self.sm['lateralManeuverPlan'].desiredCurvature if CC.latActive else self.curvature
     else:
       new_desired_curvature = model_v2.action.desiredCurvature if CC.latActive else self.curvature
+      if self.lane_offset_enabled:
+        offset_correction = self.lane_offset.update(CC.enabled, CC.latActive, CS, model_v2)
+        if CC.latActive:
+          new_desired_curvature += offset_correction
+      else:
+        self.lane_offset.reset()
     self.desired_curvature, curvature_limited = clip_curvature(CS.vEgo, self.desired_curvature, new_desired_curvature, lp.roll)
     lat_delay = self.sm["lateralDelay"].lateralDelay + LAT_SMOOTH_SECONDS
 
@@ -230,6 +243,7 @@ class Controls:
       self.update()
       CC, lac_log = self.state_control()
       self.publish(CC, lac_log)
+      self.frame += 1
       rk.monitor_time()
 
 
