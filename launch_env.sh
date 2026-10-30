@@ -19,4 +19,8 @@ if [ -z "$AGNOS_VERSION" ]; then
   export AGNOS_VERSION="20.1"
 fi
 
+# GWM Haval H6 GT PHEV: FW query not reliable yet, force fingerprint
+export SKIP_FW_QUERY=1
+export FINGERPRINT=GWM_HAVAL_H6
+
 export STAGING_ROOT="/data/safe_staging"
