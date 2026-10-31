@@ -19,8 +19,8 @@ if [ -z "$AGNOS_VERSION" ]; then
   export AGNOS_VERSION="20.1"
 fi
 
-# GWM Haval H6 GT PHEV: FW query not reliable yet, force fingerprint
-export SKIP_FW_QUERY=1
+# GWM Haval H6 GT PHEV: force the fingerprint until this car's FW versions are added.
+# The FW query still runs (needs comma power on the OBD port) so carFw/VIN get logged.
 export FINGERPRINT=GWM_HAVAL_H6
 
 export STAGING_ROOT="/data/safe_staging"
