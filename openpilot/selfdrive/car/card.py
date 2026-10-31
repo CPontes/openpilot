@@ -18,6 +18,7 @@ from opendbc.car.carlog import carlog
 from opendbc.car.fw_versions import ObdCallback
 from opendbc.car.car_helpers import get_car, interfaces
 from opendbc.car.interfaces import CarInterfaceBase, RadarInterfaceBase
+from opendbc.car.gwm.values import GwmSafetyFlags
 from openpilot.selfdrive.pandad import can_capnp_to_list, can_list_to_can_capnp
 from openpilot.selfdrive.car.cruise import VCruiseHelper
 
@@ -116,6 +117,9 @@ class Car:
       safety_config = structs.CarParams.SafetyConfig()
       safety_config.safetyModel = structs.CarParams.SafetyModel.noOutput
       self.CP.safetyConfigs = [safety_config]
+    elif self.CP.brand == 'gwm' and self.params.get_bool("AlwaysOnLateral"):
+      # brake pauses longitudinal only, steering stays engaged until cancel
+      self.CP.safetyConfigs[-1].safetyParam |= GwmSafetyFlags.ALWAYS_ON_LATERAL.value
 
     if self.CP.secOcRequired:
       # Copy user key if available
