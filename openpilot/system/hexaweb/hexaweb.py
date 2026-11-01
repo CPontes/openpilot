@@ -206,13 +206,13 @@ class PanelBackend:
     self.log_event(hexa_marks.log_fields(mark))
     return 200, {"ok": True, "mark": hexa_marks.public(mark)}
 
-  def classify(self, who: dict, mark_id: str, reason: str, note: str = "") -> tuple[int, dict]:
+  def classify(self, who: dict, mark_id: str, reason: str, note: str = "", replace_note: bool = False) -> tuple[int, dict]:
     with self.lock:
       label = hexa_marks.reason_label(self._custom_reasons(), reason)
       if label is None:
         return 400, {"error": "Motivo desconhecido."}
       try:
-        marks, mark = hexa_marks.set_reason(self._marks(), mark_id, reason, label, note)
+        marks, mark = hexa_marks.set_reason(self._marks(), mark_id, reason, label, note, replace_note)
       except KeyError:
         return 404, {"error": "Marca não encontrada."}
       mark = dict(mark, who=mark.get("who") or who.get("name", ""))
@@ -476,7 +476,8 @@ def make_handler(backend: PanelBackend):
       routes = {
         "/api/option": lambda who, b: backend.set_option(who, str(b.get("key", "")), b.get("value")),
         "/api/mark": lambda who, b: backend.mark(who, str(b.get("reason", "")), b.get("note", "")),
-        "/api/mark/classify": lambda who, b: backend.classify(who, str(b.get("id", "")), str(b.get("reason", "")), b.get("note", "")),
+        "/api/mark/classify": lambda who, b: backend.classify(who, str(b.get("id", "")), str(b.get("reason", "")), b.get("note", ""),
+                                                             b.get("replace_note") is True),
         "/api/reasons": lambda who, b: backend.add_reason(who, str(b.get("label", ""))),
         "/api/reasons/remove": lambda who, b: backend.remove_reason(who, str(b.get("key", ""))),
         "/api/update": lambda who, b: backend.update_action(who, str(b.get("action", "")), str(b.get("branch", ""))),

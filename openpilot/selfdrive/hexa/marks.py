@@ -119,11 +119,12 @@ def attach_bookmark(marks: list[dict] | None, mono_ns: int) -> tuple[list[dict],
   return append(marks, m), m, True
 
 
-def set_reason(marks: list[dict] | None, mark_id: str, reason: str, label: str, note: str = "") -> tuple[list[dict], dict]:
+def set_reason(marks: list[dict] | None, mark_id: str, reason: str, label: str, note: str = "",
+               replace_note: bool = False) -> tuple[list[dict], dict]:
   marks = list(marks or [])
   for i, m in enumerate(marks):
     if m.get("id") == mark_id:
-      marks[i] = dict(m, reason=reason, label=label, note=clean_note(note) or m.get("note", ""))
+      marks[i] = dict(m, reason=reason, label=label, note=clean_note(note) if replace_note else clean_note(note) or m.get("note", ""))
       return marks, marks[i]
   raise KeyError(mark_id)
 
