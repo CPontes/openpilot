@@ -1,0 +1,137 @@
+"""Hexa marks: a bookmark plus the reason, so the logs can be searched by what happened.
+
+Every mark is tied to a real bookmark (userBookmark) in the log:
+- marked from the phone: the comma raises its own bookmark, and the reason is attached to it;
+- flagged on the comma while driving: it shows up on the phone as "sem motivo", to be classified later, parked.
+
+The reason is recorded in the log as a "hexa_mark" event with the bookmark's logMonoTime, and kept in
+the MARKS_PARAM list on the device. tools/analise/marcas.py groups the cases by reason.
+
+To add a default reason, add a line to DEFAULT_REASONS. The owner can also add his own from the phone.
+"""
+import re
+import secrets
+import unicodedata
+
+from openpilot.selfdrive.hexa.phone import wall_time
+
+MARKS_PARAM = "HexaMarks"
+REASONS_PARAM = "HexaMarkReasons"
+BOOKMARK_REQUEST_PARAM = "HexaBookmarkRequest"
+
+# (key, label) in display order. Keys never change once in use: old marks keep pointing to them.
+DEFAULT_REASONS: tuple[tuple[str, str], ...] = (
+  ("balancou", "balançou"),
+  ("curva", "curva difícil"),
+  ("soltou", "soltou sozinho"),
+  ("freada", "freada estranha"),
+  ("faixa", "saiu da faixa"),
+  ("alerta", "alerta sem motivo"),
+  ("outro", "outro"),
+)
+
+MAX_MARKS = 300
+MAX_CUSTOM_REASONS = 20
+MAX_LABEL = 24
+MAX_NOTE = 140
+ATTACH_WINDOW_NS = 5_000_000_000  # a phone mark adopts the bookmark that arrives within 5 s
+MIN_MARK_INTERVAL = 2.0  # s between phone marks from the same phone
+
+
+def _slug(label: str) -> str:
+  text = unicodedata.normalize("NFKD", label).encode("ascii", "ignore").decode().lower()
+  return re.sub(r"[^a-z0-9]+", "-", text).strip("-")[:MAX_LABEL] or "motivo"
+
+
+def reasons(custom: list[dict] | None) -> list[dict]:
+  out = [{"key": k, "label": label, "custom": False} for k, label in DEFAULT_REASONS]
+  out += [{"key": c["key"], "label": c["label"], "custom": True} for c in custom or [] if c.get("key") and c.get("label")]
+  return out
+
+
+def reason_label(custom: list[dict] | None, key: str) -> str | None:
+  for r in reasons(custom):
+    if r["key"] == key:
+      return r["label"]
+  return None
+
+
+def add_reason(custom: list[dict] | None, label: str) -> tuple[list[dict], dict]:
+  """Returns (new custom list, the reason). Raises ValueError on a bad or duplicate label."""
+  label = " ".join(str(label or "").split())[:MAX_LABEL]
+  if not label:
+    raise ValueError("Escreva o motivo.")
+  custom = list(custom or [])
+  existing = reasons(custom)
+  if any(r["label"].lower() == label.lower() for r in existing):
+    raise ValueError("Esse motivo já existe.")
+  if len(custom) >= MAX_CUSTOM_REASONS:
+    raise ValueError(f"No máximo {MAX_CUSTOM_REASONS} motivos seus.")
+  key, n = "c-" + _slug(label), 2
+  keys = {r["key"] for r in existing}
+  while key in keys:
+    key, n = f"c-{_slug(label)}-{n}", n + 1
+  reason = {"key": key, "label": label}
+  return custom + [reason], reason
+
+
+def remove_reason(custom: list[dict] | None, key: str) -> list[dict]:
+  """Only custom reasons can be removed; marks that used it keep the key and the label they were given."""
+  return [c for c in custom or [] if c.get("key") != key]
+
+
+def clean_note(note) -> str:
+  return " ".join(str(note or "").split())[:MAX_NOTE]
+
+
+def new_mark(source: str, who: str = "", mono_ns: int | None = None, reason: str | None = None, label: str | None = None,
+             note: str = "", now: float | None = None) -> dict:
+  return {
+    "id": secrets.token_hex(4),
+    "t": int(wall_time() if now is None else now),
+    "mono_ns": mono_ns,  # logMonoTime of the bookmark in the log; None until it arrives
+    "source": source,  # "celular" or "comma"
+    "who": who,
+    "reason": reason,
+    "label": label,
+    "note": note,
+  }
+
+
+def append(marks: list[dict] | None, mark: dict) -> list[dict]:
+  return (list(marks or []) + [mark])[-MAX_MARKS:]
+
+
+def attach_bookmark(marks: list[dict] | None, mono_ns: int) -> tuple[list[dict], dict, bool]:
+  """A bookmark arrived from the log. Attach it to the latest phone mark still waiting for one (within
+  ATTACH_WINDOW_NS of the previous bookmark-less mark), or create a mark without reason.
+  Returns (new list, the mark, created)."""
+  marks = list(marks or [])
+  for m in reversed(marks):
+    if m.get("source") == "celular" and m.get("mono_ns") is None and m.get("_req_mono_ns") is not None \
+       and 0 <= mono_ns - m["_req_mono_ns"] <= ATTACH_WINDOW_NS:
+      m = dict(m, mono_ns=mono_ns)
+      m.pop("_req_mono_ns", None)
+      idx = next(i for i, x in enumerate(marks) if x["id"] == m["id"])
+      marks[idx] = m
+      return marks, m, False
+  m = new_mark("comma", mono_ns=mono_ns)
+  return append(marks, m), m, True
+
+
+def set_reason(marks: list[dict] | None, mark_id: str, reason: str, label: str, note: str = "") -> tuple[list[dict], dict]:
+  marks = list(marks or [])
+  for i, m in enumerate(marks):
+    if m.get("id") == mark_id:
+      marks[i] = dict(m, reason=reason, label=label, note=clean_note(note) or m.get("note", ""))
+      return marks, marks[i]
+  raise KeyError(mark_id)
+
+
+def log_fields(mark: dict) -> dict:
+  """What goes to the log with the 'hexa_mark' event."""
+  return {k: mark.get(k) for k in ("id", "t", "mono_ns", "source", "who", "reason", "label", "note")}
+
+
+def public(mark: dict) -> dict:
+  return {k: v for k, v in mark.items() if not k.startswith("_")}
