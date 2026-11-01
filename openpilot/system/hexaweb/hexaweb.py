@@ -197,7 +197,7 @@ class PanelBackend:
     with self.lock:
       return {"exported_at": int(self.clock()), "marks": [hexa_marks.public(m) for m in self._marks()]}
 
-  def mark(self, who: dict, reason: str, note: str = "") -> tuple[int, dict]:
+  def mark(self, who: dict, reason: str, note: str = "", delay=0.) -> tuple[int, dict]:
     """Phone mark: always allowed (it doesn't change how the car drives), at most one per MIN_MARK_INTERVAL."""
     now_mono = self.mono()
     with self.lock:
@@ -208,8 +208,10 @@ class PanelBackend:
       if last is not None and now_mono - last < hexa_marks.MIN_MARK_INTERVAL:
         return 429, {"error": "Espere um instante entre marcas."}
       self._last_mark[who.get("id", "")] = now_mono
+      delay = hexa_marks.clean_delay(delay)
       mark = hexa_marks.new_mark("celular", who=who.get("name", ""), reason=reason, label=label,
-                                 note=hexa_marks.clean_note(note), now=self.clock())
+                                 note=hexa_marks.clean_note(note), now=self.clock() - delay)
+      mark["delay_s"] = delay
       mark["_req_mono_ns"] = int(now_mono * 1e9)
       self.store.put(hexa_marks.MARKS_PARAM, hexa_marks.append(self._marks(), mark))
       self.store.put_bool(hexa_marks.BOOKMARK_REQUEST_PARAM, True)  # the comma raises its own bookmark
@@ -490,7 +492,7 @@ def make_handler(backend: PanelBackend):
         return
       routes = {
         "/api/option": lambda who, b: backend.set_option(who, str(b.get("key", "")), b.get("value")),
-        "/api/mark": lambda who, b: backend.mark(who, str(b.get("reason", "")), b.get("note", "")),
+        "/api/mark": lambda who, b: backend.mark(who, str(b.get("reason", "")), b.get("note", ""), b.get("delay_s", 0.)),
         "/api/mark/classify": lambda who, b: backend.classify(who, str(b.get("id", "")), str(b.get("reason", "")), b.get("note", ""),
                                                              b.get("replace_note") is True),
         "/api/reasons": lambda who, b: backend.add_reason(who, str(b.get("label", ""))),

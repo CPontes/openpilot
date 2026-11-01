@@ -74,7 +74,6 @@
                     text-align: left; padding: 10px 12px; }
   .reasons button:active { background: color-mix(in srgb, var(--accent) 22%, var(--bg)); }
   .reasons button.mine { border-style: dashed; }
-  .reasons button.armed { background: var(--accent); color: #fff; border-color: var(--accent); }
   .pending { border-color: var(--warn); }
   textarea { width: 100%; font: inherit; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
              background: var(--bg); color: var(--text); resize: vertical; }
@@ -117,22 +116,21 @@
     <div data-tab="marcar">
     <h2>Marcar</h2>
     <div class="card hidden" id="editor">
-      <div class="title">O que aconteceu?</div>
+      <div class="title" id="editTitle">Marcar</div>
       <label class="field" for="editReason">Motivo</label>
       <select id="editReason"></select>
-      <label class="field" for="editNote">Descreva</label>
+      <label class="field" for="editNote">Comentário (opcional)</label>
       <textarea id="editNote" rows="3" maxlength="140" placeholder="ex.: moto colou na lateral"></textarea>
-      <div class="rowlinks"><button id="editSave">Salvar</button><button id="editCancel">Cancelar</button></div>
+      <button class="primary" id="editSave">Salvar</button>
+      <div class="rowlinks"><button id="editCancel">Cancelar</button></div>
     </div>
     <div id="pendingBox"></div>
     <div class="card">
-      <div class="desc">Toque no motivo e toque de novo para confirmar. A marca aciona a bandeira do comma.
-        Em "outro", escreva ou dite pelo teclado do celular assim que parar.</div>
+      <div class="desc">Toque no motivo, comente se quiser e toque em Salvar: só então a marca vale e aciona a bandeira do comma.
+        Dá para ditar o comentário pelo teclado do celular.</div>
       <div class="reasons" id="reasons"></div>
       <details>
-        <summary>Observação e motivos</summary>
-        <label class="field" for="note">Observação (vai junto com a próxima marca)</label>
-        <input id="note" type="text" maxlength="140" placeholder="ex.: rotatória da avenida">
+        <summary>Motivos e exportar</summary>
         <label class="field" for="newReason">Novo motivo</label>
         <input id="newReason" type="text" maxlength="24" placeholder="ex.: buraco">
         <div class="rowlinks"><button id="addReasonBtn">Adicionar motivo</button></div>
@@ -212,9 +210,8 @@ let timer = null;
 let titles = {};
 let marksState = { reasons: [], marks: [], pending: 0 };
 let carStopped = false;
-let armed = null;  // a first tap only gets the reason ready: a bump on the phone must not leave a mark
-let armedTimer = null;
-const ARM_MS = 3000;
+const EDITOR_MS = 20000;  // moving, a box nobody touched leaves by itself and nothing is marked
+let editorTimer = null;
 let editing = null;  // the mark being written: the editor stays out of what the refresh redraws
 
 function saveToken(t) {
@@ -377,10 +374,9 @@ function renderMarks(m) {
   marksState = m;
   const grid = $("reasons"); grid.replaceChildren();
   for (const r of m.reasons) {
-    const b = document.createElement("button"); b.textContent = armed === r.key ? "Tocar de novo: " + r.label : r.label;
+    const b = document.createElement("button"); b.textContent = r.label;
     if (r.custom) b.className = "mine";
-    if (armed === r.key) b.classList.add("armed");
-    b.addEventListener("click", () => tapReason(r.key, b));
+    b.addEventListener("click", () => openEditor({ tapped: Date.now() }, r.key));
     grid.appendChild(b);
   }
   const mine = m.reasons.filter(r => r.custom);
@@ -406,13 +402,7 @@ function renderMarks(m) {
     const chips = document.createElement("div"); chips.className = "chips";
     for (const r of m.reasons) {
       const b = document.createElement("button"); b.textContent = r.label;
-      b.addEventListener("click", async () => {
-        if (r.key === "outro" && carStopped) { openEditor(p, r.key); return; }
-        const res = await api("/api/mark/classify", { id: p.id, reason: r.key, note: $("note").value });
-        toast(res.status === 200 ? `Classificada: ${r.label}` : (res.data.error || "Não foi possível."));
-        if (res.status === 200) $("note").value = "";
-        refreshMarks();
-      });
+      b.addEventListener("click", () => openEditor(p, r.key));
       chips.appendChild(b);
     }
     card.append(t, chips); box.appendChild(card);
@@ -431,69 +421,35 @@ function renderMarks(m) {
   }
 }
 
-function disarm() {
-  clearTimeout(armedTimer);
-  armed = null;
-  renderMarks(marksState);
-}
-
-function tapReason(key, btn) {
-  if (armed !== key) {
-    clearTimeout(armedTimer);
-    armed = key;
-    if (navigator.vibrate) navigator.vibrate(20);
-    armedTimer = setTimeout(disarm, ARM_MS);
-    renderMarks(marksState);
-    return;
-  }
-  disarm();
-  key === "outro" ? markOther(btn) : doMark(key, btn);
-}
-
-async function doMark(reason, btn) {
-  btn.disabled = true;
-  const res = await api("/api/mark", { reason, note: $("note").value });
-  btn.disabled = false;
-  if (res.status === 200) {
-    if (navigator.vibrate) navigator.vibrate(40);
-    toast(`Marcado: ${res.data.mark.label} (${hhmmss(res.data.mark.t)})`);
-    $("note").value = "";
-    refreshMarks();
-    return res.data.mark;
-  }
-  toast(res.data.error || "Não foi possível marcar.");
-  refreshMarks();
-  return null;
-}
-
-// The moment is marked at once, then the text. Moving, the box doesn't open: the mark is safe and "editar" stays there.
-async function markOther(btn) {
-  if (carStopped) openEditor({}, "outro");
-  const mark = await doMark("outro", btn);
-  if (mark && !carStopped) toast("Marcado. Escreva o motivo quando parar.");
-  if (!editing || editing.id) return;
-  if (mark) { editing.id = mark.id; $("editSave").disabled = false; } else closeEditor();
-}
-
+// Nothing exists until Salvar: a bump only opens the box. The tap's time goes along, because writing takes a while.
 function openEditor(mark, reason) {
-  editing = { id: mark.id || null };
+  clearTimeout(editorTimer);
+  editing = { id: mark.id || null, tapped: mark.tapped || null };
+  $("editTitle").textContent = mark.id ? "Marca" : "Marcar";
   const sel = $("editReason"); sel.replaceChildren();
   for (const r of marksState.reasons) {
     const o = document.createElement("option"); o.value = r.key; o.textContent = r.label; o.selected = r.key === reason; sel.append(o);
   }
   $("editNote").value = mark.note || "";
-  $("editSave").disabled = !editing.id;
   $("editor").classList.remove("hidden");
-  $("editNote").focus();
   $("editor").scrollIntoView({ block: "center" });
+  if (carStopped) $("editNote").focus();
+  else editorTimer = setTimeout(closeEditor, EDITOR_MS);
 }
 
-function closeEditor() { editing = null; $("editor").classList.add("hidden"); }
+function closeEditor() { clearTimeout(editorTimer); editing = null; $("editor").classList.add("hidden"); }
 
 async function saveEdit() {
-  const res = await api("/api/mark/classify", { id: editing.id, reason: $("editReason").value, note: $("editNote").value, replace_note: true });
-  toast(res.status === 200 ? "Marca salva." : (res.data.error || "Não foi possível salvar."));
-  if (res.status === 200) closeEditor();
+  const e = editing, reason = $("editReason").value, note = $("editNote").value;
+  $("editSave").disabled = true;
+  const res = e.id ? await api("/api/mark/classify", { id: e.id, reason, note, replace_note: true })
+                   : await api("/api/mark", { reason, note, delay_s: (Date.now() - e.tapped) / 1000 });
+  $("editSave").disabled = false;
+  if (res.status === 200) {
+    if (navigator.vibrate) navigator.vibrate(40);
+    toast(e.id ? "Marca salva." : `Marcado: ${res.data.mark.label} (${hhmmss(res.data.mark.t)})`);
+    closeEditor();
+  } else toast(res.data.error || "Não foi possível salvar.");
   refreshMarks();
 }
 
@@ -601,6 +557,8 @@ $("rebootBtn").addEventListener("click", () => {
   if (confirm("Reiniciar o comma agora? Leva alguns minutos para voltar.")) updateAction("reboot");
 });
 $("editSave").addEventListener("click", saveEdit);
+$("editNote").addEventListener("focus", () => clearTimeout(editorTimer));
+$("editReason").addEventListener("focus", () => clearTimeout(editorTimer));
 $("editCancel").addEventListener("click", closeEditor);
 $("updCheck").addEventListener("click", () => updateAction("check"));
 $("updDownload").addEventListener("click", () => updateAction("download"));

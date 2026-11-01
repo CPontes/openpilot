@@ -80,4 +80,4 @@ def test_public_and_log_fields_drop_private_keys():
   m = marks.new_mark("celular", reason="outro", label="outro")
   m["_req_mono_ns"] = 5
   assert "_req_mono_ns" not in marks.public(m)
-  assert set(marks.log_fields(m)) == {"id", "t", "mono_ns", "source", "who", "reason", "label", "note"}
+  assert set(marks.log_fields(m)) == {"id", "t", "mono_ns", "source", "who", "reason", "label", "note", "delay_s"}

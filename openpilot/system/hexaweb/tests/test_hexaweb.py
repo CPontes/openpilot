@@ -510,3 +510,18 @@ def test_reboot_only_with_the_car_off(panel):
   assert panel.json("/api/update", {"action": "reboot"}, token=token)[0] == 200
   assert panel.store.get("DoReboot") is True
 
+
+def test_mark_keeps_the_moment_of_the_tap(panel):
+  token = panel.pair()
+  mark = panel.json("/api/mark", {"reason": "balancou", "note": "buraco", "delay_s": 12.34}, token=token)[1]["mark"]
+  assert mark["t"] == int(panel.now - 12.3) and mark["delay_s"] == 12.3 and mark["note"] == "buraco"
+  assert panel.logged[-1]["delay_s"] == 12.3
+
+
+def test_mark_delay_from_outside_is_checked(panel):
+  token = panel.pair()
+  for i, bad in enumerate((-1, 1e9, "12", True, None)):
+    panel.backend.mono = lambda n=panel.now + i * 10: n
+    mark = panel.json("/api/mark", {"reason": "balancou", "delay_s": bad}, token=token)[1]["mark"]
+    assert mark["delay_s"] == 0.
+

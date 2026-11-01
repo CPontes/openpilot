@@ -36,6 +36,7 @@ MAX_LABEL = 24
 MAX_NOTE = 140
 ATTACH_WINDOW_NS = 5_000_000_000  # a phone mark adopts the bookmark that arrives within 5 s
 MIN_MARK_INTERVAL = 2.0  # s between phone marks from the same phone
+MAX_MARK_DELAY = 300.  # s between the tap on the reason and Salvar
 
 
 def _slug(label: str) -> str:
@@ -78,6 +79,13 @@ def add_reason(custom: list[dict] | None, label: str) -> tuple[list[dict], dict]
 def remove_reason(custom: list[dict] | None, key: str) -> list[dict]:
   """Only custom reasons can be removed; marks that used it keep the key and the label they were given."""
   return [c for c in custom or [] if c.get("key") != key]
+
+
+def clean_delay(delay) -> float:
+  """Seconds between the tap and Salvar: the bookmark comes at Salvar, this says how long before it really happened."""
+  if isinstance(delay, bool) or not isinstance(delay, int | float) or not 0 <= delay <= MAX_MARK_DELAY:
+    return 0.
+  return round(float(delay), 1)
 
 
 def clean_note(note) -> str:
@@ -131,7 +139,7 @@ def set_reason(marks: list[dict] | None, mark_id: str, reason: str, label: str, 
 
 def log_fields(mark: dict) -> dict:
   """What goes to the log with the 'hexa_mark' event."""
-  return {k: mark.get(k) for k in ("id", "t", "mono_ns", "source", "who", "reason", "label", "note")}
+  return {k: mark.get(k) for k in ("id", "t", "mono_ns", "source", "who", "reason", "label", "note", "delay_s")}
 
 
 def public(mark: dict) -> dict:
