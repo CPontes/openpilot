@@ -61,6 +61,9 @@ def navigation(started: bool, params: Params, CP: car.CarParams) -> bool:
 def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
   return not started
 
+def hexaweb(started: bool, params: Params, CP: car.CarParams) -> bool:
+  return params.get_bool("HexaWebEnabled")
+
 def livestream(started: bool, params: Params, CP: car.CarParams) -> bool:
   return params.get_bool("IsLiveStreaming")
 
@@ -117,6 +120,7 @@ procs = [
   PythonProcess("tombstoned", "openpilot.system.tombstoned", always_run, enabled=not PC),
   PythonProcess("updated", "openpilot.system.updated.updated", only_offroad, enabled=not PC),
   PythonProcess("uploader", "openpilot.system.loggerd.uploader", always_run),
+  PythonProcess("hexaweb", "openpilot.system.hexaweb.hexaweb", hexaweb),
 
   # debug procs
   PythonProcess("webrtcd", "openpilot.system.webrtc.webrtcd", or_(livestream, notcar)),
