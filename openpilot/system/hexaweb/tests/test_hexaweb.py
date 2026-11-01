@@ -81,12 +81,23 @@ def panel():
 
 def test_page_is_served_with_security_headers(panel):
   status, headers, body = panel.request("/")
-  assert status == 200 and b"<title>Hexa</title>" in body
+  assert status == 200 and b"<title>LizPilot</title>" in body
   assert headers["X-Frame-Options"] == "DENY"
   assert headers["Cache-Control"] == "no-store"
   assert "default-src 'self'" in headers["Content-Security-Policy"]
   assert panel.request("/manifest.webmanifest")[0] == 200
   assert panel.request("/../hexaweb.py")[0] == 404
+
+
+def test_shared_files_are_served(panel):
+  # fonts ship with the comma: on its hotspot the phone has no internet
+  for path, ctype in (("/lp.css", "text/css"), ("/i18n.js", "text/javascript"), ("/fonts/barlow-400.woff2", "font/woff2"),
+                      ("/fonts/barlow-semi-condensed-700.woff2", "font/woff2"), ("/i18n/en.json", "application/json"), ("/i18n/es.json", "application/json")):
+    status, headers, body = panel.request(path)
+    assert status == 200 and headers["Content-Type"].startswith(ctype) and body, path
+  assert isinstance(json.loads(panel.request("/i18n/es.json")[2]), dict)  # completeness: selfdrive/hexa/tests/test_i18n.py
+  assert panel.request("/i18n/pt.json")[0] == 404  # Portuguese is the source: no catalog
+  assert panel.request("/i18n/../hexaweb.py")[0] == 404
 
 
 def test_api_needs_pairing(panel):

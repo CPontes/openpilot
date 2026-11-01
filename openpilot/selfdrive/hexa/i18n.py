@@ -65,5 +65,6 @@ def tr(text: str, lang: str) -> str:
   for pattern, dst in _templates(lang):
     m = pattern.match(text)
     if m:
-      return _FIELD.sub(lambda f: m.group(f.group(1)) if f.group(1) in m.groupdict() else f.group(0), dst)
+      values = m.groupdict()
+      return _FIELD.sub(lambda f, v=values: v.get(f.group(1), f.group(0)), dst)
   return text
