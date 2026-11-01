@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hexa phone panel: a small local web page to see the comma and change the fork's options.
+"""LizPilot (Hexa) phone panel: a small local web page to see the comma and change the fork's options.
 
 Runs only while the "painel no celular" option (HexaWebEnabled) is on. Security rules live in
 openpilot/selfdrive/hexa/phone.py; this file only parses HTTP and calls PanelBackend.
@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs
 
+from openpilot.selfdrive.hexa import i18n
 from openpilot.selfdrive.hexa import live as hexa_live
 from openpilot.selfdrive.hexa import marks as hexa_marks
 from openpilot.selfdrive.hexa import radars
@@ -37,6 +38,15 @@ STATIC_FILES = {
   "/icon-180.png": ("icon-180.png", "image/png"),
   "/icon-192.png": ("icon-192.png", "image/png"),
   "/icon-512.png": ("icon-512.png", "image/png"),
+  "/lp.css": ("lp.css", "text/css; charset=utf-8"),
+  "/i18n.js": ("i18n.js", "text/javascript; charset=utf-8"),
+  "/fonts/barlow-400.woff2": ("fonts/barlow-400.woff2", "font/woff2"),
+  "/fonts/barlow-600.woff2": ("fonts/barlow-600.woff2", "font/woff2"),
+  "/fonts/barlow-700.woff2": ("fonts/barlow-700.woff2", "font/woff2"),
+  "/fonts/barlow-semi-condensed-700.woff2": ("fonts/barlow-semi-condensed-700.woff2", "font/woff2"),
+  # the same catalogs the comma screen uses (selfdrive/hexa/i18n.py)
+  "/i18n/en.json": (i18n.CATALOG_DIR / "en.json", "application/json; charset=utf-8"),
+  "/i18n/es.json": (i18n.CATALOG_DIR / "es.json", "application/json; charset=utf-8"),
 }
 REPLAY_CACHE = 3
 TRIP_CACHE = 120  # minutes of trips kept in memory
@@ -138,7 +148,7 @@ class PanelBackend:
     with self.lock:
       stored = self.store.get(phone.PIN_PARAM)
       if phone.parse_pin(stored, self.mono()) is None:
-        return 403, {"error": "Gere um código no comma: Configurações → hexa → parear celular."}
+        return 403, {"error": "Gere um código no comma: Configurações → LizPilot → parear celular."}
       if not phone.pin_matches(stored, pin, self.mono()):
         self.pin_failures += 1
         if self.pin_failures >= phone.MAX_PIN_FAILURES:
@@ -167,7 +177,7 @@ class PanelBackend:
           items.append({
             "key": opt.key, "title": opt.title, "description": opt.description, "kind": opt.kind,
             "choices": list(opt.choices), "value": self._value(opt), "writable": writable, "reason": reason,
-            "restart_needed": opt.restart_needed,
+            "restart_needed": opt.restart_needed, "testing": opt.testing,
           })
         if items:
           groups.append({"key": gkey, "title": gtitle, "options": items})
@@ -659,7 +669,7 @@ def make_handler(backend: PanelBackend):
       path, _, query = self.path.partition("?")
       if path in STATIC_FILES:
         fn, ctype = STATIC_FILES[path]
-        self._send(200, (STATIC_DIR / fn).read_bytes(), ctype)
+        self._send(200, (fn if isinstance(fn, Path) else STATIC_DIR / fn).read_bytes(), ctype)
       elif path == "/api/state":
         who = self._who()
         if who is not None:

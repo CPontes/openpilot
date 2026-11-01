@@ -33,6 +33,8 @@ class HexaOption:
   phone_writable: bool = True
   # Why the option can't be offered yet. It stays in the list so it isn't forgotten, hidden everywhere.
   blocked: str = ""
+  # Still being proven in the car: the comma and the phone show an "em teste" tag next to it.
+  testing: bool = False
 
   def coerce(self, value):
     """Validate a value coming from outside (the phone). Returns the value to store or raises ValueError."""
@@ -64,6 +66,7 @@ OPTIONS: tuple[HexaOption, ...] = (
     description="O freio pausa só o acelerador e o freio do ACC; a direção continua.\n" +
                 "Em teste: depois de frear, o volante segue ativo. Puxe a alavanca para voltar o ACC. Só o cancelar desliga a direção.",
     restart_needed=True,
+    testing=True,
   ),
   HexaOption(
     key="LaneOffsetEnabled",
@@ -103,7 +106,7 @@ OPTIONS: tuple[HexaOption, ...] = (
     group="avisos",
     title="aviso de radar e lombada",
     description="Avisa com som antes dos radares, blitz e lombadas da lista, com a distância e o limite. Só avisa: não reduz sozinho.\n" +
-                "Precisa de GPS. Pode faltar ponto. Corrija e adicione na aba Radares.",
+                "Precisa de GPS. Pode faltar ponto. Corrija e adicione em Pontos.",
     driving=False,
     restart_needed=True,
   ),
@@ -114,6 +117,7 @@ OPTIONS: tuple[HexaOption, ...] = (
     description="Parado atrás de um carro, o ACC sai quando ele anda. Só com openpilot ligado, você olhando para a frente, sem pedal e até 3 min parado.\n" +
                 "Em teste: fique pronto para frear. Não lê o sinal: se o carro da frente sair no vermelho, o seu sai junto. Sem carro à frente, não sai.",
     restart_needed=True,
+    testing=True,
   ),
   HexaOption(
     key="BumpSlowdown",

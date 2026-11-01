@@ -3,377 +3,502 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#101418">
+<meta name="theme-color" content="#0B0E11">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Hexa">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="LizPilot">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/icon-180.png">
-<title>Hexa</title>
+<link rel="stylesheet" href="/lp.css">
+<title>LizPilot</title>
 <style>
-  :root {
-    --bg: #f4f5f7; --card: #ffffff; --text: #14181c; --muted: #5b6470; --line: #e2e5ea;
-    --accent: #1f7a4d; --warn: #9a5b00; --danger: #b3261e; --off: #c5cad1;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #101418; --card: #1a2027; --text: #eef1f4; --muted: #9aa4af; --line: #2a323b;
-            --accent: #3fb27a; --warn: #e0a640; --danger: #ef6b62; --off: #48515b; }
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text);
-         font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-  main { max-width: 560px; margin: 0 auto; padding: 16px 16px calc(96px + env(safe-area-inset-bottom)); }
-  h1 { font-size: 22px; margin: 8px 0 2px; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 24px 0 8px; }
-  .sub { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; }
+  main { max-width: 560px; margin: 0 auto; padding: calc(12px + env(safe-area-inset-top)) 16px calc(112px + env(safe-area-inset-bottom)); }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 700; font-size: 24px; }
+  .conn { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); min-width: 0; text-align: right; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+  .offline .dot { background: var(--danger); }
+  h1.page { font-size: 32px; margin: 6px 0 2px; line-height: 1.05; }
+  .sub { color: var(--muted); font-size: 15px; margin: 0 0 10px; }
+  .label { font-family: var(--font-display); font-weight: 700; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin: 22px 4px 8px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px; margin-bottom: 10px; }
+  .card.ok { background: var(--ok-bg); border-color: var(--ok-line); }
+  .card.att { background: var(--warn-bg); border-color: var(--warn-line); }
+  .stack { display: flex; flex-direction: column; gap: 10px; }
   .row { display: flex; align-items: center; gap: 12px; }
-  .row .text { flex: 1; min-width: 0; }
-  .title { font-weight: 600; }
-  .desc { color: var(--muted); font-size: 14px; white-space: pre-line; margin-top: 2px; }
-  .note { font-size: 13px; margin-top: 6px; color: var(--warn); }
-  .status { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; }
-  .status.ok { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
-  .status.ro { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
-  .status.off { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
-  input[type=text], input[inputmode=numeric], select {
-    width: 100%; font: inherit; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
-    background: var(--bg); color: var(--text); }
-  input[inputmode=numeric] { font-size: 28px; letter-spacing: .3em; text-align: center; }
-  label.field { display: block; font-size: 14px; color: var(--muted); margin: 12px 0 6px; }
-  button { font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 12px 16px; cursor: pointer; }
-  button.primary { background: var(--accent); color: #fff; width: 100%; margin-top: 16px; }
-  button:disabled { opacity: .45; cursor: default; }
-  button.link { background: none; color: var(--danger); padding: 11px 0; min-height: 44px; }
-  .switch { position: relative; width: 52px; height: 32px; flex: none; }
-  .switch input { opacity: 0; width: calc(100% + 8px); height: calc(100% + 16px); margin: 0; position: absolute; left: -4px; top: -8px;
-                  cursor: pointer; z-index: 1; }
-  .switch span { position: absolute; inset: 0; background: var(--off); border-radius: 999px; transition: .15s; pointer-events: none; }
-  .switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px;
-                        background: #fff; border-radius: 50%; transition: .15s; }
-  .switch input:checked + span { background: var(--accent); }
-  .switch input:checked + span::after { transform: translateX(20px); }
-  .switch input:disabled + span { opacity: .45; }
-  .switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .err { color: var(--danger); font-size: 14px; margin-top: 10px; min-height: 1em; }
-  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--text); color: var(--bg);
-           padding: 10px 16px; border-radius: 10px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; }
-  .toast.show { opacity: .95; }
-  ul.audit { list-style: none; padding: 0; margin: 0; font-size: 14px; }
-  ul.audit li { padding: 6px 0; border-top: 1px solid var(--line); color: var(--muted); }
-  ul.audit li:first-child { border-top: 0; }
-  ul.audit li.line { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0; }
-  ul.audit li.line span { min-width: 0; }
-  .hidden { display: none; }
-  nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; display: flex; background: var(--card); border-top: 1px solid var(--line);
-             padding-bottom: env(safe-area-inset-bottom); z-index: 5; }
-  nav.tabs button { flex: 1; min-width: 0; min-height: 48px; background: none; color: var(--muted); padding: 13px 0; font-size: 13px; border-radius: 0; }
-  nav.tabs button.perto::after { content: " •"; color: var(--accent); }
-  nav.tabs button[aria-current="page"] { color: var(--accent); box-shadow: inset 0 2px 0 var(--accent); }
-  .big { font-size: 56px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
-  .big small { font-size: 16px; font-weight: 500; color: var(--muted); }
-  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
-  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 0; }
-  .tile b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-  .tile span { color: var(--muted); font-size: 13px; }
-  .alert { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); font-weight: 700; font-size: 18px;
-           border-radius: 10px; padding: 10px 12px; margin-top: 10px; }
-  .why { color: var(--danger); font-size: 14px; font-weight: 600; margin-top: 8px; white-space: pre-line; }
-  body.offline [data-tab] { opacity: .55; }
-  canvas#road { display: block; width: 100%; height: 230px; border-radius: 10px; background: var(--bg); }
-  .check { padding: 4px 0; font-size: 15px; }
-  .check.no { color: var(--danger); font-weight: 600; }
-  .reasons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
-  .reasons button { background: var(--bg); color: var(--text); border: 1px solid var(--line); min-height: 52px;
-                    text-align: left; padding: 10px 12px; }
-  .reasons button:active { background: color-mix(in srgb, var(--accent) 22%, var(--bg)); }
+  .row > .grow { flex: 1; min-width: 0; }
+  .title { font-weight: 700; font-size: 17px; }
+  .desc { color: var(--muted); font-size: 15px; white-space: pre-line; }
+  .small { color: var(--dim); font-size: 13px; }
+  .big { font-family: var(--font-display); font-weight: 700; font-size: 28px; line-height: 1.05; }
+  .big small { font-family: var(--font); font-size: 15px; font-weight: 400; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; min-width: 0; }
+  .tile b { display: block; font-family: var(--font-display); font-size: 26px; line-height: 1.1; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .tile span { color: var(--muted); font-size: 14px; }
+  .checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; font-size: 15px; }
+  .check { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .check.no { color: var(--warn); font-weight: 600; }
+  .line { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 52px; border-top: 1px solid #222A32; }
+  .list > .line:first-child { border-top: 0; }
+  .line > span { min-width: 0; }
+  .btn { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 54px; width: 100%; border: 0; border-radius: 16px;
+         background: var(--accent); color: var(--on-accent); font-family: var(--font-display); font-size: 21px; font-weight: 700; text-decoration: none; }
+  .btn.ghost { background: none; color: var(--text); font-family: var(--font); font-size: 16px; font-weight: 600; min-height: 48px; }
+  .btn.dark { background: var(--card-2); color: var(--text); border: 1px solid var(--line-2); font-family: var(--font); font-size: 17px; }
+  .btn.warn { background: var(--warn); color: var(--on-warn); }
+  .link { background: none; border: 0; color: var(--accent); font-weight: 600; min-height: 44px; padding: 0 2px; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+  .link.danger { color: var(--danger); }
+  .chip { min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line-2); background: none; color: var(--text); font-weight: 600; font-size: 15px; }
+  .chip[aria-pressed="true"], .seg button[aria-selected="true"], .seg button[aria-checked="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 4px; }
+  .seg button { min-height: 44px; border: 0; border-radius: 10px; background: none; color: var(--muted); font-weight: 700; font-size: 15px; }
+  .seg button[aria-selected="true"], .seg button[aria-checked="true"] { background: var(--line); color: var(--text); }
+  .tag { display: inline-block; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 8px; background: #1F262D; color: var(--muted); vertical-align: 2px; white-space: nowrap; }
+  .tag.warn { background: var(--tag-warn); color: var(--warn); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 700; background: var(--tag-warn); color: var(--warn); }
+  .switch { flex: none; position: relative; width: 56px; height: 44px; border: 0; padding: 0; background: none; }
+  .switch::before { content: ""; position: absolute; left: 2px; top: 6px; width: 52px; height: 32px; border-radius: 999px; background: var(--switch-off); transition: background .15s; }
+  .switch::after { content: ""; position: absolute; top: 9px; left: 5px; width: 26px; height: 26px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .switch[aria-checked="true"]::before { background: var(--accent); }
+  .switch[aria-checked="true"]::after { transform: translateX(20px); }
+  .opt { padding: 10px 14px; border-top: 1px solid #222A32; }
+  .opts > .opt:first-child { border-top: 0; }
+  .opt .head { display: flex; align-items: center; gap: 12px; }
+  .opt .text { flex: 1; min-width: 0; min-height: 52px; background: none; border: 0; padding: 4px 0; text-align: left; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+  .opt .sum { color: var(--muted); font-size: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .opt .more { margin: 4px 0 6px; padding: 12px; border-radius: 12px; background: var(--card-2); font-size: 14px; color: #C9D1D9; white-space: pre-line; }
+  .lock { color: var(--warn); font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  textarea, input[type=text], input[inputmode=numeric], select { width: 100%; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); }
+  textarea { resize: vertical; }
+  textarea::placeholder, input::placeholder { color: var(--dim); }
+  label.field { display: block; font-size: 14px; color: var(--muted); margin: 14px 0 6px; }
+  .err { color: var(--danger); font-size: 14px; min-height: 1em; margin-top: 8px; }
+  .reasons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .reasons button { min-height: 58px; text-align: left; padding: 10px 14px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); font-weight: 600; font-size: 16px; line-height: 1.2; }
   .reasons button.mine { border-style: dashed; }
-  .pending { border-color: var(--warn); }
-  textarea { width: 100%; font: inherit; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
-             background: var(--bg); color: var(--text); resize: vertical; }
-  .pick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-  .pick.three { grid-template-columns: repeat(3, 1fr); }
-  .pick button { background: var(--bg); color: var(--text); border: 1px solid var(--line); min-height: 48px; padding: 4px; font-weight: 500; }
-  .pick button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .pick button:disabled { opacity: .4; }
-  .reasons.three { grid-template-columns: repeat(3, 1fr); }
-  button.gone { background: none; color: var(--danger); width: 100%; min-height: 44px; margin-top: 8px; }
-  button.gone[aria-pressed="true"] { background: var(--danger); color: #fff; }
-  button.plain { background: none; color: var(--text); width: 100%; min-height: 44px; margin-top: 4px; }
-  button.edit { background: none; color: var(--accent); padding: 0 0 0 12px; min-height: 44px; min-width: 44px; flex: none; }
-  .pending .when { font-weight: 600; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-  .chips button { background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 8px 12px; font-weight: 500; min-height: 44px; }
-  .small { font-size: 13px; color: var(--muted); }
-  .rowlinks { display: flex; gap: 16px; margin-top: 10px; }
-  .rowlinks button { background: none; color: var(--accent); padding: 10px 0; min-height: 44px; font-weight: 600; }
-  details summary { cursor: pointer; color: var(--accent); font-weight: 600; margin-top: 6px; padding: 10px 0; min-height: 44px; }
+  .reasons button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .pick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .pick.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pick button { min-height: 48px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); font-weight: 600; padding: 4px; }
+  .pick button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .add3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .add3 button { min-height: 92px; border-radius: 18px; border: 1px solid var(--line-2); background: var(--card); color: var(--text); font-weight: 700; font-size: 17px;
+                 display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+  .point { display: flex; align-items: center; gap: 12px; min-height: 64px; border-top: 1px solid #222A32; width: 100%; background: none; border-left: 0; border-right: 0; border-bottom: 0; padding: 0; color: inherit; text-align: left; }
+  .list > .point:first-child { border-top: 0; }
+  .point .dist { font-family: var(--font-display); font-weight: 700; font-size: 24px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .point .dist small { font-family: var(--font); font-size: 14px; font-weight: 400; color: var(--muted); }
+  .band { margin: 0 -16px; padding: calc(16px + env(safe-area-inset-top)) 20px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .band.op { background: var(--accent); color: var(--on-accent); }
+  .band.you { background: var(--you); color: #071A2E; }
+  .band .who { font-family: var(--font-display); font-weight: 700; font-size: 28px; line-height: 1; }
+  .band .why { font-size: 15px; font-weight: 600; opacity: .85; margin-top: 4px; }
+  .band .acc { display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; }
+  .band .acc span { font-size: 12px; font-weight: 700; letter-spacing: .08em; opacity: .75; }
+  .band .acc b { font-family: var(--font-display); font-size: 26px; line-height: 1; }
+  body.driving main { padding-top: 0; }
+  body.driving .top { display: none; }
+  .alert { background: var(--warn-bg); border: 1px solid var(--warn-line); color: var(--warn); font-weight: 700; font-size: 18px; border-radius: 14px; padding: 12px 14px; margin-top: 12px; }
+  .lane { position: relative; height: 34px; margin-top: 8px; }
+  .lane i { position: absolute; top: 0; bottom: 0; width: 4px; border-radius: 2px; background: var(--text); }
+  .lane i.dash { background: repeating-linear-gradient(var(--text) 0 6px, transparent 6px 12px); }
+  .lane .mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: #3A4550; }
+  .lane .car { position: absolute; top: 3px; width: 40px; height: 28px; margin-left: -20px; border-radius: 8px; background: var(--accent); transition: left .3s; }
+  .lane .bs { position: absolute; top: 4px; width: 6%; height: 26px; border-radius: 6px; background: var(--warn); }
+  .bar { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--line); }
+  .bar span { display: block; height: 100%; }
+  nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: #11161B; border-top: 1px solid var(--line);
+             display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: start; padding: 6px 4px calc(8px + env(safe-area-inset-bottom)); }
+  nav.tabs button { background: none; border: 0; color: var(--dim); font-size: 12px; font-weight: 600; min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 0; position: relative; }
+  nav.tabs button[aria-current="page"] { color: var(--text); }
+  nav.tabs button.near::after { content: ""; position: absolute; top: 6px; right: calc(50% - 18px); width: 9px; height: 9px; border-radius: 50%; background: var(--warn); }
+  nav.tabs .fab { margin-top: -26px; color: var(--text); font-weight: 700; }
+  nav.tabs .fab span.circle { width: 62px; height: 62px; border-radius: 50%; background: var(--accent); border: 4px solid var(--bg); display: flex; align-items: center; justify-content: center; color: var(--on-accent); }
+  body.driving nav.tabs { grid-template-columns: 1fr 1fr 2.2fr 1fr 1fr; padding-top: 10px; }
+  body.driving nav.tabs .fab { margin-top: 0; flex-direction: row; gap: 10px; height: 60px; border-radius: 18px; background: var(--accent); color: var(--on-accent); font-family: var(--font-display); font-size: 22px; margin-inline: 4px; }
+  body.driving nav.tabs .fab span.circle { width: auto; height: auto; border: 0; background: none; }
+  body.driving nav.tabs .fab .lbl { font-size: 22px; }
+  .scrim { position: fixed; inset: 0; background: rgba(5, 7, 9, .66); z-index: 10; }
+  .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 11; max-height: calc(100% - 64px); overflow-y: auto; background: #151B21; border-top: 1px solid var(--line-2);
+           border-radius: 26px 26px 0 0; padding: 10px 18px calc(18px + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto; }
+  .sheet .grab { display: block; width: 44px; height: 5px; border-radius: 3px; background: #3A4550; margin: 0 auto 12px; }
+  .sheet h2 { margin: 0; font-size: 28px; }
+  .toast { position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 20; max-width: calc(100% - 32px);
+           background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 15px; font-weight: 600; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: .96; }
+  .offline [data-view] { opacity: .55; }
+  .steps { list-style: none; margin: 18px 0 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }
+  .steps li { display: flex; gap: 14px; align-items: flex-start; }
+  .steps .n { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--switch-off); color: var(--dim); display: flex; align-items: center; justify-content: center; font-weight: 700; }
+  .steps .n.on { border-color: var(--accent); color: var(--accent); }
+  .steps .n.done { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  #pin { font-family: var(--font-display); font-size: 32px; letter-spacing: .5em; text-align: center; padding-left: calc(14px + .5em); }
+  details > summary { list-style: none; cursor: pointer; color: var(--accent); font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+  details > summary::-webkit-details-marker { display: none; }
 </style>
 </head>
 <body>
 <main>
-  <h1>Hexa</h1>
-  <p class="sub" id="device">Painel do comma</p>
-
+  <!-- ===== Pairing: three steps, no tabs until paired ===== -->
   <section id="pair" class="hidden">
-    <div class="card">
-      <div class="title">Parear este celular</div>
-      <div class="desc" id="pairDesc">No comma: Configurações → hexa → parear celular. Digite o código que aparecer.</div>
-      <label class="field" for="pin">Código</label>
-      <input id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code">
-      <label class="field" for="name">Nome deste celular (opcional)</label>
-      <input id="name" type="text" maxlength="40" placeholder="ex.: celular do Conrado">
-      <button class="primary" id="pairBtn">Parear</button>
-      <div class="err" id="pairErr" role="alert"></div>
+    <div class="top">
+      <span class="brand"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l8 4.6v9.2l-8 4.6-8-4.6V7.4z"/><circle cx="12" cy="12" r="2.4" fill="var(--accent)" stroke="none"/></svg>LizPilot</span>
+      <div class="seg lang" role="radiogroup" data-t-aria="Idioma" aria-label="Idioma"></div>
     </div>
+    <h1 class="page" data-t>Conectar ao seu carro</h1>
+    <p class="sub" data-t>Uma vez só. Depois abre direto da tela de início.</p>
+    <ol class="steps">
+      <li><span class="n" id="step1">1</span><span class="stack" style="gap:2px"><span class="title" data-t>Abra pelo QR do comma</span>
+        <span class="desc" data-t>No comma: Configurações → LizPilot → parear celular. O celular precisa estar no Wi-Fi do comma ou na mesma rede.</span></span></li>
+      <li><span class="n on">2</span><span class="stack grow" style="gap:8px; flex:1; min-width:0">
+        <label class="title" for="pin" data-t>Digite o código que está na tela do comma</label>
+        <input id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code">
+        <span class="small" data-t>Vale por 2 minutos. Pareia sozinho no 6º número.</span>
+        <label class="field" for="name" style="margin-top:4px" data-t>Nome deste celular</label>
+        <input id="name" type="text" maxlength="40" data-t-ph="ex.: iPhone do Conrado" placeholder="ex.: iPhone do Conrado">
+        <button class="btn" id="pairBtn" type="button" data-t>Parear</button>
+        <div class="err" id="pairErr" role="alert"></div>
+      </span></li>
+      <li><span class="n">3</span><span class="stack" style="gap:2px"><span class="title" data-t>Adicionar à tela de início</span>
+        <span class="desc" id="homeHow"></span></span></li>
+    </ol>
+    <p class="small" style="margin-top:20px" data-t>Só no Wi-Fi de casa ou no hotspot do comma. Nunca pela internet.</p>
   </section>
 
-  <section id="panel" class="hidden">
-    <div class="card row">
-      <div class="text">
-        <div class="title" id="vehicleText">—</div>
-        <div class="desc" id="vehicleDesc"></div>
+  <!-- ===== Paired ===== -->
+  <section id="app" class="hidden">
+    <div class="top">
+      <span class="brand"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l8 4.6v9.2l-8 4.6-8-4.6V7.4z"/><circle cx="12" cy="12" r="2.4" fill="var(--accent)" stroke="none"/></svg>LizPilot</span>
+      <span class="conn"><span class="dot"></span><span id="conn">—</span></span>
+    </div>
+    <div class="card att hidden" id="offlineCard" role="status">
+      <div class="title" data-t>Sem conexão com o comma</div>
+      <div class="desc" id="offlineDesc"></div>
+    </div>
+
+    <!-- Início -->
+    <div data-view="inicio">
+      <div id="garage">
+        <div class="card hidden" id="installCard">
+          <div class="row"><div class="grow"><div class="title" data-t>Adicione à tela de início</div><div class="desc" id="installHow"></div></div>
+            <button class="link" id="installDismiss" type="button" data-t>Ok</button></div>
+        </div>
+        <section class="card ok stack" id="readyCard" style="gap:16px">
+          <div class="row">
+            <svg width="52" height="52" viewBox="0 0 24 24" aria-hidden="true" id="readyIcon"><path d="M12 1.8l8.8 5.1v10.2L12 22.2l-8.8-5.1V6.9z" fill="currentColor"/><path d="M7.8 12.3l2.8 2.8 5.6-5.8" fill="none" stroke="var(--bg)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <div class="grow"><div class="big" id="readyTitle">—</div><div class="desc" id="readySub"></div></div>
+          </div>
+          <div class="checks" id="readyChecks"></div>
+        </section>
+        <a class="card att row hidden" id="updateCard" href="#" style="text-decoration:none;color:inherit">
+          <span class="grow"><span class="title" data-t>Versão nova pronta</span><br><span class="desc" id="updateCardDesc"></span></span>
+          <span class="link" data-t>Ver</span>
+        </a>
+        <section class="card stack hidden" id="changesCard" style="gap:6px">
+          <div class="label" style="margin:0 0 4px" data-t>Mudou desde a última viagem</div>
+          <div id="changesList" class="list"></div>
+          <div class="small" data-t>Valem no próximo engate.</div>
+        </section>
+        <a class="card stack hidden" id="lastTrip" href="/viagens" style="text-decoration:none;color:inherit;gap:10px">
+          <div class="row"><span class="label grow" style="margin:0" data-t>Última viagem</span><span class="small" id="lastTripWhen"></span></div>
+          <div class="row" style="gap:20px" id="lastTripNums"></div>
+          <span class="link" style="justify-content:space-between"><span data-t>Rever viagem</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span>
+        </a>
+        <div class="card att row hidden" id="pendingCard">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>
+          <span class="grow" id="pendingText"></span>
+          <button class="btn warn" id="pendingBtn" type="button" style="width:auto;min-height:44px;padding:0 16px;font-size:16px" data-t>Classificar</button>
+        </div>
       </div>
-      <span class="status" id="vehicleBadge"></span>
+
+      <div id="drive" class="hidden">
+        <section class="band op" id="band">
+          <div class="row" style="gap:12px">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.4"/><path d="M3.5 10.5h6M14.5 10.5h6M12 14.5V21"/></svg>
+            <div><div class="who" id="who">—</div><div class="why" id="whySub"></div></div>
+          </div>
+          <div class="acc"><span>ACC</span><b id="accSet">—</b></div>
+        </section>
+        <div class="alert hidden" id="liveAlert" role="alert"></div>
+        <section class="card stack" id="nextCard" style="margin-top:12px;gap:12px">
+          <div class="label" style="margin:0" data-t>Próximo à frente</div>
+          <div class="row" style="gap:18px" id="nextRow"></div>
+          <div class="bar"><span id="nextBar" style="background:var(--warn);width:0"></span></div>
+          <div class="small" id="nextAfter"></div>
+        </section>
+        <div class="grid2" id="driveTiles"></div>
+        <section class="card hidden" id="laneCard" style="margin-top:10px">
+          <div class="row"><span class="grow desc" id="laneText"></span><span class="pill hidden" id="bsPill"></span></div>
+          <div class="lane" id="lane"><i id="laneL"></i><i id="laneR"></i><span class="mid"></span><span class="car" id="laneCar"></span><span class="bs hidden" id="bsL" style="left:0"></span><span class="bs hidden" id="bsR" style="right:0"></span></div>
+        </section>
+        <section class="card hidden" id="resumeCard">
+          <div class="title" id="resumeTitle"></div>
+          <div class="stack" id="resumeList" style="gap:4px;margin-top:6px"></div>
+        </section>
+        <div class="small row" style="gap:8px;padding:6px 4px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+          <span data-t>Ajustes de direção e velocidade travados enquanto anda</span>
+        </div>
+        <div class="small" id="liveOff" style="padding:0 4px"></div>
+      </div>
     </div>
-    <div data-tab="marcar">
-    <h2>Marcar</h2>
-    <div class="card hidden" id="editor">
-      <div class="title" id="editTitle">Marcar</div>
-      <label class="field" for="editReason">Motivo</label>
-      <select id="editReason"></select>
-      <label class="field" for="editNote">Comentário (opcional)</label>
-      <textarea id="editNote" rows="3" maxlength="500" placeholder="ex.: moto colou na lateral"></textarea>
-      <button class="primary" id="editSave">Salvar</button>
-      <div class="rowlinks"><button id="editCancel">Cancelar</button></div>
-    </div>
-    <div id="pendingBox"></div>
-    <div class="card">
-      <div class="desc">Toque no motivo, comente se quiser e toque em Salvar: só então a marca vale e aciona a bandeira do comma.
-        Dá para ditar o comentário pelo teclado do celular.</div>
-      <div class="reasons" id="reasons"></div>
-      <details>
-        <summary>Motivos e exportar</summary>
-        <label class="field" for="newReason">Novo motivo</label>
-        <input id="newReason" type="text" maxlength="24" placeholder="ex.: buraco">
-        <div class="rowlinks"><button id="addReasonBtn">Adicionar motivo</button></div>
+
+    <!-- Viagens -->
+    <div data-view="viagens" class="hidden">
+      <h1 class="page" data-t>Viagens</h1>
+      <p class="sub" data-t>Abrem com o carro desligado</p>
+      <div id="tripsList" class="stack" style="gap:10px"></div>
+      <a class="card row" href="/replay" style="text-decoration:none;color:inherit">
+        <span class="grow"><span class="title" data-t>Replay por minuto</span><br><span class="desc" data-t>Direto na linha do tempo marcada: bandeiras, força no limite, balanço, alertas.</span></span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--dim)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+      </a>
+      <div class="label" data-t>Marcas</div>
+      <div id="pendingList"></div>
+      <div class="card list" id="markList"></div>
+      <details class="card">
+        <summary data-t>Motivos e exportar</summary>
+        <label class="field" for="newReason" data-t>Novo motivo</label>
+        <input id="newReason" type="text" maxlength="24" data-t-ph="ex.: buraco" placeholder="ex.: buraco">
+        <button class="link" id="addReasonBtn" type="button" data-t>Adicionar motivo</button>
         <div class="small" id="mineHint"></div>
-        <div class="chips" id="mineList"></div>
-        <div class="rowlinks"><button id="exportBtn">Exportar marcas (para análise)</button></div>
+        <div class="chips" id="mineList" style="margin-top:6px"></div>
+        <button class="link" id="exportBtn" type="button" data-t>Exportar marcas (para análise)</button>
       </details>
     </div>
-    <div class="card"><ul class="audit" id="markList"></ul></div>
-    </div>
-    <div data-tab="agora" class="hidden">
-    <div class="card">
-      <div class="row">
-        <div class="big text"><span id="liveV">—</span> <small>km/h</small></div>
-        <span class="status" id="liveWho"></span>
+
+    <!-- Pontos -->
+    <div data-view="pontos" class="hidden">
+      <div class="row" style="align-items:flex-end">
+        <div class="grow"><h1 class="page" data-t>Pontos</h1><p class="sub" id="radarCountSub" style="margin:0">—</p></div>
+        <span class="conn"><span class="dot" id="gpsDot"></span><span id="gpsText">—</span></span>
       </div>
-      <div class="alert hidden" id="liveAlert"></div>
-      <div class="why hidden" id="liveWhy"></div>
-      <div class="small hidden" id="liveOff"></div>
-      <button class="primary" id="liveMark">Marcar este momento</button>
-    </div>
-    <div class="card hidden" id="resumeCard">
-      <div class="title" id="resumeTitle">Sair sozinho</div>
-      <div id="resumeList"></div>
-    </div>
-    <div class="card hidden" id="roadCard">
-      <canvas id="road" aria-label="Posição do carro na faixa"></canvas>
-      <div class="small" id="roadText"></div>
-    </div>
-    <div class="tiles" id="liveTiles"></div>
-    <h2>Comma</h2>
-    <div class="tiles" id="liveDevice"></div>
-    </div>
-    <div data-tab="radares" class="hidden">
-      <div class="card hidden" id="pointEditor">
-        <div class="title" id="pointTitle">Radar</div>
-        <div class="desc" id="pointHint"></div>
-        <div id="pointLimitBox">
-          <label class="field" id="pointLimitLabel">Velocidade</label>
-          <div class="pick" id="pointLimits"></div>
-        </div>
-        <div id="pointSideBox">
-          <label class="field">Sentido</label>
-          <div class="pick three" id="pointSides"></div>
-          <div class="desc" id="pointSideNote"></div>
-        </div>
-        <button class="gone hidden" id="pointRemove" aria-pressed="false">Não existe mais</button>
-        <div class="desc" id="pointSummary"></div>
-        <button class="primary" id="pointSave">Salvar</button>
-        <button class="plain" id="pointCancel">Cancelar</button>
+      <div class="add3" style="margin-top:12px">
+        <button id="addRadar" type="button"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="13" height="9" rx="2"/><circle cx="9.5" cy="12.5" r="2.5"/><path d="M16 11l5-2v8l-5-2"/></svg><span data-t>Radar</span></button>
+        <button id="addBlitz" type="button"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l5.5 17h-11z"/><path d="M8.6 14.5h6.8M10.1 9.5h3.8M4 20.5h16"/></svg><span data-t>Blitz</span></button>
+        <button id="addBump" type="button"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 17h4.5c2.2 0 3.2-6 5.5-6s3.3 6 5.5 6H22"/></svg><span data-t>Lombada</span></button>
       </div>
-      <h2>Informar agora</h2>
-      <div class="card">
-        <div class="desc">Toque ao passar pelo ponto: o lugar fica guardado no toque. Nada é salvo antes de você tocar em Salvar. Blitz some sozinha em 12 horas.</div>
-        <div class="reasons three"><button id="addRadar">Radar</button><button id="addBlitz">Blitz</button><button id="addBump">Lombada</button></div>
-      </div>
-      <h2>Perto de você</h2>
-      <div class="card"><ul class="audit" id="nearList"></ul></div>
-      <h2>Meus pontos</h2>
-      <div class="card">
-        <ul class="audit" id="mineRadars"></ul>
-        <div class="desc">Um reset do comma apaga seus pontos. A cópia vai para um arquivo seu, com as posições.</div>
-        <div class="rowlinks"><button id="radarExport">Guardar uma cópia</button><button id="radarImport">Restaurar</button></div>
+      <p class="small" style="margin:8px 4px 0" data-t>Toque ao passar pelo ponto: o lugar fica no toque. Nada é salvo sem Salvar. Blitz some sozinha em 12 horas.</p>
+      <div class="card list" id="nearList" style="margin-top:12px;padding:4px 14px"></div>
+      <details class="card" id="mineBox">
+        <summary id="mineSummary" data-t>Meus pontos</summary>
+        <div class="list" id="mineRadars"></div>
+        <p class="small" data-t>Um reset do comma apaga seus pontos. A cópia vai para um arquivo seu, com as posições.</p>
+        <div class="chips"><button class="link" id="radarExport" type="button" data-t>Guardar uma cópia</button><button class="link" id="radarImport" type="button" data-t>Restaurar</button></div>
         <input class="hidden" id="radarFile" type="file" accept="application/json,.json">
+      </details>
+      <div class="card">
+        <div class="title" id="radarCount">—</div>
+        <div class="desc" id="radarDesc"></div>
+        <button class="link" id="radarUpdate" type="button" data-t>Atualizar a lista</button>
+        <div class="small" id="radarNote" style="color:var(--warn)"></div>
       </div>
-    <h2>Radares</h2>
-    <div class="card">
-      <div class="title" id="radarCount">—</div>
-      <div class="desc" id="radarDesc"></div>
-      <div class="rowlinks"><button id="radarUpdate">Atualizar a lista</button></div>
-      <div class="note" id="radarNote"></div>
     </div>
-    </div>
-    <div data-tab="viagens" class="hidden">
-    <a class="card row" href="/viagens" style="text-decoration:none;color:inherit">
-      <div class="text"><div class="title">Minhas viagens</div>
-        <div class="desc">Escolha a viagem, veja o resumo e o caminho com as marcas, arraste até um ponto e assista àquele momento no replay. Abre com o carro desligado.</div></div>
-      <span class="status ok">abrir</span>
-    </a>
-    <a class="card row" href="/replay" style="text-decoration:none;color:inherit">
-      <div class="text"><div class="title">Replay por minuto</div>
-        <div class="desc">Direto na linha do tempo marcada: bandeiras, força no limite, balanço, alertas.</div></div>
-      <span class="status ok">abrir</span>
-    </a>
-    </div>
-    <div data-tab="opcoes" class="hidden">
-    <div id="groups"></div>
-    </div>
-    <div data-tab="sistema" class="hidden">
-    <h2>Atualização</h2>
-    <div class="card">
-      <div class="title" id="updNow">—</div>
-      <div class="desc" id="updDesc"></div>
-      <div id="updBranchBox" class="hidden">
-        <label class="field" for="updBranch">Versão</label>
-        <select id="updBranch"></select>
+
+    <!-- Ajustes -->
+    <div data-view="ajustes" class="hidden">
+      <div class="row" style="align-items:flex-end"><h1 class="page grow" data-t>Ajustes</h1><span class="conn" id="carState"></span></div>
+      <div class="seg" role="tablist" id="subtabs" style="margin:12px 0 4px">
+        <button type="button" role="tab" data-sub="opcoes" data-t>Opções</button>
+        <button type="button" role="tab" data-sub="comma" data-t>Comma</button>
+        <button type="button" role="tab" data-sub="celulares" data-t>Celulares</button>
       </div>
-      <button class="primary" id="updMain">Verificar atualização</button>
-      <div class="note" id="updNote"></div>
-    </div>
-    <h2>Saúde do comma</h2>
-    <div class="card">
-      <div class="title" id="healthTitle">—</div>
-      <div class="desc" id="healthDesc"></div>
-    </div>
-    <div class="tiles" id="healthTiles"></div>
-    <h2>O que o carro aprendeu</h2>
-    <div class="desc hidden" id="learnedEmpty">Aparece depois de ligar o carro.</div>
-    <div class="tiles" id="learnedTiles"></div>
-    <h2>Aparelho</h2>
-    <div class="card">
-      <div class="desc" id="sysDesc">Reinicia só com o carro desligado.</div>
-      <div class="rowlinks"><button id="rebootBtn">Reiniciar o comma</button></div>
-    </div>
-    <h2>Celulares pareados</h2>
-    <div class="card"><ul class="audit" id="phoneList"></ul></div>
-    <h2>Este celular</h2>
-    <div class="card">
-      <div class="title" id="thisAddress">—</div>
-      <div class="desc">Se o comma mudar de rede, este endereço muda: leia o QR de novo no comma, em Configurações → hexa → parear celular.
-No iPhone: Compartilhar → Adicionar à Tela de Início. Pode ser preciso parear de novo por lá.</div>
-    </div>
-    <h2>Últimas mudanças</h2>
-    <div class="card"><ul class="audit" id="audit"></ul></div>
-    <button class="link" id="logoutBtn">Desconectar este celular</button>
+      <div data-subview="opcoes"><div id="groups"></div><p class="small" style="margin:12px 4px" data-t>Opções de direção e velocidade só mudam com o carro em P ou desligado, e valem no próximo engate.</p></div>
+      <div data-subview="comma" class="hidden">
+        <div class="label" data-t>Atualização</div>
+        <div class="card stack" style="gap:6px">
+          <div class="title" id="updNow">—</div>
+          <div class="desc" id="updDesc"></div>
+          <div id="updBranchBox" class="hidden"><label class="field" for="updBranch" data-t>Versão</label><select id="updBranch"></select></div>
+          <button class="btn" id="updMain" type="button" style="margin-top:8px">—</button>
+          <div class="small" id="updNote" style="color:var(--warn)"></div>
+        </div>
+        <div class="label" data-t>Saúde do comma</div>
+        <div class="card"><div class="title" id="healthTitle">—</div><div class="desc" id="healthDesc"></div></div>
+        <div class="grid2" id="healthTiles"></div>
+        <details class="card" style="margin-top:10px">
+          <summary data-t>O que o carro aprendeu</summary>
+          <div class="desc hidden" id="learnedEmpty" data-t>Aparece depois de ligar o carro.</div>
+          <div class="grid2" id="learnedTiles"></div>
+        </details>
+        <div class="card"><div class="desc" data-t>Reinicia só com o carro desligado.</div><button class="link" id="rebootBtn" type="button" data-t>Reiniciar o comma</button></div>
+        <div class="label" data-t>Últimas mudanças</div>
+        <div class="card list" id="audit"></div>
+      </div>
+      <div data-subview="celulares" class="hidden">
+        <div class="label" data-t>Idioma deste celular</div>
+        <div class="seg lang" role="radiogroup" data-t-aria="Idioma" aria-label="Idioma"></div>
+        <div class="label" data-t>Celulares pareados</div>
+        <div class="card list" id="phoneList"></div>
+        <div class="label" data-t>Este celular</div>
+        <div class="card"><div class="title num" id="thisAddress">—</div>
+          <div class="desc" data-t>Se o comma mudar de rede, este endereço muda: leia o QR de novo no comma, em Configurações → LizPilot → parear celular.</div>
+          <div class="desc" id="thisHow" style="margin-top:6px"></div></div>
+        <button class="link danger" id="logoutBtn" type="button" data-t>Desconectar este celular</button>
+      </div>
     </div>
   </section>
 </main>
-<nav class="tabs hidden" id="tabs" aria-label="Seções">
-  <button data-go="marcar">Marcar</button>
-  <button data-go="agora">Agora</button>
-  <button data-go="radares">Radares</button>
-  <button data-go="viagens">Viagens</button>
-  <button data-go="opcoes">Opções</button>
-  <button data-go="sistema">Sistema</button>
+
+<!-- Marcar: the same box from any area. Nothing exists until Salvar. -->
+<div class="scrim hidden" id="markScrim"></div>
+<section class="sheet hidden" id="markSheet" role="dialog" aria-modal="true" aria-labelledby="markTitle">
+  <span class="grab"></span>
+  <div class="row" style="align-items:baseline"><h2 class="grow" id="markTitle" data-t>Marcar</h2><span class="small num" id="markWhen"></span></div>
+  <div class="reasons" id="reasons" style="margin-top:14px"></div>
+  <label class="field" for="markNote" data-t>Comentário (opcional)</label>
+  <textarea id="markNote" rows="2" maxlength="500" data-t-ph="ex.: ponte com junta, volante tremeu" placeholder="ex.: ponte com junta, volante tremeu"></textarea>
+  <div class="small" style="margin-top:6px" data-t>Dá para ditar pelo microfone do teclado.</div>
+  <button class="btn" id="markSave" type="button" style="margin-top:16px" disabled>—</button>
+  <button class="btn ghost" id="markCancel" type="button" data-t>Cancelar</button>
+  <div class="small" style="text-align:center" data-t>A marca só vale depois de Salvar e aciona a bandeira do comma.</div>
+</section>
+
+<!-- Ponto: radar, blitz, lombada. Nothing changes before Salvar. -->
+<div class="scrim hidden" id="pointScrim"></div>
+<section class="sheet hidden" id="pointSheet" role="dialog" aria-modal="true" aria-labelledby="pointTitle">
+  <span class="grab"></span>
+  <h2 id="pointTitle">—</h2>
+  <div class="desc" id="pointHint" style="margin-top:4px"></div>
+  <div id="pointLimitBox"><label class="field" data-t>Velocidade</label><div class="pick" id="pointLimits"></div></div>
+  <div id="pointSideBox"><label class="field" data-t>Sentido</label><div class="pick three" id="pointSides"></div><div class="small" id="pointSideNote" style="margin-top:6px"></div></div>
+  <button class="btn ghost hidden" id="pointRemove" type="button" aria-pressed="false" style="color:var(--danger)">—</button>
+  <div class="desc" id="pointSummary" style="margin-top:10px"></div>
+  <button class="btn" id="pointSave" type="button" style="margin-top:14px" data-t>Salvar</button>
+  <button class="btn ghost" id="pointCancel" type="button" data-t>Cancelar</button>
+</section>
+
+<nav class="tabs hidden" id="tabs" data-t-aria="Áreas" aria-label="Áreas">
+  <button type="button" data-go="inicio"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l8 4.6v9.2l-8 4.6-8-4.6V7.4z"/></svg><span data-t>Início</span></button>
+  <button type="button" data-go="viagens"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7"/></svg><span data-t>Viagens</span></button>
+  <button type="button" class="fab" id="fab"><span class="circle"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg></span><span class="lbl" data-t>Marcar</span></button>
+  <button type="button" data-go="pontos"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/></svg><span data-t>Pontos</span></button>
+  <button type="button" data-go="ajustes"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span data-t>Ajustes</span></button>
 </nav>
 <div class="toast" id="toast" role="status"></div>
 
+<script src="/i18n.js"></script>
 <script>
+"use strict";
 const $ = (id) => document.getElementById(id);
+const { t, tf } = LP;
+const L = () => LP.locale;
 let token = null;
 try { token = localStorage.getItem("hexaToken"); } catch (e) {}
-let titles = {};
+let state = null, titles = {};
 let marksState = { reasons: [], marks: [], pending: 0 };
-let carStopped = false;
-let carOn = false;
-const POLL_MS = 3000, POLL_MAX_MS = 30000;
-let pollTimer = null, online = true, lastOk = 0, failures = 0, ticks = 0;
+let carStopped = false, carOn = false, driving = false;
+const POLL_MS = 3000, POLL_MAX_MS = 30000, LIVE_MS = 1000;
+let pollTimer = null, liveTimer = null, online = true, lastOk = 0, failures = 0, ticks = 0;
 const EDITOR_MS = 20000;  // moving, a box nobody touched leaves by itself and nothing is marked
-let editorTimer = null;
-let editing = null;  // the mark being written: the editor stays out of what the refresh redraws
+let markTimer = null, editing = null, picked = null;
+let trips = null, tripsAt = 0, update = null, health = null, near = null, live = null;
 
-function saveToken(t) {
-  token = t;
-  try { t ? localStorage.setItem("hexaToken", t) : localStorage.removeItem("hexaToken"); } catch (e) {}
+// ----- helpers -----
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+function store(k, v) { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }
+function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function saveToken(v) { token = v; store("hexaToken", v); }
+function toast(msg) { const e = $("toast"); e.textContent = msg; e.classList.add("show"); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove("show"), 2800); }
+const hhmm = (s) => new Date(s * 1000).toLocaleTimeString(L(), { hour: "2-digit", minute: "2-digit" });
+const hhmmss = (s) => new Date(s * 1000).toLocaleTimeString(L(), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const dayTime = (s) => new Date(s * 1000).toLocaleString(L(), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+const num = (v, d) => Number(v).toLocaleString(L(), { maximumFractionDigits: d });
+function isToday(s) { const a = new Date(s * 1000), b = new Date(); return a.toDateString() === b.toDateString(); }
+function when(s) { return isToday(s) ? tf("hoje, {hora}", { hora: hhmm(s) }) : dayTime(s); }
+function wheelText(w) { return w === 0 ? "0°" : w > 0 ? `◀ ${w}°` : `${-w}° ▶`; }  // positive is to the left
+const ICON_CHECK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const ICON_X = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const ICON_LOCK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+const ICON_CHEV = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--dim)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+const ICON_BUMP = '<svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 17h4.5c2.2 0 3.2-6 5.5-6s3.3 6 5.5 6H22"/></svg>';
+const ICON_BLITZ = '<svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l5.5 17h-11z"/><path d="M8.6 14.5h6.8M10.1 9.5h3.8M4 20.5h16"/></svg>';
+function sign(limit, size) {  // the round speed sign, as on the road
+  const s = size || 42, txt = limit ? String(limit) : "?";
+  return `<svg width="${s}" height="${s}" viewBox="0 0 88 88" role="img" aria-label="${limit ? limit + " km/h" : "?"}"><circle cx="44" cy="44" r="42" fill="#fff"/><circle cx="44" cy="44" r="36" fill="none" stroke="#D7261E" stroke-width="9"/><text x="44" y="${txt.length > 2 ? 54 : 56}" text-anchor="middle" font-family="Barlow Semi Condensed, Barlow, sans-serif" font-weight="700" font-size="${txt.length > 2 ? 28 : 34}" fill="#111">${txt}</text></svg>`;
+}
+function pointIcon(p, size) { return p.kind === "lombada" ? ICON_BUMP : p.kind === "blitz" && !p.limit ? ICON_BLITZ : sign(p.limit, size); }
+function howToInstall() {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad/.test(ua)) return t("No iPhone: Compartilhar → Adicionar à Tela de Início. Pode ser preciso parear de novo por lá.");
+  if (/Android/.test(ua)) return t("No Android: menu ⋮ → Adicionar à tela inicial.");
+  return t("No iPhone: Compartilhar → Adicionar à Tela de Início. No Android: menu ⋮ → Adicionar à tela inicial.");
+}
+function defaultName() { const ua = navigator.userAgent; return /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : t("celular"); }
+function langPickers() {
+  document.querySelectorAll(".seg.lang").forEach((box) => {
+    box.replaceChildren(...LP.LANGS.map((l) => {
+      const b = el("button", "", l.toUpperCase()); b.type = "button"; b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", l === LP.lang ? "true" : "false"); b.setAttribute("aria-label", { pt: "Português", en: "English", es: "Español" }[l]);
+      b.style.minWidth = "48px"; b.addEventListener("click", () => LP.setLang(l)); return b;
+    }));
+  });
 }
 
-function toast(msg) {
-  const el = $("toast"); el.textContent = msg; el.classList.add("show");
-  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("show"), 2600);
-}
-
+// ----- network: nothing old passes as current, and nothing can be touched that wouldn't reach the comma -----
 async function api(path, body) {
   const opts = { method: body === undefined ? "GET" : "POST", headers: {} };
-  if (token) opts.headers["Authorization"] = "Bearer " + token;
+  if (token) opts.headers.Authorization = "Bearer " + token;
   if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
   let r;
-  try {
-    r = await fetch(path, opts);
-  } catch (e) {
-    setOnline(false);
-    return { status: 0, data: { error: "Sem conexão com o comma: nada foi salvo." } };
-  }
+  try { r = await fetch(path, opts); } catch (e) { setOnline(false); return { status: 0, data: { error: t("Sem conexão com o comma: nada foi salvo.") } }; }
   setOnline(true);
   let data = {};
   try { data = await r.json(); } catch (e) {}
+  if (data && typeof data.error === "string") data.error = t(data.error);
+  if (data && typeof data.message === "string") data.message = t(data.message);
   if (r.status === 401) { saveToken(null); show("pair"); }
   return { status: r.status, data };
 }
 
-// Nothing old passes as current, and nothing can be touched that wouldn't reach the comma
 function setOnline(on) {
   if (on) lastOk = Date.now();
   if (on !== online) {
     online = on;
     document.body.classList.toggle("offline", !on);
-    document.querySelectorAll("[data-tab]").forEach(el => { el.inert = !on; });
+    document.querySelectorAll("[data-view], #fab").forEach((e) => { e.inert = !on; });
+    $("offlineCard").classList.toggle("hidden", on);
   }
   if (!on) {
-    document.querySelector('[data-go="radares"]').classList.remove("perto");
-    const when = lastOk ? new Date(lastOk).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—";
-    $("vehicleText").textContent = "Sem conexão com o comma";
-    $("vehicleDesc").textContent = `Dados de ${when}. Tentando de novo…\nConfira se o celular está na rede do comma. Se o endereço mudou, leia o QR no comma.`;
-    $("vehicleBadge").textContent = "sem conexão";
-    $("vehicleBadge").className = "status off";
+    $("tabs").querySelector('[data-go="pontos"]').classList.remove("near");
+    const at = lastOk ? new Date(lastOk).toLocaleTimeString(L(), { hour: "2-digit", minute: "2-digit" }) : "—";
+    $("offlineDesc").textContent = tf("Dados de {hora}. Tentando de novo…\nConfira se o celular está na rede do comma. Se o endereço mudou, leia o QR no comma.", { hora: at });
+    $("conn").textContent = t("sem conexão");
   }
 }
 
-let tab = "marcar", liveTimer = null;
-try { tab = localStorage.getItem("hexaTab") || tab; } catch (e) {}
+// ----- areas: the last one opened stays; nothing switches by itself -----
+let view = load("lpView") || "inicio", sub = load("lpSub") || "opcoes";
+if (!["inicio", "viagens", "pontos", "ajustes"].includes(view)) view = "inicio";
 
-function showTab(name) {
-  tab = name;
-  try { localStorage.setItem("hexaTab", name); } catch (e) {}
-  document.querySelectorAll("[data-tab]").forEach(el => el.classList.toggle("hidden", el.dataset.tab !== name));
-  document.querySelectorAll("[data-go]").forEach(b => b.dataset.go === name ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
+function showView(name) {
+  view = name; store("lpView", name);
+  document.querySelectorAll("[data-view]").forEach((e) => e.classList.toggle("hidden", e.dataset.view !== name));
+  document.querySelectorAll("[data-go]").forEach((b) => b.dataset.go === name ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
   clearInterval(liveTimer); liveTimer = null;
-  if (name === "agora") { refreshLive(); liveTimer = setInterval(() => { if (online && !document.hidden) refreshLive(); }, 1000); }
-  if (name === "radares") { refreshRadars(); refreshNear(); }
-  if (name === "marcar") refreshMarks();
-  if (name === "sistema") refreshSystem();
+  if (name === "inicio") { refreshHome(true); liveTimer = setInterval(() => { if (online && !document.hidden && driving) refreshLive(); }, LIVE_MS); }
+  if (name === "viagens") { refreshTrips(true); refreshMarks(); }
+  if (name === "pontos") { refreshRadars(); refreshNear(); }
+  if (name === "ajustes") showSub(sub);
   window.scrollTo(0, 0);
 }
 
-function refreshSystem() { refreshUpdate(); refreshHealth(); refreshPhones(); }
+function showSub(name) {
+  sub = name; store("lpSub", name);
+  document.querySelectorAll("[data-sub]").forEach((b) => b.setAttribute("aria-selected", b.dataset.sub === name ? "true" : "false"));
+  document.querySelectorAll("[data-subview]").forEach((e) => e.classList.toggle("hidden", e.dataset.subview !== name));
+  if (name === "comma") { refreshUpdate(); refreshHealth(); }
+  if (name === "celulares") refreshPhones();
+}
 
-function refreshTab() {
+function refreshView() {
   ticks += 1;
-  if (tab === "marcar") refreshMarks();
-  if (tab === "sistema") refreshSystem();
-  if (tab === "radares" || (carOn && ticks % 3 === 0)) refreshNear();  // the dot on the tab, while driving
+  if (view === "inicio") refreshHome(false);
+  if (view === "viagens") { refreshMarks(); refreshTrips(false); }
+  if (view === "ajustes" && sub === "comma") { refreshUpdate(); refreshHealth(); }
+  if (view === "ajustes" && sub === "celulares") refreshPhones();
+  if (view === "pontos" || (carOn && view !== "inicio" && ticks % 3 === 0)) refreshNear();  // the dot on the tab, while driving
 }
 
 function schedule() {
@@ -382,485 +507,575 @@ function schedule() {
   pollTimer = setTimeout(refresh, online ? POLL_MS : Math.min(POLL_MS * 2 ** failures, POLL_MAX_MS));
 }
 
-function tile(label, value) {
-  const d = document.createElement("div"); d.className = "tile";
-  const b = document.createElement("b"); b.textContent = value;
-  const s = document.createElement("span"); s.textContent = label;
-  d.append(b, s); return d;
-}
-
-const NETWORK = { wifi: "Wi-Fi", cell4G: "4G", cell5G: "5G", cell3G: "3G", cell2G: "2G", ethernet: "cabo", none: "sem rede" };
-
-async function refreshLive() {
-  const r = await api("/api/live");
-  if (r.status !== 200) return;
-  const l = r.data, d = l.device || {};
-  renderOff(l);
-  renderResume(l.driving ? l.resume : null);
-  $("roadCard").classList.toggle("hidden", !(l.driving && l.lane));
-  if (l.driving && l.lane) drawRoad(l);
-  const who = !l.driving ? "carro desligado" : l.steering ? (l.driver ? "você e openpilot" : "openpilot dirigindo") : "você dirigindo";
-  $("liveV").textContent = l.driving ? l.v : "—";
-  $("liveWho").textContent = who;
-  $("liveWho").className = "status " + (l.steering ? "ok" : "ro");
-  $("liveAlert").textContent = l.alert || "";
-  $("liveAlert").classList.toggle("hidden", !l.alert);
-  const bs = l.blindspot || {};
-  const tiles = !l.driving ? [tile("GPS", l.gps && l.gps.ok ? "com sinal" : "sem sinal")] : [
-    tile("ACC", l.acc ? (l.acc_set ? `${l.acc_set} km/h` : "ligado") : "desligado"),
-    tile("carro à frente", l.lead ? `${l.lead.d} m` : "nenhum"),
-    tile("volante", wheelText(l.wheel)),
-    tile("força do openpilot", `${l.torque}%`),
-    tile("seta", l.blinker || "desligada"),
-    tile("ponto cego", bs.left && bs.right ? "dos dois lados" : bs.left ? "esquerda" : bs.right ? "direita" : "livre"),
-    tile("GPS", l.gps && l.gps.ok ? `com sinal, ${l.gps.accuracy} m` : "sem sinal"),
-    tile("pedais", l.brake ? "freio" : l.gas ? "acelerador" : "soltos"),
-  ];
-  $("liveTiles").replaceChildren(...tiles);
-  $("liveDevice").replaceChildren(tile("temperatura", d.temp !== undefined ? `${d.temp} °C` : "—"), tile("disco livre", d.free !== undefined ? `${d.free}%` : "—"),
-                                  tile("memória", d.memory !== undefined ? `${d.memory}%` : "—"), tile("rede", NETWORK[d.network] || d.network || "—"));
-}
-
-function num(v, digits) { return v.toLocaleString("pt-BR", { maximumFractionDigits: digits }); }
-
-function wheelText(w) { return w === 0 ? "0°" : w > 0 ? `◀ ${w}°` : `${-w}° ▶`; }  // positive is to the left
-
-function whenText(t) { return new Date(t * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }); }
-
-function renderOff(l) {
-  const why = l.driving && !l.engaged ? (l.why || []) : [];
-  $("liveWhy").textContent = why.length ? "Por que não engata: " + why.join(", ") : "";
-  $("liveWhy").classList.toggle("hidden", !why.length);
-  const off = l.last_off;
-  $("liveOff").textContent = off ? `Último desengate às ${whenText(off.t)}${off.why.length ? ": " + off.why.join(", ") : ""}` : "";
-  $("liveOff").classList.toggle("hidden", !off);
-}
-
-const RESUME = [["engaged", "openpilot engajado"], ["pedals", "sem pedal"], ["looking", "olhando para a frente"], ["lead", "carro à frente"]];
-
-function renderResume(c) {
-  const show = !!(c && c.stopped);
-  $("resumeCard").classList.toggle("hidden", !show);
-  if (!show) return;
-  const missing = RESUME.filter(([k]) => !c[k]);
-  $("resumeTitle").textContent = missing.length ? "Sair sozinho: assim não sai" : "Sair sozinho: pronto, esperando o carro da frente sair";
-  $("resumeList").replaceChildren(...RESUME.map(([k, label]) => {
-    const d = document.createElement("div"); d.className = "check" + (c[k] ? "" : " no");
-    d.textContent = `${c[k] ? "✓" : "✗"} ${label}`;
-    return d;
-  }));
-}
-
-const ROAD_M = 40, ROAD_WIDTH_M = 8;
-
-function drawRoad(l) {
-  const c = $("road"), ratio = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
-  if (c.width !== Math.round(w * ratio) || c.height !== Math.round(h * ratio)) { c.width = Math.round(w * ratio); c.height = Math.round(h * ratio); }
-  const g = c.getContext("2d"), css = getComputedStyle(document.documentElement);
-  const color = (name) => css.getPropertyValue(name).trim();
-  g.setTransform(ratio, 0, 0, ratio, 0, 0);
-  g.clearRect(0, 0, w, h);
-  const px = w / ROAD_WIDTH_M, ahead = (d) => h - 34 - d * (h - 54) / ROAD_M;
-  const side = (lat, d) => w / 2 + (lat + l.lane.curve * d * d / 2) * px;  // right and to the right of the car are positive
-  const line = (lat, ok) => {
-    g.beginPath();
-    for (let d = 0; d <= ROAD_M; d += 5) { const x = side(lat, d), y = ahead(d); if (d) g.lineTo(x, y); else g.moveTo(x, y); }
-    g.setLineDash(ok ? [] : [8, 8]);
-    g.lineWidth = 3;
-    g.strokeStyle = ok ? color("--text") : color("--muted");
-    g.stroke();
-  };
-  line(l.lane.left, l.lane.left_ok);
-  line(l.lane.right, l.lane.right_ok);
-  g.setLineDash([]);
-  g.fillStyle = l.steering ? color("--accent") : color("--warn");
-  g.fillRect(w / 2 - .95 * px, ahead(0), 1.9 * px, 26);
-  if (l.lead) {
-    const d = Math.min(l.lead.d, ROAD_M);
-    g.fillStyle = color("--muted");
-    g.fillRect(side(0, d) - .95 * px, ahead(d) - 10, 1.9 * px, 10);
-  }
-  const left = Math.abs(l.lane.left), right = Math.abs(l.lane.right);
-  $("roadText").textContent = `Linhas: ${num(left, 1)} m à esquerda · ${num(right, 1)} m à direita${l.lead ? ` · carro a ${l.lead.d} m` : ""}`;
-}
-
 function show(which) {
   $("pair").classList.toggle("hidden", which !== "pair");
-  $("panel").classList.toggle("hidden", which !== "panel");
-  $("tabs").classList.toggle("hidden", which !== "panel");
-  if (which === "panel") showTab(tab);
+  $("app").classList.toggle("hidden", which !== "app");
+  $("tabs").classList.toggle("hidden", which !== "app");
+  if (which === "app") showView(view);
+  else { closeMark(); closePoint(); document.body.classList.remove("driving"); }
 }
 
-const UPDATE_ACTIONS = { radars: "atualizou a lista de radares", check: "verificou", download: "baixou", install: "instalou", branch: "escolheu", reboot: "reiniciou" };
-const EVENTS = { paired: "pareou", logout: "desconectou", phone_revoked: "desconectou outro celular", pin_locked: "código bloqueado por tentativas erradas",
-                 reason_added: "adicionou motivo", reason_removed: "removeu motivo" };
-function auditText(a) {
-  const when = new Date(a.t * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-  const who = a.who ? a.who + ": " : "";
-  const name = titles[a.key] || a.key;
-  if (a.event === "set") {
-    if (typeof a.new === "boolean") return `${when} · ${who}${a.new ? "ligou" : "desligou"} ${name}`;
-    return `${when} · ${who}${name}: ${a.old} → ${a.new}`;
-  }
-  if (a.event === "denied") return `${when} · ${who}${name}: recusado (${a.reason})`;
-  if (a.event === "update") return `${when} · ${who}atualização: ${UPDATE_ACTIONS[a.key] || a.key}${a.new ? " " + a.new : ""}`;
-  if (a.event === "radar") return `${when} · ${who}radar: ${{ edit: "conferiu", removed: "tirou", add: "adicionou", delete: "apagou", import: "restaurou pontos" }[a.key] || a.key}`;
-  if (a.event === "reason_added") return `${when} · ${who}adicionou o motivo "${a.new}"`;
-  return `${when} · ${who}${EVENTS[a.event] || a.event}`;
-}
-
+// ----- state: car, options, history -----
 function render(s) {
+  state = s;
   titles = s.titles || {};
-  const d = s.device;
-  $("device").textContent = [d.branch, d.commit].filter(Boolean).join(" · ") + (s.you ? " · " + s.you : "");
   const v = s.vehicle;
   const parked = !v.onroad || (v.parked && v.standstill && !v.engaged);
   carStopped = !v.onroad || v.standstill;
   carOn = v.onroad;
-  $("vehicleText").textContent = !v.onroad ? "Carro desligado" : (parked ? "Carro parado em P" : "Carro ligado ou andando");
-  $("vehicleDesc").textContent = parked ? "Pode mudar as opções." : "Opções de direção e velocidade só em P ou com o carro desligado.";
-  $("vehicleBadge").textContent = parked ? "pode mudar" : "só leitura";
-  $("vehicleBadge").className = "status " + (parked ? "ok" : "ro");
-
-  const root = $("groups");
-  root.replaceChildren();
-  for (const g of s.groups) {
-    const h = document.createElement("h2"); h.textContent = g.title; root.appendChild(h);
-    for (const o of g.options) root.appendChild(optionCard(o));
-  }
-  const ul = $("audit"); ul.replaceChildren();
-  if (!s.audit.length) { const li = document.createElement("li"); li.textContent = "Nada ainda."; ul.appendChild(li); }
-  for (const a of s.audit) { const li = document.createElement("li"); li.textContent = auditText(a); ul.appendChild(li); }
+  const was = driving;
+  driving = v.onroad && !parked;
+  document.body.classList.toggle("driving", driving && view === "inicio");
+  if (was !== driving && view === "inicio") refreshHome(true);
+  $("conn").textContent = !v.onroad ? t("carro desligado") : parked ? t("carro em P") : t("carro andando");
+  $("carState").innerHTML = "";
+  $("carState").append(el("span", "dot"), document.createTextNode(parked ? t("pode mudar") : t("só leitura")));
+  if (!parked) $("carState").firstChild.style.background = "var(--warn)";
+  renderGroups(s.groups);
+  const audit = $("audit"); audit.replaceChildren();
+  if (!s.audit.length) audit.append(el("div", "line desc", t("Nada ainda.")));
+  for (const a of s.audit) audit.append(el("div", "line desc", auditText(a)));
 }
 
-function optionCard(o) {
-  const card = document.createElement("div"); card.className = "card";
-  const row = document.createElement("div"); row.className = "row";
-  const text = document.createElement("div"); text.className = "text";
-  const t = document.createElement("div"); t.className = "title"; t.textContent = o.title;
-  const desc = document.createElement("div"); desc.className = "desc"; desc.textContent = o.description;
-  text.append(t, desc);
-  if (!o.writable && o.reason) { const n = document.createElement("div"); n.className = "note"; n.textContent = o.reason; text.appendChild(n); }
-  row.appendChild(text);
+const openOpt = new Set();
+function renderGroups(groups) {
+  const root = $("groups"); root.replaceChildren();
+  for (const g of groups) {
+    root.append(el("div", "label", t(g.title)));
+    const box = el("div", "card opts"); box.style.padding = "0";
+    for (const o of g.options) box.append(optionRow(o));
+    root.append(box);
+  }
+}
+
+function optionRow(o) {
+  const row = el("div", "opt");
+  const head = el("div", "head");
+  const lines = t(o.description).split("\n");
+  const text = el("button", "text"); text.type = "button"; text.setAttribute("aria-expanded", openOpt.has(o.key) ? "true" : "false");
+  const title = el("span", "title", t(o.title));
+  if (o.testing) { title.append(" "); title.append(el("span", "tag warn", t("em teste"))); }
+  if (o.restart_needed) { title.append(" "); title.append(el("span", "tag", t("pede reinício"))); }
+  text.append(title, el("span", "sum", lines[0]));
+  if (!o.writable && o.reason) { const lk = el("span", "lock"); lk.innerHTML = ICON_LOCK; lk.append(t(o.reason)); text.append(lk); }
+  text.addEventListener("click", () => { openOpt.has(o.key) ? openOpt.delete(o.key) : openOpt.add(o.key); row.replaceWith(optionRow(o)); });
+  head.append(text);
   if (o.kind === "bool") {
-    const sw = document.createElement("label"); sw.className = "switch";
-    const input = document.createElement("input"); input.type = "checkbox"; input.checked = o.value; input.disabled = !o.writable;
-    input.setAttribute("aria-label", o.title);
-    input.addEventListener("change", () => setOption(o.key, input.checked, input, () => { input.checked = o.value; }));
-    const span = document.createElement("span");
-    sw.append(input, span); row.appendChild(sw);
-    card.appendChild(row);
-  } else {
-    card.appendChild(row);
-    const sel = document.createElement("select"); sel.disabled = !o.writable; sel.setAttribute("aria-label", o.title);
-    o.choices.forEach((c, i) => { const op = document.createElement("option"); op.value = i; op.textContent = c; op.selected = i === o.value; sel.appendChild(op); });
-    sel.addEventListener("change", () => setOption(o.key, Number(sel.value), sel, () => { sel.value = o.value; }));
-    card.appendChild(sel);
+    const sw = el("button", "switch"); sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", o.value ? "true" : "false");
+    sw.setAttribute("aria-label", t(o.title)); sw.disabled = !o.writable;
+    sw.addEventListener("click", () => {
+      const next = sw.getAttribute("aria-checked") !== "true";
+      sw.setAttribute("aria-checked", next ? "true" : "false");
+      setOption(o.key, next, sw, () => sw.setAttribute("aria-checked", o.value ? "true" : "false"));
+    });
+    head.append(sw);
   }
-  return card;
+  row.append(head);
+  if (o.kind === "enum") {
+    const pick = el("div", "pick three"); pick.style.margin = "2px 0 8px";
+    o.choices.forEach((c, i) => {
+      const b = el("button", "", t(c)); b.type = "button"; b.setAttribute("aria-pressed", i === o.value ? "true" : "false"); b.disabled = !o.writable;
+      b.addEventListener("click", () => { if (i !== o.value) setOption(o.key, i, b, () => {}); });
+      pick.append(b);
+    });
+    row.append(pick);
+  }
+  if (openOpt.has(o.key)) {
+    const extra = lines.slice(1).join("\n");
+    const more = el("div", "more", (extra ? extra + "\n" : "") + (o.restart_needed ? t("Vale depois de reiniciar o comma.") : t("Vale no próximo engate.")));
+    row.append(more);
+  }
+  return row;
 }
 
-async function setOption(key, value, el, undo) {
-  el.disabled = true;
+async function setOption(key, value, e, undo) {
+  e.disabled = true;
   const r = await api("/api/option", { key, value });
-  toast(r.status === 200 ? (r.data.message || "Salvo.") : (r.data.error || "Não foi possível salvar."));
+  toast(r.status === 200 ? (r.data.message || t("Salvo.")) : (r.data.error || t("Não foi possível salvar.")));
   if (r.status !== 200) undo();  // the screen never shows what the comma doesn't have
-  el.disabled = false;
+  e.disabled = false;
   refresh();
 }
 
-function hhmmss(t) {
-  return new Date(t * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const UPDATE_ACTIONS = { radars: "atualizou a lista de radares", check: "verificou", download: "baixou", install: "instalou", branch: "escolheu", reboot: "reiniciou" };
+const EVENTS = { paired: "pareou", logout: "desconectou", phone_revoked: "desconectou outro celular", pin_locked: "código bloqueado por tentativas erradas", reason_added: "adicionou motivo", reason_removed: "removeu motivo" };
+const RADAR_ACTIONS = { edit: "conferiu", removed: "tirou", add: "adicionou", delete: "apagou", import: "restaurou pontos" };
+function auditText(a) {
+  const head = dayTime(a.t) + " · " + (a.who ? a.who + ": " : "");
+  const name = t(titles[a.key] || a.key);
+  if (a.event === "set") {
+    if (typeof a.new === "boolean") return head + tf(a.new ? "ligou {nome}" : "desligou {nome}", { nome: name });
+    return head + `${name}: ${a.old} → ${a.new}`;
+  }
+  if (a.event === "denied") return head + tf("{nome}: recusado ({motivo})", { nome: name, motivo: t(a.reason) });
+  if (a.event === "update") return head + tf("atualização: {acao}", { acao: t(UPDATE_ACTIONS[a.key] || a.key) }) + (a.new ? " " + a.new : "");
+  if (a.event === "radar") return head + tf("radar: {acao}", { acao: t(RADAR_ACTIONS[a.key] || a.key) });
+  if (a.event === "reason_added") return head + tf("adicionou o motivo \"{motivo}\"", { motivo: a.new });
+  return head + t(EVENTS[a.event] || a.event);
 }
 
+// ----- Início -----
+function refreshHome(full) {
+  $("garage").classList.toggle("hidden", driving);
+  $("drive").classList.toggle("hidden", !driving);
+  document.body.classList.toggle("driving", driving && view === "inicio");
+  if (driving) { refreshLive(); if (full || ticks % 3 === 0) refreshNear(); return; }
+  if (full || ticks % 3 === 0) refreshHealth();
+  if (full || ticks % 4 === 0) refreshUpdate();
+  refreshMarks();
+  refreshTrips(full);
+  renderGarage();
+}
+
+function renderGarage() {
+  const s = state, h = health || {}, d = h.device || {}, n = h.learned || {};
+  if (!s) return;
+  const issues = [];
+  if (h.down && h.down.length) issues.push(tf("Processo parado: {nomes}", { nomes: h.down.join(", ") }));
+  if (d.thermal && !["green", "yellow"].includes(d.thermal)) issues.push(tf("Comma quente: {graus} °C", { graus: d.temp }));
+  if (d.free !== undefined && d.free < 10) issues.push(tf("Disco quase cheio: {livre}% livre", { livre: d.free }));
+  const ready = online && !issues.length;
+  $("readyCard").className = "card stack " + (ready ? "ok" : "att");
+  $("readyIcon").style.color = ready ? "var(--accent)" : "var(--warn)";
+  $("readyTitle").textContent = ready ? t("Pronto para sair") : t("Atenção");
+  $("readySub").textContent = issues.length ? issues.join("\n") : (!s.vehicle.onroad ? t("Carro desligado · pode ajustar tudo") : t("Carro em P · pode ajustar tudo"));
+  const checks = [];
+  const add = (ok, text) => { const c = el("span", "check" + (ok ? "" : " no")); c.innerHTML = ok ? ICON_CHECK : ICON_X; c.style.color = ok ? "" : ""; c.firstChild.style.color = ok ? "var(--accent)" : "var(--warn)"; c.append(el("span", "", text)); checks.push(c); };
+  if (s.device.commit) add(true, tf("Versão {versao}", { versao: s.device.commit }));
+  if (n.torque) add(n.torque.percent >= 100, tf("Aprendizado {pct}%", { pct: n.torque.percent }));
+  if (d.free !== undefined) add(d.free >= 10, tf("Disco {livre}% livre", { livre: d.free }));
+  if (d.temp !== undefined) add(["green", "yellow"].includes(d.thermal || "green"), tf("Comma {graus} °C", { graus: d.temp }));
+  $("readyChecks").replaceChildren(...checks);
+  // a new version waiting
+  const u = update;
+  $("updateCard").classList.toggle("hidden", !(u && (u.ready || u.fetch_available)));
+  if (u && (u.ready || u.fetch_available)) $("updateCardDesc").textContent = u.ready ? versionText(u.new) : t("Tem versão nova para baixar.");
+  // what changed since the last trip, and the last trip
+  const last = trips && trips.length ? trips[0] : null;
+  const since = last ? last.mtime : null;
+  const changes = since ? s.audit.filter((a) => a.event === "set" && a.t > since) : [];
+  $("changesCard").classList.toggle("hidden", !changes.length);
+  $("changesList").replaceChildren(...changes.slice(0, 5).map((a) => {
+    const row = el("div", "line"); row.style.minHeight = "40px";
+    row.append(el("span", "", t(titles[a.key] || a.key)));
+    const v = typeof a.new === "boolean" ? (a.new ? t("ligado") : t("desligado")) : String(a.new);
+    const b = el("span", "", v); b.style.cssText = "font-weight:700;color:" + (a.new === false ? "var(--muted)" : "var(--accent)");
+    row.append(b); return row;
+  }));
+  $("lastTrip").classList.toggle("hidden", !last);
+  if (last) {
+    const start = last.mtime - last.minutes * 60;
+    $("lastTripWhen").textContent = when(start);
+    $("lastTrip").href = "/viagens?trip=" + encodeURIComponent(last.id);
+    const nMarks = marksState.marks.filter((m) => m.t >= start - 60 && m.t <= last.mtime + 60).length;
+    const big = (v, unit) => { const b = el("span", "big num", String(v)); b.append(" ", el("small", "", unit)); return b; };
+    $("lastTripNums").replaceChildren(big(last.minutes, t("min")), big(nMarks, nMarks === 1 ? t("marca") : t("marcas")));
+  }
+  const pending = marksState.marks.filter((m) => !m.reason);
+  $("pendingCard").classList.toggle("hidden", !pending.length);
+  $("pendingText").textContent = pending.length === 1 ? t("1 marca sem motivo") : tf("{n} marcas sem motivo", { n: pending.length });
+  if (!load("lpInstallOk") && !navigator.standalone && !matchMedia("(display-mode: standalone)").matches) {
+    $("installCard").classList.remove("hidden"); $("installHow").textContent = howToInstall();
+  }
+}
+
+async function refreshLive() {
+  const r = await api("/api/live");
+  if (r.status !== 200) return;
+  live = r.data;
+  const l = live;
+  if (!l.driving) { $("who").textContent = t("carro desligado"); return; }
+  const op = l.steering;
+  $("band").className = "band " + (op ? "op" : "you");
+  $("who").textContent = op ? (l.driver ? t("você e openpilot") : t("openpilot dirigindo")) : t("você dirigindo");
+  const why = !l.engaged ? (l.why || []).map(t) : [];
+  $("whySub").textContent = why.length ? tf("não engata: {motivos}", { motivos: why.join(", ") }) : op ? t("volante ativo") : t("openpilot desligado");
+  $("accSet").textContent = l.acc ? (l.acc_set || "•") : "—";
+  $("liveAlert").textContent = l.alert || "";
+  $("liveAlert").classList.toggle("hidden", !l.alert);
+  const tileOf = (value, unit, label) => { const d = el("div", "tile"); const b = el("b", "", String(value)); if (unit) { b.append(" "); const s = el("small", "", unit); s.style.cssText = "font-size:16px;color:var(--muted);font-family:var(--font)"; b.append(s); } d.append(b, el("span", "", label)); return d; };
+  $("driveTiles").replaceChildren(
+    tileOf(l.v, "km/h", t("velocidade")),
+    l.lead ? tileOf(l.lead.d, "m", tf("carro à frente, {v} km/h", { v: l.lead.v })) : tileOf("—", "", t("nenhum carro à frente")),
+    tileOf(wheelText(l.wheel), "", t("volante")),
+    tileOf(l.torque + "%", "", t("força do openpilot")),
+  );
+  renderLane(l);
+  renderResume(l.resume);
+  const off = l.last_off;
+  $("liveOff").textContent = off ? tf("Último desengate às {hora}", { hora: hhmm(off.t) }) + (off.why.length ? ": " + off.why.map(t).join(", ") : "") : "";
+}
+
+function renderLane(l) {
+  const ln = l.lane;
+  $("laneCard").classList.toggle("hidden", !ln);
+  if (!ln) return;
+  const left = Math.abs(ln.left), right = Math.abs(ln.right), width = left + right || 1;
+  const off = (left - right) / 2;  // > 0: the car is right of the middle
+  const pos = 8 + 84 * (left / width);
+  $("laneL").style.left = "8%"; $("laneR").style.right = "8%";
+  $("laneL").className = ln.left_ok ? "" : "dash"; $("laneR").className = ln.right_ok ? "" : "dash";
+  $("laneCar").style.left = pos + "%";
+  $("laneCar").style.background = l.steering ? "var(--accent)" : "var(--you)";
+  const cm = Math.round(Math.abs(off) * 100);
+  $("laneText").textContent = cm < 5 ? t("No centro da faixa") : tf(off > 0 ? "Na faixa · {cm} cm à direita" : "Na faixa · {cm} cm à esquerda", { cm });
+  const bs = l.blindspot || {};
+  $("bsL").classList.toggle("hidden", !bs.left); $("bsR").classList.toggle("hidden", !bs.right);
+  $("bsPill").classList.toggle("hidden", !(bs.left || bs.right));
+  $("bsPill").textContent = bs.left && bs.right ? t("ponto cego dos dois lados") : bs.left ? t("ponto cego à esquerda") : t("ponto cego à direita");
+}
+
+const RESUME = [["engaged", "openpilot engajado"], ["pedals", "sem pedal"], ["looking", "olhando para a frente"], ["lead", "carro à frente"]];
+function renderResume(c) {
+  const showIt = !!(c && c.stopped);
+  $("resumeCard").classList.toggle("hidden", !showIt);
+  if (!showIt) return;
+  const missing = RESUME.filter(([k]) => !c[k]);
+  $("resumeTitle").textContent = missing.length ? t("Sair sozinho: assim não sai") : t("Sair sozinho: pronto, esperando o carro da frente sair");
+  $("resumeList").replaceChildren(...RESUME.map(([k, label]) => { const d = el("span", "check" + (c[k] ? "" : " no")); d.innerHTML = c[k] ? ICON_CHECK : ICON_X; d.append(el("span", "", t(label))); return d; }));
+}
+
+function renderNext() {
+  const ahead = near && near.near ? near.near.filter((p) => p.ahead) : [];
+  $("nextCard").classList.toggle("hidden", !ahead.length);
+  if (!ahead.length) return;
+  const p = ahead[0];
+  const box = el("div", ""); box.innerHTML = pointIcon(p, 88);
+  const txt = el("div", "stack"); txt.style.gap = "2px";
+  txt.append(el("span", "desc", t(POINT[p.kind] || p.kind)));
+  const big = el("span", "big num", String(p.distance)); big.style.fontSize = "52px"; big.append(" ", el("small", "", "m"));
+  txt.append(big);
+  $("nextRow").replaceChildren(box, txt);
+  $("nextBar").style.width = Math.max(4, Math.min(100, 100 - p.distance / 10)) + "%";
+  const nx = ahead[1];
+  $("nextAfter").textContent = nx ? tf("depois: {tipo} a {m} m", { tipo: t(POINT[nx.kind] || nx.kind).toLowerCase() + (nx.limit ? " " + nx.limit : ""), m: nx.distance }) : "";
+}
+
+// ----- marks -----
 function renderMarks(m) {
   marksState = m;
-  const grid = $("reasons"); grid.replaceChildren();
-  for (const r of m.reasons) {
-    const b = document.createElement("button"); b.textContent = r.label;
-    if (r.custom) b.className = "mine";
-    b.addEventListener("click", () => openEditor({ tapped: Date.now() }, r.key));
-    grid.appendChild(b);
+  // bookmarks from the comma without a reason: classify them parked
+  const pending = m.marks.filter((x) => !x.reason);
+  $("pendingList").replaceChildren(...pending.map((p) => {
+    const c = el("div", "card att row");
+    c.append(el("span", "grow", tf("Bandeira das {hora} sem motivo", { hora: hhmmss(p.t) })));
+    const b = el("button", "btn warn", t("Classificar")); b.type = "button"; b.style.cssText = "width:auto;min-height:44px;padding:0 16px;font-size:16px";
+    b.addEventListener("click", () => openMark(p, null));
+    c.append(b); return c;
+  }));
+  const list = $("markList"); list.replaceChildren();
+  const done = m.marks.filter((x) => x.reason).slice(0, 10);
+  if (!done.length) list.append(el("div", "line desc", t("Nenhuma marca ainda.")));
+  for (const x of done) {
+    const row = el("div", "line");
+    row.append(el("span", "desc", `${hhmmss(x.t)} · ${t(x.label)}${x.note ? " — " + x.note : ""}${x.source === "comma" ? " " + t("(bandeira)") : ""}`));
+    const b = el("button", "link", t("editar")); b.type = "button"; b.addEventListener("click", () => openMark(x, x.reason));
+    row.append(b); list.append(row);
   }
-  const mine = m.reasons.filter(r => r.custom);
-  $("mineHint").textContent = mine.length ? "Seus motivos (toque para remover):" : "";
-  const ml = $("mineList"); ml.replaceChildren();
-  for (const r of mine) {
-    const b = document.createElement("button"); b.textContent = "✕ " + r.label;
+  const mine = m.reasons.filter((r) => r.custom);
+  $("mineHint").textContent = mine.length ? t("Seus motivos (toque para remover):") : "";
+  $("mineList").replaceChildren(...mine.map((r) => {
+    const b = el("button", "chip", "✕ " + r.label); b.type = "button";
     b.addEventListener("click", async () => {
-      if (!confirm(`Remover o motivo "${r.label}"? As marcas antigas continuam com ele.`)) return;
+      if (!confirm(tf("Remover o motivo \"{motivo}\"? As marcas antigas continuam com ele.", { motivo: r.label }))) return;
       const res = await api("/api/reasons/remove", { key: r.key });
-      toast(res.status === 200 ? "Motivo removido." : (res.data.error || "Não foi possível remover."));
+      toast(res.status === 200 ? t("Motivo removido.") : (res.data.error || t("Não foi possível remover.")));
       refreshMarks();
     });
-    ml.appendChild(b);
-  }
-  // bookmarks from the comma without a reason: classify them here, parked
-  const box = $("pendingBox"); box.replaceChildren();
-  const pending = m.marks.filter(x => !x.reason);
-  for (const p of pending) {
-    const card = document.createElement("div"); card.className = "card pending";
-    const t = document.createElement("div"); t.className = "when";
-    t.textContent = `Bandeira das ${hhmmss(p.t)} sem motivo`;
-    const chips = document.createElement("div"); chips.className = "chips";
-    for (const r of m.reasons) {
-      const b = document.createElement("button"); b.textContent = r.label;
-      b.addEventListener("click", () => openEditor(p, r.key));
-      chips.appendChild(b);
-    }
-    card.append(t, chips); box.appendChild(card);
-  }
-  const ul = $("markList"); ul.replaceChildren();
-  const done = m.marks.filter(x => x.reason).slice(0, 8);
-  if (!done.length) { const li = document.createElement("li"); li.textContent = "Nenhuma marca ainda."; ul.appendChild(li); }
-  for (const x of done) {
-    const li = document.createElement("li"); li.className = "line";
-    const text = document.createElement("span");
-    text.textContent = `${hhmmss(x.t)} · ${x.label}${x.note ? " — " + x.note : ""}${x.source === "comma" ? " (bandeira)" : ""}`;
-    const b = document.createElement("button"); b.className = "edit"; b.textContent = "editar";
-    b.addEventListener("click", () => openEditor(x, x.reason));
-    li.append(text, b);
-    ul.appendChild(li);
-  }
+    return b;
+  }));
+  if (!$("markSheet").classList.contains("hidden")) drawReasons();
+  if (view === "inicio" && !driving) renderGarage();
 }
 
-// Nothing exists until Salvar: a bump only opens the box. The tap's time goes along, because writing takes a while.
-function openEditor(mark, reason) {
-  clearTimeout(editorTimer);
-  editing = { id: mark.id || null, tapped: mark.tapped || null };
-  $("editTitle").textContent = mark.id ? "Marca" : "Marcar";
-  const sel = $("editReason"); sel.replaceChildren();
-  for (const r of marksState.reasons) {
-    const o = document.createElement("option"); o.value = r.key; o.textContent = r.label; o.selected = r.key === reason; sel.append(o);
-  }
-  $("editNote").value = mark.note || "";
-  $("editor").classList.remove("hidden");
-  $("editor").scrollIntoView({ block: "center" });
-  if (carStopped) $("editNote").focus();
-  else editorTimer = setTimeout(closeEditor, EDITOR_MS);
+async function refreshMarks() { const r = await api("/api/marks"); if (r.status === 200) renderMarks(r.data); }
+
+// Nothing exists until Salvar: a tap only opens the box. The tap's time goes along, because writing takes a while.
+async function openMark(mark, reason) {
+  const tapped = Date.now();
+  if (!marksState.reasons.length) await refreshMarks();
+  if (!marksState.reasons.length) { toast(t("Sem conexão com o comma.")); return; }
+  clearTimeout(markTimer);
+  editing = { id: mark && mark.id || null, tapped: mark && mark.id ? null : tapped, t: mark && mark.t };
+  picked = reason || null;
+  $("markTitle").textContent = editing.id ? t("Marca") : t("Marcar");
+  $("markWhen").textContent = editing.id ? hhmmss(mark.t) : tf("tocado às {hora}", { hora: new Date(tapped).toLocaleTimeString(L(), { hour: "2-digit", minute: "2-digit", second: "2-digit" }) }) + (live && live.driving ? ` · ${live.v} km/h` : "");
+  $("markNote").value = (mark && mark.note) || "";
+  drawReasons();
+  $("markScrim").classList.remove("hidden"); $("markSheet").classList.remove("hidden");
+  if (carStopped) $("markNote").focus({ preventScroll: true });
+  else markTimer = setTimeout(closeMark, EDITOR_MS);
 }
 
-function closeEditor() { clearTimeout(editorTimer); editing = null; $("editor").classList.add("hidden"); }
+function drawReasons() {
+  $("reasons").replaceChildren(...marksState.reasons.map((r) => {
+    const b = el("button", r.custom ? "mine" : "", t(r.label)); b.type = "button"; b.setAttribute("aria-pressed", r.key === picked ? "true" : "false");
+    b.addEventListener("click", () => { clearTimeout(markTimer); picked = picked === r.key ? null : r.key; drawReasons(); });
+    return b;
+  }));
+  $("markSave").disabled = !picked;
+  $("markSave").textContent = picked ? (editing && editing.id ? t("Salvar") : t("Salvar marca")) : t("Escolha um motivo");
+}
 
-async function saveEdit() {
-  const e = editing, reason = $("editReason").value, note = $("editNote").value;
-  $("editSave").disabled = true;
-  const res = e.id ? await api("/api/mark/classify", { id: e.id, reason, note, replace_note: true })
-                   : await api("/api/mark", { reason, note, delay_s: (Date.now() - e.tapped) / 1000 });
-  $("editSave").disabled = false;
+function closeMark() { clearTimeout(markTimer); editing = null; picked = null; $("markScrim").classList.add("hidden"); $("markSheet").classList.add("hidden"); }
+
+async function saveMark() {
+  const e = editing, note = $("markNote").value;
+  if (!e || !picked) return;
+  $("markSave").disabled = true;
+  const res = e.id ? await api("/api/mark/classify", { id: e.id, reason: picked, note, replace_note: true })
+                   : await api("/api/mark", { reason: picked, note, delay_s: (Date.now() - e.tapped) / 1000 });
+  $("markSave").disabled = false;
   if (res.status === 200) {
     if (navigator.vibrate) navigator.vibrate(40);
-    toast(e.id ? "Marca salva." : `Marcado: ${res.data.mark.label} (${hhmmss(res.data.mark.t)})`);
-    closeEditor();
-  } else toast(res.data.error || "Não foi possível salvar.");
+    toast(e.id ? t("Marca salva.") : tf("Marcado: {motivo} ({hora})", { motivo: t(res.data.mark.label), hora: hhmmss(res.data.mark.t) }));
+    closeMark();
+  } else toast(res.data.error || t("Não foi possível salvar."));
   refreshMarks();
 }
 
-let updStep = "check";
-
-function versionText(v) { return v.branch ? `${v.branch} (${v.commit}), ${v.date}` : "—"; }
-
-async function refreshUpdate() {
-  const r = await api("/api/update");
-  if (r.status !== 200) return;
-  const u = r.data;
-  $("updNow").textContent = "Instalada: " + versionText(u.current);
-  const busy = u.state && u.state !== "idle";
-  let desc = u.ready ? "Nova, pronta para instalar: " + versionText(u.new) : "Nenhuma versão nova pronta.";
-  if (u.fetch_available) desc = "Tem versão nova para baixar.";
-  if (busy) desc = "Atualizador: " + u.state;
-  if (u.failed) desc += ` Falhou ${u.failed} vez(es): confira a internet do comma.`;
-  $("updDesc").textContent = desc;
-  const sel = $("updBranch");
-  if (document.activeElement !== sel && sel.dataset.list !== u.branches.join() + u.target) {
-    sel.dataset.list = u.branches.join() + u.target;
-    sel.replaceChildren();
-    for (const b of u.branches) { const o = document.createElement("option"); o.value = o.textContent = b; o.selected = b === u.target; sel.append(o); }
-  }
-  sel.disabled = !u.allowed || busy;
-  $("updBranchBox").classList.toggle("hidden", u.branches.length < 2);
-  updStep = busy ? null : u.ready ? "install" : u.fetch_available ? "download" : "check";
-  $("updMain").textContent = busy ? "Atualizando…" : { install: "Instalar e reiniciar", download: "Baixar atualização", check: "Verificar atualização" }[updStep];
-  $("updMain").disabled = !u.allowed || busy;
-  $("updNote").textContent = u.allowed ? "" : u.reason;
-  $("rebootBtn").disabled = !u.allowed;
+// ----- trips -----
+async function refreshTrips(force) {
+  if (!force && Date.now() - tripsAt < 30000) { renderTrips(); return; }
+  if (carOn) { trips = null; renderTrips(); return; }
+  const r = await api("/api/trips");
+  tripsAt = Date.now();
+  trips = r.status === 200 ? r.data.trips : null;
+  renderTrips(r.status === 200 ? "" : (r.data.error || ""));
+  if (view === "inicio" && !driving) renderGarage();
 }
 
-const SIDES = { mesmo: "no seu sentido", contrario: "no sentido contrário", dois: "nos dois sentidos", "?": "sentido não confirmado" };
+function renderTrips(err) {
+  const box = $("tripsList");
+  if (carOn) { box.replaceChildren(el("div", "card desc", t("As viagens só abrem com o carro desligado."))); return; }
+  if (!trips) { box.replaceChildren(el("div", "card desc", err || t("Carregando…"))); return; }
+  if (!trips.length) { box.replaceChildren(el("div", "card desc", t("Nenhuma viagem gravada."))); return; }
+  box.replaceChildren(...trips.slice(0, 15).map((tr) => {
+    const start = tr.mtime - tr.minutes * 60;
+    const a = el("a", "card stack"); a.href = "/viagens?trip=" + encodeURIComponent(tr.id); a.style.cssText = "text-decoration:none;color:inherit;gap:8px";
+    const top = el("div", "row"); top.append(el("span", "title grow num", `${when(start)} → ${hhmm(tr.mtime)}`)); top.insertAdjacentHTML("beforeend", ICON_CHEV);
+    const nMarks = marksState.marks.filter((m) => m.t >= start - 60 && m.t <= tr.mtime + 60);
+    const meta = el("div", "row desc num"); meta.style.gap = "16px";
+    meta.append(el("span", "", `${tr.minutes} min`));
+    if (nMarks.length) {
+      const pend = nMarks.filter((m) => !m.reason).length;
+      const mk = el("span", "", nMarks.length === 1 ? t("1 marca") : tf("{n} marcas", { n: nMarks.length }));
+      if (pend) { mk.style.color = "var(--warn)"; mk.style.fontWeight = "600"; }
+      meta.append(mk);
+    }
+    a.append(top, meta); return a;
+  }));
+}
+
+// ----- points: radars, checkpoints, bumps -----
+const SIDES = { mesmo: "no seu sentido", contrario: "no sentido contrário", dois: "nos dois sentidos", "?": "sentido ?" };
 const SIDE_CHIPS = [["mesmo", "Mesmo sentido"], ["contrario", "Sentido oposto"], ["dois", "Dois sentidos"]];
 const POINT = { radar: "Radar", blitz: "Blitz", lombada: "Lombada", edit: "Correção" };
-const NEAR_BADGE_M = 1000, BUMP_MIN = 5, BUMP_MAX = 60;
+const NEAR_BADGE_M = 1000;
 let point = null, pick = {}, moving = false;
 
-function pointLine(p) {
-  const li = document.createElement("li"); li.className = "line";
-  const t = document.createElement("span");
-  const limit = p.kind === "lombada" ? (p.limit ? `passar a ${p.limit} km/h · ` : "") : (p.limit ? `${p.limit} km/h · ` : "limite desconhecido · ");
-  t.textContent = `${POINT[p.kind]} a ${p.distance} m ${p.ahead ? "à frente" : "atrás"} · ${limit}${SIDES[p.side]}${p.confirmed ? " · confirmado" : ""}`;
-  const b = document.createElement("button"); b.className = "edit"; b.textContent = "editar";
+function pointRow(p) {
+  const b = el("button", "point"); b.type = "button";
+  const ic = el("span", ""); ic.innerHTML = pointIcon(p, 42); ic.style.flex = "none";
+  const mid = el("span", "stack grow"); mid.style.cssText = "gap:0;flex:1;min-width:0";
+  mid.append(el("span", "title", t(POINT[p.kind] || p.kind) + (p.mine ? " · " + t("seu") : "")));
+  const extra = [];
+  if (p.side === "?") extra.push(t("sentido ?")); else if (p.side) extra.push(t(SIDES[p.side]));
+  if (!p.ahead) extra.push(t("atrás"));
+  if (p.confirmed) extra.push(t("confirmado"));
+  if (extra.length) mid.append(el("span", "small", extra.join(" · ")));
+  const d = el("span", "dist", String(p.distance)); d.append(" ", el("small", "", "m"));
+  b.append(ic, mid, d);
   b.addEventListener("click", () => openPoint({ ...p, own: p.mine }));
-  li.append(t, b);
-  return li;
+  return b;
 }
 
 async function refreshNear() {
   const r = await api("/api/radars/near");
   if (r.status !== 200) return;
-  const d = r.data, ul = $("nearList");
-  ul.replaceChildren(...d.near.map(pointLine));
-  if (!d.near.length) { const li = document.createElement("li"); li.textContent = d.gps ? "Nenhum ponto a menos de 3 km." : "Sem GPS agora."; ul.append(li); }
+  near = r.data;
+  const d = near;
   moving = !!d.moving;
+  $("gpsDot").style.background = d.gps ? "var(--accent)" : "var(--danger)";
+  $("gpsText").textContent = d.gps ? t("GPS ok") : t("sem GPS");
+  const list = $("nearList");
+  const ahead = d.near.filter((p) => p.ahead), behind = d.near.filter((p) => !p.ahead);
+  list.replaceChildren();
+  if (d.near.length) { const lb = el("div", "label", t("À frente · até 3 km")); lb.style.margin = "10px 0 4px"; list.append(lb); }
+  list.append(...ahead.map(pointRow), ...behind.map(pointRow));
+  if (!d.near.length) list.append(el("div", "line desc", d.gps ? t("Nenhum ponto a menos de 3 km.") : t("Sem GPS agora.")));
   $("addRadar").disabled = $("addBlitz").disabled = $("addBump").disabled = !d.gps;
-  document.querySelector('[data-go="radares"]').classList.toggle("perto", d.near.some(p => p.ahead && p.distance < NEAR_BADGE_M));
+  $("tabs").querySelector('[data-go="pontos"]').classList.toggle("near", d.near.some((p) => p.ahead && p.distance < NEAR_BADGE_M));
+  $("mineSummary").textContent = d.mine.length ? tf("Meus pontos · {n}", { n: d.mine.length }) : t("Meus pontos · nenhum ainda");
   const mine = $("mineRadars");
-  mine.replaceChildren(...d.mine.map(m => {
-    const li = document.createElement("li"); li.className = "line";
-    const t = document.createElement("span");
-    const when = new Date(m.t * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-    t.textContent = `${m.removed ? "Tirado da lista" : POINT[m.kind]} · ${m.limit ? (m.kind === "lombada" ? "passar a " : "") + m.limit + " km/h · " : ""}${m.side === "dois" ? "dois sentidos · " : ""}${when}`;
-    const b = document.createElement("button"); b.className = "edit"; b.textContent = m.removed ? "desfazer" : "editar";
+  mine.replaceChildren(...d.mine.map((m) => {
+    const row = el("div", "line");
+    row.append(el("span", "desc", `${m.removed ? t("Tirado da lista") : t(POINT[m.kind] || m.kind)} · ${m.limit ? m.limit + " km/h · " : ""}${m.side === "dois" ? t("dois sentidos") + " · " : ""}${dayTime(m.t)}`));
+    const b = el("button", "link", m.removed ? t("desfazer") : t("editar")); b.type = "button";
     b.addEventListener("click", async () => {
-      if (!m.removed) { openPoint({ ...m, own: m.kind !== "edit" }); return; }  // m.passed comes along
-      if (!confirm("Desfazer e voltar este ponto para a lista?")) return;
+      if (!m.removed) { openPoint({ ...m, own: m.kind !== "edit" }); return; }
+      if (!confirm(t("Desfazer e voltar este ponto para a lista?"))) return;
       const res = await api("/api/radars/delete", { key: m.key });
-      toast(res.status === 200 ? "Desfeito." : (res.data.error || "Não foi possível."));
+      toast(res.status === 200 ? t("Desfeito.") : (res.data.error || t("Não foi possível.")));
       refreshNear();
     });
-    li.append(t, b);
-    return li;
+    row.append(b); return row;
   }));
-  if (!d.mine.length) { const li = document.createElement("li"); li.textContent = "Nenhum ainda."; mine.append(li); }
+  if (!d.mine.length) mine.append(el("div", "line desc", t("Nenhum ainda.")));
+  if (view === "inicio" && driving) renderNext();
 }
 
 function drawPoint() {
-  const chip = (text, on, click, disabled) => {
-    const b = document.createElement("button"); b.textContent = text; b.setAttribute("aria-pressed", on ? "true" : "false");
-    b.disabled = !!disabled; b.addEventListener("click", click);
-    return b;
-  };
+  const chip = (text, on, click, disabled) => { const b = el("button", "", text); b.type = "button"; b.setAttribute("aria-pressed", on ? "true" : "false"); b.disabled = !!disabled; b.addEventListener("click", click); return b; };
+  const limits = [["", t("Não sei")]];
+  for (let v = 20; v <= 120; v += 10) limits.push([v, String(v)]);
+  $("pointLimits").replaceChildren(...limits.map(([v, txt]) => chip(txt, (pick.limit ?? "") === v, () => { pick.limit = v === "" ? null : v; drawPoint(); })));
+  $("pointSides").replaceChildren(...SIDE_CHIPS.map(([v, txt]) => chip(t(txt), pick.side === v, () => { pick.side = v; drawPoint(); }, v !== "dois" && !moving)));
+  $("pointSideNote").textContent = moving ? t("Mesmo sentido é o sentido em que o carro está andando agora.") : t("Com o carro parado, só dá para escolher dois sentidos.");
   const bump = point.kind === "lombada";
-  const limits = [["", "Não sei"]];
-  if (bump) {
-    if (point.passed >= BUMP_MIN && point.passed <= BUMP_MAX) limits.push([point.passed, `Manter ${point.passed}`]);
-    const speeds = [...new Set([10, 15, 20, 25, 30, 40, 50, point.limit].filter(v => v >= BUMP_MIN && v <= BUMP_MAX))].sort((x, y) => x - y);
-    for (const v of speeds) if (v !== point.passed) limits.push([v, String(v)]);
-  } else {
-    for (let v = 20; v <= 120; v += 10) limits.push([v, String(v)]);
-  }
-  $("pointLimits").replaceChildren(...limits.map(([v, t]) => chip(t, (pick.limit ?? "") === v, () => { pick.limit = v === "" ? null : v; drawPoint(); })));
-  $("pointSides").replaceChildren(...SIDE_CHIPS.map(([v, t]) => chip(t, pick.side === v, () => { pick.side = v; drawPoint(); }, v !== "dois" && !moving)));
-  $("pointSideNote").textContent = moving ? "Mesmo sentido é o sentido em que o carro está andando agora." : "Com o carro parado, só dá para escolher dois sentidos.";
-  $("pointLimitLabel").textContent = bump ? "Velocidade para passar aqui" : "Velocidade";
-  $("pointLimitBox").classList.toggle("hidden", !!pick.removed);
+  $("pointLimitBox").classList.toggle("hidden", bump || !!pick.removed);
   $("pointSideBox").classList.toggle("hidden", !!pick.removed);
   $("pointRemove").setAttribute("aria-pressed", pick.removed ? "true" : "false");
-  $("pointSummary").textContent = pick.removed ? "Ao salvar, este ponto sai da lista."
-    : `Ao salvar: ${POINT[point.kind]}${pick.limit ? `, ${bump ? "passar a " : ""}${pick.limit} km/h` : ", velocidade não informada"}, ${SIDES[pick.side || "?"]}.`;
+  $("pointRemove").style.background = pick.removed ? "var(--danger)" : "none";
+  $("pointRemove").style.color = pick.removed ? "#fff" : "var(--danger)";
+  const kind = t(POINT[point.kind] || point.kind);
+  $("pointSummary").textContent = pick.removed ? t("Ao salvar, este ponto sai da lista.")
+    : tf("Ao salvar: {ponto}.", { ponto: [kind, bump ? null : (pick.limit ? `${pick.limit} km/h` : t("velocidade não informada")), t(SIDES[pick.side || "?"])].filter(Boolean).join(", ") });
 }
 
 function openPoint(p) {
   point = p;
-  const kept = p.kind === "lombada" && p.passed >= BUMP_MIN && p.passed <= BUMP_MAX ? p.passed : null;
-  pick = { limit: p.limit ?? kept, side: p.key ? (p.side === "?" ? "" : p.side) : (p.kind === "lombada" || !moving ? "dois" : "mesmo"), removed: false };
-  $("pointTitle").textContent = p.key ? (p.distance == null ? `Editar ${POINT[p.kind].toLowerCase()}` : `${POINT[p.kind]} a ${p.distance} m`) : `${POINT[p.kind]} neste lugar`;
-  $("pointHint").textContent = p.key ? "Nada muda antes de você tocar em Salvar."
-    : `Lugar guardado. Nada foi salvo ainda.${p.kind === "lombada" && p.passed > 0 ? ` Você passou a ${p.passed} km/h.` : ""}`;
-  $("pointRemove").textContent = p.own ? "Apagar este ponto" : "Não existe mais";
+  pick = { limit: p.limit ?? null, side: p.key ? (p.side === "?" ? "" : p.side) : (p.kind === "lombada" || !moving ? "dois" : "mesmo"), removed: false };
+  const kind = t(POINT[p.kind] || p.kind);
+  $("pointTitle").textContent = p.key ? (p.distance == null ? tf("Editar: {ponto}", { ponto: kind }) : `${kind} · ${p.distance} m`) : tf("{ponto} neste lugar", { ponto: kind });
+  $("pointHint").textContent = p.key ? t("Nada muda antes de você tocar em Salvar.") : t("Lugar guardado. Nada foi salvo ainda.");
+  $("pointRemove").textContent = p.own ? t("Apagar este ponto") : t("Não existe mais");
   $("pointRemove").classList.toggle("hidden", !p.key);
-  $("pointEditor").classList.remove("hidden");
   drawPoint();
-  $("pointEditor").scrollIntoView({ block: "center" });
+  $("pointScrim").classList.remove("hidden"); $("pointSheet").classList.remove("hidden");
 }
 
-function closePoint() { point = null; $("pointEditor").classList.add("hidden"); }
+function closePoint() { point = null; $("pointScrim").classList.add("hidden"); $("pointSheet").classList.add("hidden"); }
 
 async function savePoint() {
+  if (!point) return;
   const side = pick.side && pick.side !== point.side ? pick.side : undefined, removed = !!pick.removed;
   let res;
   if (point.key && removed && point.own) res = await api("/api/radars/delete", { key: point.key });
   else if (point.key) res = await api("/api/radars/edit", { key: point.key, limit: pick.limit, side, confirmed: !removed, removed });
   else res = await api("/api/radars/add", { kind: point.kind, limit: pick.limit, side: pick.side, pin: point.pin });
-  toast(res.status === 200 ? (res.data.message || "Salvo.") : (res.data.error || "Não foi possível salvar."));
+  toast(res.status === 200 ? (res.data.message || t("Salvo.")) : (res.data.error || t("Não foi possível salvar.")));
   if (res.status === 200) closePoint();
   refreshNear();
 }
 
 async function addPoint(kind) {
   const r = await api("/api/radars/pin", {});
-  if (r.status === 200) { moving = !!r.data.moving; openPoint({ kind, limit: null, pin: r.data.pin, passed: r.data.speed }); }
-  else toast(r.data.error || "Sem GPS agora.");
+  if (r.status === 200) { moving = !!r.data.moving; openPoint({ kind, limit: null, pin: r.data.pin }); }
+  else toast(r.data.error || t("Sem GPS agora."));
 }
 
 async function refreshRadars() {
   const r = await api("/api/radars");
   if (r.status !== 200) return;
   const d = r.data;
-  $("radarCount").textContent = `${d.count.toLocaleString("pt-BR")} radares no comma`;
-  $("radarDesc").textContent = d.busy ? "Baixando a lista…" : d.date ? `Lista atualizada em ${new Date(d.date * 1000).toLocaleDateString("pt-BR")}.` : "Lista que veio com esta versão, do OpenStreetMap.";
+  const count = tf("{n} radares no comma", { n: d.count.toLocaleString(L()) });
+  $("radarCount").textContent = count;
+  const alertOn = state && state.groups.some((g) => g.options.some((o) => o.key === "RadarAlert" && o.value));
+  $("radarCountSub").textContent = count + " · " + (alertOn ? t("aviso ligado") : t("aviso desligado"));
+  $("radarDesc").textContent = d.busy ? t("Baixando a lista…") : d.date ? tf("Lista atualizada em {data}.", { data: new Date(d.date * 1000).toLocaleDateString(L()) }) : t("Lista que veio com esta versão, do OpenStreetMap.");
   $("radarUpdate").disabled = !d.allowed || d.busy;
-  $("radarNote").textContent = d.error || (d.allowed ? "" : "Só com o carro desligado e com internet.");
+  $("radarNote").textContent = d.error ? t(d.error) : (d.allowed ? "" : t("Só com o carro desligado e com internet."));
+}
+
+// ----- comma: update, health, phones -----
+let updStep = "check";
+function versionText(v) { return v && v.branch ? `${v.branch} (${v.commit}), ${v.date}` : "—"; }
+
+async function refreshUpdate() {
+  const r = await api("/api/update");
+  if (r.status !== 200) return;
+  const u = update = r.data;
+  $("updNow").textContent = tf("Instalada: {versao}", { versao: versionText(u.current) });
+  const busy = u.state && u.state !== "idle";
+  let desc = u.ready ? tf("Nova, pronta para instalar: {versao}", { versao: versionText(u.new) }) : t("Nenhuma versão nova pronta.");
+  if (u.fetch_available) desc = t("Tem versão nova para baixar.");
+  if (busy) desc = tf("Atualizador: {estado}", { estado: u.state });
+  if (u.failed) desc += " " + tf("Falhou {n} vez(es): confira a internet do comma.", { n: u.failed });
+  $("updDesc").textContent = desc;
+  const sel = $("updBranch");
+  if (document.activeElement !== sel && sel.dataset.list !== u.branches.join() + u.target) {
+    sel.dataset.list = u.branches.join() + u.target;
+    sel.replaceChildren(...u.branches.map((b) => { const o = el("option", "", b); o.value = b; o.selected = b === u.target; return o; }));
+  }
+  sel.disabled = !u.allowed || busy;
+  $("updBranchBox").classList.toggle("hidden", u.branches.length < 2);
+  updStep = busy ? null : u.ready ? "install" : u.fetch_available ? "download" : "check";
+  $("updMain").textContent = busy ? t("Atualizando…") : t({ install: "Instalar e reiniciar", download: "Baixar atualização", check: "Verificar atualização" }[updStep]);
+  $("updMain").disabled = !u.allowed || busy;
+  $("updNote").textContent = u.allowed ? "" : t(u.reason);
+  $("rebootBtn").disabled = !u.allowed;
+  if (view === "inicio" && !driving) renderGarage();
 }
 
 async function updateAction(action, branch) {
   const r = await api("/api/update", { action, branch });
-  toast(r.status === 200 ? "Pedido enviado ao comma." : (r.data.error || "Não foi possível."));
+  toast(r.status === 200 ? t("Pedido enviado ao comma.") : (r.data.error || t("Não foi possível.")));
   refreshUpdate();
 }
+
+function tileOf(label, value) { const d = el("div", "tile"); d.append(el("b", "", value), el("span", "", label)); return d; }
 
 async function refreshHealth() {
   const r = await api("/api/health");
   if (r.status !== 200) return;
-  const h = r.data, d = h.device || {}, n = h.learned || {};
+  const h = health = r.data, d = h.device || {}, n = h.learned || {};
   const down = h.down || [];
-  $("healthTitle").textContent = h.down === null || h.down === undefined ? "Processos: sem leitura ainda" : down.length ? "Parado: " + down.join(", ") : "Tudo rodando";
+  $("healthTitle").textContent = h.down === null || h.down === undefined ? t("Processos: sem leitura ainda") : down.length ? tf("Parado: {nomes}", { nomes: down.join(", ") }) : t("Tudo rodando");
   const off = h.last_off;
-  $("healthDesc").textContent = off ? `Último desengate às ${whenText(off.t)}${off.why.length ? ": " + off.why.join(", ") : ""}` : "";
-  $("healthTiles").replaceChildren(tile("temperatura", d.temp !== undefined ? `${d.temp} °C` : "—"), tile("disco livre", d.free !== undefined ? `${d.free}%` : "—"),
-                                   tile("memória", d.memory !== undefined ? `${d.memory}%` : "—"), tile("processador", d.cpu !== undefined ? `${d.cpu}%` : "—"));
+  $("healthDesc").textContent = off ? tf("Último desengate às {hora}", { hora: hhmm(off.t) }) + (off.why.length ? ": " + off.why.map(t).join(", ") : "") : "";
+  $("healthTiles").replaceChildren(tileOf(t("temperatura"), d.temp !== undefined ? `${d.temp} °C` : "—"), tileOf(t("disco livre"), d.free !== undefined ? `${d.free}%` : "—"),
+                                   tileOf(t("memória"), d.memory !== undefined ? `${d.memory}%` : "—"), tileOf(t("processador"), d.cpu !== undefined ? `${d.cpu}%` : "—"));
   const tiles = [];
-  if (n.torque) tiles.push(tile("força da direção", `${num(n.torque.factor, 2)} m/s²`), tile("atrito", num(n.torque.friction, 3)), tile("aprendizado da direção", `${n.torque.percent}%${n.torque.active ? "" : " (ainda não usado)"}`));
-  if (n.wheel) tiles.push(tile("volante reto em", wheelText(n.wheel.offset)), tile("relação de direção", num(n.wheel.ratio, 1)));
-  if (n.delay) tiles.push(tile("atraso da direção", `${num(n.delay.s, 2)} s (${n.delay.percent}%)`));
+  if (n.torque) tiles.push(tileOf(t("força da direção"), `${num(n.torque.factor, 2)} m/s²`), tileOf(t("atrito"), num(n.torque.friction, 3)),
+                           tileOf(t("aprendizado da direção"), `${n.torque.percent}%${n.torque.active ? "" : " " + t("(ainda não usado)")}`));
+  if (n.wheel) tiles.push(tileOf(t("volante reto em"), wheelText(n.wheel.offset)), tileOf(t("relação de direção"), num(n.wheel.ratio, 1)));
+  if (n.delay) tiles.push(tileOf(t("atraso da direção"), `${num(n.delay.s, 2)} s (${n.delay.percent}%)`));
   $("learnedTiles").replaceChildren(...tiles);
   $("learnedEmpty").classList.toggle("hidden", tiles.length > 0);
+  if (view === "inicio" && !driving) renderGarage();
 }
 
 async function refreshPhones() {
   const r = await api("/api/phones");
   if (r.status !== 200) return;
-  $("phoneList").replaceChildren(...r.data.phones.map(p => {
-    const li = document.createElement("li"); li.className = "line";
-    const t = document.createElement("span");
-    t.textContent = `${p.name}${p.you ? " (este)" : ""}${p.created ? " · desde " + new Date(p.created * 1000).toLocaleDateString("pt-BR") : ""}`;
-    li.append(t);
+  $("phoneList").replaceChildren(...r.data.phones.map((p) => {
+    const row = el("div", "line");
+    row.append(el("span", "desc", `${p.name}${p.you ? " " + t("(este)") : ""}${p.created ? " · " + tf("desde {data}", { data: new Date(p.created * 1000).toLocaleDateString(L()) }) : ""}`));
     if (!p.you) {
-      const b = document.createElement("button"); b.className = "edit"; b.textContent = "desconectar";
+      const b = el("button", "link", t("desconectar")); b.type = "button";
       b.addEventListener("click", async () => {
-        if (!confirm(`Desconectar ${p.name}? Para voltar, será preciso parear de novo.`)) return;
+        if (!confirm(tf("Desconectar {nome}? Para voltar, será preciso parear de novo.", { nome: p.name }))) return;
         const res = await api("/api/phones/revoke", { id: p.id });
-        toast(res.status === 200 ? "Celular desconectado." : (res.data.error || "Não foi possível."));
+        toast(res.status === 200 ? t("Celular desconectado.") : (res.data.error || t("Não foi possível.")));
         refreshPhones();
       });
-      li.append(b);
+      row.append(b);
     }
-    return li;
+    return row;
   }));
   $("thisAddress").textContent = location.host;
+  $("thisHow").textContent = howToInstall();
 }
 
 function saveFile(name, data) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: "application/json" }));
-  a.download = name;
-  a.click();
+  a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-async function refreshMarks() {
-  const r = await api("/api/marks");
-  if (r.status === 200) renderMarks(r.data);
-}
-
+// ----- main loop -----
 async function refresh() {
   clearTimeout(pollTimer);
   if (!token) { show("pair"); return; }
@@ -868,120 +1083,105 @@ async function refresh() {
   if (r.status === 200) {
     failures = 0;
     render(r.data);
-    if ($("panel").classList.contains("hidden")) show("panel");
-    refreshTab();
+    if ($("app").classList.contains("hidden")) show("app");
+    refreshView();
   } else if (r.status === 0) {
     failures += 1;
-    if ($("panel").classList.contains("hidden")) show("panel");
+    if ($("app").classList.contains("hidden")) show("app");
   }
   schedule();
 }
 
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) clearTimeout(pollTimer);
-  else { failures = 0; refresh(); }
+document.addEventListener("visibilitychange", () => { if (document.hidden) clearTimeout(pollTimer); else { failures = 0; refresh(); } });
+
+LP.ready.then(() => {
+  LP.apply();
+  langPickers();
+  $("homeHow").textContent = howToInstall();
+  // QR on the comma opens /#parear: go straight to the code, and send it as soon as the 6 digits are in
+  if (location.hash === "#parear" && !token) {
+    $("step1").classList.add("done"); $("step1").innerHTML = ICON_CHECK;
+    $("name").value = defaultName();
+    setTimeout(() => $("pin").focus(), 50);
+  }
+  refresh();
 });
 
-function defaultName() {
-  const ua = navigator.userAgent;
-  return /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : "celular";
-}
-
-// QR on the comma opens /#parear: go straight to the code, and send it as soon as the 6 digits are in
 $("pin").addEventListener("input", () => {
   const v = $("pin").value.replace(/\D/g, "").slice(0, 6);
   $("pin").value = v;
   if (v.length === 6) $("pairBtn").click();
 });
-if (location.hash === "#parear" && !token) {
-  $("pairDesc").textContent = "Digite o código de 6 números que está na tela do comma.";
-  $("name").value = defaultName();
-  setTimeout(() => $("pin").focus(), 50);
-}
-
 $("pairBtn").addEventListener("click", async () => {
   $("pairErr").textContent = "";
   const r = await api("/api/pair", { pin: $("pin").value, name: $("name").value || defaultName() });
-  if (r.status === 200) { saveToken(r.data.token); $("pin").value = ""; history.replaceState(null, "", "/"); refresh(); }
-  else $("pairErr").textContent = r.data.error || "Não foi possível parear.";
+  if (r.status === 200) { saveToken(r.data.token); $("pin").value = ""; history.replaceState(null, "", "/"); view = "inicio"; refresh(); }
+  else $("pairErr").textContent = r.data.error || t("Não foi possível parear.");
 });
-
-$("exportBtn").addEventListener("click", async () => {
-  const r = await api("/api/marks/export");
-  if (r.status !== 200) { toast(r.data.error || "Não foi possível exportar."); return; }
-  saveFile(`marcas-${new Date().toISOString().slice(0, 10)}.json`, r.data);
+document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => { showView(b.dataset.go); document.body.classList.toggle("driving", driving && b.dataset.go === "inicio"); }));
+document.querySelectorAll("[data-sub]").forEach((b) => b.addEventListener("click", () => showSub(b.dataset.sub)));
+$("fab").addEventListener("click", () => openMark(null, null));
+$("markSave").addEventListener("click", saveMark);
+$("markCancel").addEventListener("click", closeMark);
+$("markScrim").addEventListener("click", closeMark);
+$("markNote").addEventListener("focus", () => clearTimeout(markTimer));
+$("pendingBtn").addEventListener("click", () => { const p = marksState.marks.filter((m) => !m.reason).pop(); if (p) openMark(p, null); });
+$("installDismiss").addEventListener("click", () => { store("lpInstallOk", "1"); $("installCard").classList.add("hidden"); });
+$("updateCard").addEventListener("click", (e) => { e.preventDefault(); sub = "comma"; showView("ajustes"); });
+$("addRadar").addEventListener("click", () => addPoint("radar"));
+$("addBlitz").addEventListener("click", () => addPoint("blitz"));
+$("addBump").addEventListener("click", () => addPoint("lombada"));
+$("pointSave").addEventListener("click", savePoint);
+$("pointCancel").addEventListener("click", closePoint);
+$("pointScrim").addEventListener("click", closePoint);
+$("pointRemove").addEventListener("click", () => { pick.removed = !pick.removed; drawPoint(); });
+$("radarUpdate").addEventListener("click", async () => {
+  if (!confirm(t("Baixar a lista de radares de novo?"))) return;
+  const r = await api("/api/radars", {});
+  toast(r.status === 200 ? t("Baixando a lista de radares.") : (r.data.error || t("Não foi possível.")));
+  refreshRadars();
 });
-
 $("radarExport").addEventListener("click", async () => {
   const r = await api("/api/radars/export");
-  if (r.status !== 200) { toast(r.data.error || "Não foi possível."); return; }
-  if (!r.data.edits.length) { toast("Nenhum ponto seu ainda."); return; }
+  if (r.status !== 200) { toast(r.data.error || t("Não foi possível.")); return; }
+  if (!r.data.edits.length) { toast(t("Nenhum ponto seu ainda.")); return; }
   saveFile(`radares-${new Date().toISOString().slice(0, 10)}.json`, r.data);
 });
-
-$("radarImport").addEventListener("click", () => { if (confirm("Restaurar os pontos de uma cópia?")) $("radarFile").click(); });
+$("radarImport").addEventListener("click", () => { if (confirm(t("Restaurar os pontos de uma cópia?"))) $("radarFile").click(); });
 $("radarFile").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   e.target.value = "";
   if (!file) return;
   let edits = null;
   try { edits = JSON.parse(await file.text()).edits; } catch (err) {}
-  if (!Array.isArray(edits)) { toast("Esse arquivo não é uma cópia dos pontos."); return; }
+  if (!Array.isArray(edits)) { toast(t("Esse arquivo não é uma cópia dos pontos.")); return; }
   const r = await api("/api/radars/import", { edits });
-  toast(r.status === 200 ? r.data.message : (r.data.error || "Não foi possível restaurar."));
+  toast(r.status === 200 ? r.data.message : (r.data.error || t("Não foi possível restaurar.")));
   refreshNear();
 });
-
-// the same box and the same Salvar as the other marks: only the moment is taken at the tap
-$("liveMark").addEventListener("click", async () => {
-  const tapped = Date.now();
-  if (!marksState.reasons.length) await refreshMarks();
-  if (!marksState.reasons.length) { toast("Sem conexão com o comma."); return; }
-  showTab("marcar");
-  openEditor({ tapped }, marksState.reasons[0].key);
+$("exportBtn").addEventListener("click", async () => {
+  const r = await api("/api/marks/export");
+  if (r.status !== 200) { toast(r.data.error || t("Não foi possível exportar.")); return; }
+  saveFile(`marcas-${new Date().toISOString().slice(0, 10)}.json`, r.data);
 });
-
 $("addReasonBtn").addEventListener("click", async () => {
   const res = await api("/api/reasons", { label: $("newReason").value });
-  toast(res.status === 200 ? `Motivo adicionado: ${res.data.reason.label}` : (res.data.error || "Não foi possível."));
+  toast(res.status === 200 ? tf("Motivo adicionado: {motivo}", { motivo: res.data.reason.label }) : (res.data.error || t("Não foi possível.")));
   if (res.status === 200) $("newReason").value = "";
   refreshMarks();
 });
-
+$("rebootBtn").addEventListener("click", () => { if (confirm(t("Reiniciar o comma agora? Leva alguns minutos para voltar."))) updateAction("reboot"); });
+$("updMain").addEventListener("click", () => {
+  if (updStep === "install") { if (confirm(t("Instalar agora? O comma reinicia e compila: pode levar alguns minutos."))) updateAction("install"); }
+  else if (updStep) updateAction(updStep);
+});
+$("updBranch").addEventListener("change", (e) => updateAction("branch", e.target.value));
 $("logoutBtn").addEventListener("click", async () => {
-  if (!confirm("Desconectar este celular? Para voltar, será preciso parear de novo.")) return;
+  if (!confirm(t("Desconectar este celular? Para voltar, será preciso parear de novo."))) return;
   await api("/api/logout", {});
   clearTimeout(pollTimer);
   saveToken(null); show("pair");
 });
-
-refresh();
-document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.go)));
-$("addRadar").addEventListener("click", () => addPoint("radar"));
-$("addBlitz").addEventListener("click", () => addPoint("blitz"));
-$("addBump").addEventListener("click", () => addPoint("lombada"));
-$("pointSave").addEventListener("click", savePoint);
-$("pointCancel").addEventListener("click", closePoint);
-$("pointRemove").addEventListener("click", () => { pick.removed = !pick.removed; drawPoint(); });
-$("radarUpdate").addEventListener("click", async () => {
-  if (!confirm("Baixar a lista de radares de novo?")) return;
-  const r = await api("/api/radars", {});
-  toast(r.status === 200 ? "Baixando a lista de radares." : (r.data.error || "Não foi possível."));
-  refreshRadars();
-});
-$("rebootBtn").addEventListener("click", () => {
-  if (confirm("Reiniciar o comma agora? Leva alguns minutos para voltar.")) updateAction("reboot");
-});
-$("editSave").addEventListener("click", saveEdit);
-$("editNote").addEventListener("focus", () => clearTimeout(editorTimer));
-$("editReason").addEventListener("focus", () => clearTimeout(editorTimer));
-$("editCancel").addEventListener("click", closeEditor);
-$("updMain").addEventListener("click", () => {
-  if (updStep === "install") {
-    if (confirm("Instalar agora? O comma reinicia e compila: pode levar alguns minutos.")) updateAction("install");
-  } else if (updStep) updateAction(updStep);
-});
-$("updBranch").addEventListener("change", (e) => updateAction("branch", e.target.value));
 </script>
 </body>
 </html>
