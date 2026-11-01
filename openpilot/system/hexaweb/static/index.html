@@ -93,20 +93,25 @@
   .band { margin: 0 -16px; padding: calc(16px + env(safe-area-inset-top)) 20px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .band.op { background: var(--accent); color: var(--on-accent); }
   .band.you { background: var(--you); color: #071A2E; }
+  .band.lat { background: var(--accent); color: var(--on-accent); box-shadow: inset 0 -8px 0 var(--you); }
+  .band.warn { background: var(--warn); color: var(--on-warn); }
+  .band.fail { background: var(--danger); color: #2A0603; }
+  .band.none { background: var(--card); color: var(--muted); border-bottom: 1px solid var(--line); }
+  #drive.stale > :not(.band) { opacity: .35; }
   .band .who { font-family: var(--font-display); font-weight: 700; font-size: 28px; line-height: 1; }
   .band .why { font-size: 15px; font-weight: 600; opacity: .85; margin-top: 4px; }
   .band .acc { display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; }
-  .band .acc span { font-size: 12px; font-weight: 700; letter-spacing: .08em; opacity: .75; }
+  .band .acc span { font-size: 12px; font-weight: 700; letter-spacing: .04em; opacity: .75; white-space: nowrap; }
   .band .acc b { font-family: var(--font-display); font-size: 26px; line-height: 1; }
   body.driving main { padding-top: 0; }
   body.driving .top { display: none; }
   .alert { background: var(--warn-bg); border: 1px solid var(--warn-line); color: var(--warn); font-weight: 700; font-size: 18px; border-radius: 14px; padding: 12px 14px; margin-top: 12px; }
-  .lane { position: relative; height: 34px; margin-top: 8px; }
-  .lane i { position: absolute; top: 0; bottom: 0; width: 4px; border-radius: 2px; background: var(--text); }
-  .lane i.dash { background: repeating-linear-gradient(var(--text) 0 6px, transparent 6px 12px); }
-  .lane .mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: #3A4550; }
-  .lane .car { position: absolute; top: 3px; width: 40px; height: 28px; margin-left: -20px; border-radius: 8px; background: var(--accent); transition: left .3s; }
-  .lane .bs { position: absolute; top: 4px; width: 6%; height: 26px; border-radius: 6px; background: var(--warn); }
+  .alert.crit { background: #2A0F0D; border-color: var(--danger); color: var(--danger); }
+  .check.info { color: var(--muted); }
+  canvas#road { display: block; width: 100%; height: 190px; margin-top: 8px; border-radius: 12px; background: var(--card-2); }
+  .hint { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--card-2); border-left: 4px solid var(--warn); font-size: 15px; color: var(--text); }
+  .confirm { display: flex; align-items: center; gap: 12px; min-height: 56px; margin: 16px 0 12px; padding: 0 14px; border: 1px solid var(--line-2); border-radius: 14px; background: var(--card-2); font-weight: 600; font-size: 17px; }
+  .confirm input { width: 24px; height: 24px; margin: 0; accent-color: var(--accent); flex: none; }
   .bar { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--line); }
   .bar span { display: block; height: 100%; }
   nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: #11161B; border-top: 1px solid var(--line);
@@ -187,7 +192,7 @@
         </div>
         <section class="card ok stack" id="readyCard" style="gap:16px">
           <div class="row">
-            <svg width="52" height="52" viewBox="0 0 24 24" aria-hidden="true" id="readyIcon"><path d="M12 1.8l8.8 5.1v10.2L12 22.2l-8.8-5.1V6.9z" fill="currentColor"/><path d="M7.8 12.3l2.8 2.8 5.6-5.8" fill="none" stroke="var(--bg)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg width="52" height="52" viewBox="0 0 24 24" aria-hidden="true" id="readyIcon"><path d="M12 1.8l8.8 5.1v10.2L12 22.2l-8.8-5.1V6.9z" fill="currentColor"/><path id="readyMark" d="M8.5 12h7" fill="none" stroke="var(--bg)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <div class="grow"><div class="big" id="readyTitle">—</div><div class="desc" id="readySub"></div></div>
           </div>
           <div class="checks" id="readyChecks"></div>
@@ -199,7 +204,6 @@
         <section class="card stack hidden" id="changesCard" style="gap:6px">
           <div class="label" style="margin:0 0 4px" data-t>Mudou desde a última viagem</div>
           <div id="changesList" class="list"></div>
-          <div class="small" data-t>Valem no próximo engate.</div>
         </section>
         <a class="card stack hidden" id="lastTrip" href="/viagens" style="text-decoration:none;color:inherit;gap:10px">
           <div class="row"><span class="label grow" style="margin:0" data-t>Última viagem</span><span class="small" id="lastTripWhen"></span></div>
@@ -219,7 +223,7 @@
             <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.4"/><path d="M3.5 10.5h6M14.5 10.5h6M12 14.5V21"/></svg>
             <div><div class="who" id="who">—</div><div class="why" id="whySub"></div></div>
           </div>
-          <div class="acc"><span>ACC</span><b id="accSet">—</b></div>
+          <div class="acc hidden" id="accBox"><span data-t>ACC programado</span><b id="accSet"></b></div>
         </section>
         <div class="alert hidden" id="liveAlert" role="alert"></div>
         <section class="card stack" id="nextCard" style="margin-top:12px;gap:12px">
@@ -231,8 +235,12 @@
         <div class="grid2" id="driveTiles"></div>
         <section class="card hidden" id="laneCard" style="margin-top:10px">
           <div class="row"><span class="grow desc" id="laneText"></span><span class="pill hidden" id="bsPill"></span></div>
-          <div class="lane" id="lane"><i id="laneL"></i><i id="laneR"></i><span class="mid"></span><span class="car" id="laneCar"></span><span class="bs hidden" id="bsL" style="left:0"></span><span class="bs hidden" id="bsR" style="right:0"></span></div>
+          <canvas id="road" data-t-aria="Posição do carro na faixa" aria-label="Posição do carro na faixa"></canvas>
         </section>
+        <details class="card" id="driveMore">
+          <summary data-t>Detalhes: volante e força</summary>
+          <div class="grid2" id="driveDetails"></div>
+        </details>
         <section class="card hidden" id="resumeCard">
           <div class="title" id="resumeTitle"></div>
           <div class="stack" id="resumeList" style="gap:4px;margin-top:6px"></div>
@@ -304,7 +312,7 @@
         <button type="button" role="tab" data-sub="comma" data-t>Comma</button>
         <button type="button" role="tab" data-sub="celulares" data-t>Celulares</button>
       </div>
-      <div data-subview="opcoes"><div id="groups"></div><p class="small" style="margin:12px 4px" data-t>Opções de direção e velocidade só mudam com o carro em P ou desligado, e valem no próximo engate.</p></div>
+      <div data-subview="opcoes"><div id="groups"></div><p class="small" style="margin:12px 4px" data-t>Opções de direção e velocidade só mudam com o carro em P ou desligado. Cada uma diz quando passa a valer.</p></div>
       <div data-subview="comma" class="hidden">
         <div class="label" data-t>Atualização</div>
         <div class="card stack" style="gap:6px">
@@ -319,7 +327,7 @@
         <div class="grid2" id="healthTiles"></div>
         <details class="card" style="margin-top:10px">
           <summary data-t>O que o carro aprendeu</summary>
-          <div class="desc hidden" id="learnedEmpty" data-t>Aparece depois de ligar o carro.</div>
+          <div class="desc hidden" id="learnedEmpty" data-t>Aparece depois da primeira viagem desde que o comma ligou.</div>
           <div class="grid2" id="learnedTiles"></div>
         </details>
         <div class="card"><div class="desc" data-t>Reinicia só com o carro desligado.</div><button class="link" id="rebootBtn" type="button" data-t>Reiniciar o comma</button></div>
@@ -361,12 +369,24 @@
   <span class="grab"></span>
   <h2 id="pointTitle">—</h2>
   <div class="desc" id="pointHint" style="margin-top:4px"></div>
-  <div id="pointLimitBox"><label class="field" data-t>Velocidade</label><div class="pick" id="pointLimits"></div></div>
+  <div id="pointLimitBox"><label class="field" id="pointLimitLabel">—</label><div class="pick" id="pointLimits"></div><div class="hint hidden" id="bumpMsg" role="status"></div></div>
   <div id="pointSideBox"><label class="field" data-t>Sentido</label><div class="pick three" id="pointSides"></div><div class="small" id="pointSideNote" style="margin-top:6px"></div></div>
   <button class="btn ghost hidden" id="pointRemove" type="button" aria-pressed="false" style="color:var(--danger)">—</button>
   <div class="desc" id="pointSummary" style="margin-top:10px"></div>
   <button class="btn" id="pointSave" type="button" style="margin-top:14px" data-t>Salvar</button>
   <button class="btn ghost" id="pointCancel" type="button" data-t>Cancelar</button>
+</section>
+
+<!-- Passageiro: moving, asked once per trip before Marcar or a point. What was tapped is already kept. -->
+<div class="scrim hidden" id="passScrim"></div>
+<section class="sheet hidden" id="passSheet" role="dialog" aria-modal="true" aria-labelledby="passTitle">
+  <span class="grab"></span>
+  <h2 id="passTitle" style="font-size:25px;line-height:1.1" data-t>Com o carro andando, use só como passageiro</h2>
+  <p class="desc" style="margin:8px 0 0" data-t>Quem dirige olha a estrada. O que você tocou já está guardado: a hora ou o lugar.</p>
+  <label class="confirm"><input type="checkbox" id="passCheck"><span data-t>Sou o passageiro</span></label>
+  <button class="btn" id="passGo" type="button" disabled data-t>Continuar</button>
+  <button class="btn ghost" id="passCancel" type="button" data-t>Cancelar</button>
+  <div class="small" style="text-align:center" data-t>Pergunta uma vez por viagem. O comma não sabe quem está com o celular.</div>
 </section>
 
 <nav class="tabs hidden" id="tabs" data-t-aria="Áreas" aria-label="Áreas">
@@ -379,6 +399,7 @@
 <div class="toast" id="toast" role="status"></div>
 
 <script src="/i18n.js"></script>
+<script src="/lp-logic.js"></script>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
@@ -393,7 +414,9 @@ const POLL_MS = 3000, POLL_MAX_MS = 30000, LIVE_MS = 1000;
 let pollTimer = null, liveTimer = null, online = true, lastOk = 0, failures = 0, ticks = 0;
 const EDITOR_MS = 20000;  // moving, a box nobody touched leaves by itself and nothing is marked
 let markTimer = null, editing = null, picked = null;
-let trips = null, tripsAt = 0, update = null, health = null, near = null, live = null;
+let trips = null, tripsAt = 0, update = null, health = null, near = null, live = null, liveAt = 0, latSince = null;
+let passengerOk = false, passNext = null;  // the passenger question: page memory only, never stored
+const API_TIMEOUT_MS = 8000;
 
 // ----- helpers -----
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
@@ -418,7 +441,19 @@ function sign(limit, size) {  // the round speed sign, as on the road
   const s = size || 42, txt = limit ? String(limit) : "?";
   return `<svg width="${s}" height="${s}" viewBox="0 0 88 88" role="img" aria-label="${limit ? limit + " km/h" : "?"}"><circle cx="44" cy="44" r="42" fill="#fff"/><circle cx="44" cy="44" r="36" fill="none" stroke="#D7261E" stroke-width="9"/><text x="44" y="${txt.length > 2 ? 54 : 56}" text-anchor="middle" font-family="Barlow Semi Condensed, Barlow, sans-serif" font-weight="700" font-size="${txt.length > 2 ? 28 : 34}" fill="#111">${txt}</text></svg>`;
 }
-function pointIcon(p, size) { return p.kind === "lombada" ? ICON_BUMP : p.kind === "blitz" && !p.limit ? ICON_BLITZ : sign(p.limit, size); }
+const ICON_DOT = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5" fill="currentColor"/></svg>';
+function bumpSign(limit, size) {  // the speed to pass at, with the bump under it
+  const s = size || 42;
+  return `<svg width="${s}" height="${s}" viewBox="0 0 88 88" role="img" aria-label="${limit} km/h"><circle cx="44" cy="40" r="36" fill="#fff"/><circle cx="44" cy="40" r="31" fill="none" stroke="#D7261E" stroke-width="8"/>` +
+    `<text x="44" y="51" text-anchor="middle" font-family="Barlow Semi Condensed, Barlow, sans-serif" font-weight="700" font-size="30" fill="#111">${limit}</text>` +
+    `<path d="M14 84h13c6 0 9-11 17-11s11 11 17 11h13" fill="none" stroke="var(--warn)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+function pointIcon(p, size) {
+  if (p.kind === "lombada") return p.limit ? bumpSign(p.limit, size) : ICON_BUMP.replace(/width="42" height="42"/, `width="${size || 42}" height="${size || 42}"`);
+  return p.kind === "blitz" && !p.limit ? ICON_BLITZ : sign(p.limit, size);
+}
+function speedText(p) { return p.limit ? (p.kind === "lombada" ? tf("passar a {n} km/h", { n: p.limit }) : `${p.limit} km/h`) : ""; }
+function optionOf(key) { for (const g of (state && state.groups) || []) for (const o of g.options) if (o.key === key) return o; return null; }
 function howToInstall() {
   const ua = navigator.userAgent;
   if (/iPhone|iPad/.test(ua)) return t("No iPhone: Compartilhar → Adicionar à Tela de Início. Pode ser preciso parear de novo por lá.");
@@ -442,7 +477,10 @@ async function api(path, body) {
   if (token) opts.headers.Authorization = "Bearer " + token;
   if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
   let r;
+  const ctl = typeof AbortController === "function" ? new AbortController() : null, timer = ctl && setTimeout(() => ctl.abort(), API_TIMEOUT_MS);
+  if (ctl) opts.signal = ctl.signal;
   try { r = await fetch(path, opts); } catch (e) { setOnline(false); return { status: 0, data: { error: t("Sem conexão com o comma: nada foi salvo.") } }; }
+  finally { clearTimeout(timer); }
   setOnline(true);
   let data = {};
   try { data = await r.json(); } catch (e) {}
@@ -459,6 +497,7 @@ function setOnline(on) {
     document.body.classList.toggle("offline", !on);
     document.querySelectorAll("[data-view], #fab").forEach((e) => { e.inert = !on; });
     $("offlineCard").classList.toggle("hidden", on);
+    if (view === "inicio" && driving) renderDrive();
   }
   if (!on) {
     $("tabs").querySelector('[data-go="pontos"]').classList.remove("near");
@@ -477,7 +516,7 @@ function showView(name) {
   document.querySelectorAll("[data-view]").forEach((e) => e.classList.toggle("hidden", e.dataset.view !== name));
   document.querySelectorAll("[data-go]").forEach((b) => b.dataset.go === name ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
   clearInterval(liveTimer); liveTimer = null;
-  if (name === "inicio") { refreshHome(true); liveTimer = setInterval(() => { if (online && !document.hidden && driving) refreshLive(); }, LIVE_MS); }
+  if (name === "inicio") { refreshHome(true); liveTimer = setInterval(() => { if (!driving || document.hidden) return; if (online) refreshLive(); else renderDrive(); }, LIVE_MS); }
   if (name === "viagens") { refreshTrips(true); refreshMarks(); }
   if (name === "pontos") { refreshRadars(); refreshNear(); }
   if (name === "ajustes") showSub(sub);
@@ -512,7 +551,7 @@ function show(which) {
   $("app").classList.toggle("hidden", which !== "app");
   $("tabs").classList.toggle("hidden", which !== "app");
   if (which === "app") showView(view);
-  else { closeMark(); closePoint(); document.body.classList.remove("driving"); }
+  else { closeMark(); closePoint(); closePassenger(); document.body.classList.remove("driving"); }
 }
 
 // ----- state: car, options, history -----
@@ -523,6 +562,7 @@ function render(s) {
   const parked = !v.onroad || (v.parked && v.standstill && !v.engaged);
   carStopped = !v.onroad || v.standstill;
   carOn = v.onroad;
+  passengerOk = LPL.passenger({ ok: passengerOk }, carNow()).ok;
   const was = driving;
   driving = v.onroad && !parked;
   document.body.classList.toggle("driving", driving && view === "inicio");
@@ -555,7 +595,7 @@ function optionRow(o) {
   const text = el("button", "text"); text.type = "button"; text.setAttribute("aria-expanded", openOpt.has(o.key) ? "true" : "false");
   const title = el("span", "title", t(o.title));
   if (o.testing) { title.append(" "); title.append(el("span", "tag warn", t("em teste"))); }
-  if (o.restart_needed) { title.append(" "); title.append(el("span", "tag", t("pede reinício"))); }
+  if (o.restart_needed) { title.append(" "); title.append(el("span", "tag", t("na próxima partida"))); }
   text.append(title, el("span", "sum", lines[0]));
   if (!o.writable && o.reason) { const lk = el("span", "lock"); lk.innerHTML = ICON_LOCK; lk.append(t(o.reason)); text.append(lk); }
   text.addEventListener("click", () => { openOpt.has(o.key) ? openOpt.delete(o.key) : openOpt.add(o.key); row.replaceWith(optionRow(o)); });
@@ -582,7 +622,7 @@ function optionRow(o) {
   }
   if (openOpt.has(o.key)) {
     const extra = lines.slice(1).join("\n");
-    const more = el("div", "more", (extra ? extra + "\n" : "") + (o.restart_needed ? t("Vale depois de reiniciar o comma.") : t("Vale no próximo engate.")));
+    const more = el("div", "more", (extra ? extra + "\n" : "") + t(LPL.applies(o)));
     row.append(more);
   }
   return row;
@@ -628,24 +668,21 @@ function refreshHome(full) {
 }
 
 function renderGarage() {
-  const s = state, h = health || {}, d = h.device || {}, n = h.learned || {};
+  const s = state;
   if (!s) return;
-  const issues = [];
-  if (h.down && h.down.length) issues.push(tf("Processo parado: {nomes}", { nomes: h.down.join(", ") }));
-  if (d.thermal && !["green", "yellow"].includes(d.thermal)) issues.push(tf("Comma quente: {graus} °C", { graus: d.temp }));
-  if (d.free !== undefined && d.free < 10) issues.push(tf("Disco quase cheio: {livre}% livre", { livre: d.free }));
-  const ready = online && !issues.length;
-  $("readyCard").className = "card stack " + (ready ? "ok" : "att");
-  $("readyIcon").style.color = ready ? "var(--accent)" : "var(--warn)";
-  $("readyTitle").textContent = ready ? t("Pronto para sair") : t("Atenção");
-  $("readySub").textContent = issues.length ? issues.join("\n") : (!s.vehicle.onroad ? t("Carro desligado · pode ajustar tudo") : t("Carro em P · pode ajustar tudo"));
-  const checks = [];
-  const add = (ok, text) => { const c = el("span", "check" + (ok ? "" : " no")); c.innerHTML = ok ? ICON_CHECK : ICON_X; c.style.color = ok ? "" : ""; c.firstChild.style.color = ok ? "var(--accent)" : "var(--warn)"; c.append(el("span", "", text)); checks.push(c); };
-  if (s.device.commit) add(true, tf("Versão {versao}", { versao: s.device.commit }));
-  if (n.torque) add(n.torque.percent >= 100, tf("Aprendizado {pct}%", { pct: n.torque.percent }));
-  if (d.free !== undefined) add(d.free >= 10, tf("Disco {livre}% livre", { livre: d.free }));
-  if (d.temp !== undefined) add(["green", "yellow"].includes(d.thermal || "green"), tf("Comma {graus} °C", { graus: d.temp }));
-  $("readyChecks").replaceChildren(...checks);
+  const c = LPL.commaChecks(online, health && { ...health, commit: s.device.commit });
+  $("readyCard").className = "card stack " + c.cls;
+  $("readyIcon").style.color = c.cls === "ok" ? "var(--accent)" : c.cls === "att" ? "var(--warn)" : "var(--dim)";
+  $("readyMark").setAttribute("d", c.cls === "ok" ? "M7.8 12.3l2.8 2.8 5.6-5.8" : c.cls === "att" ? "M12 7.5v5.2M12 16.4v.1" : "M8.5 12h7");
+  $("readyTitle").textContent = t(c.title);
+  $("readySub").textContent = t(c.sub);
+  $("readyChecks").replaceChildren(...c.items.map((i) => {
+    const row = el("span", "check" + (i.ok === false ? " no" : i.ok === null ? " info" : ""));
+    row.innerHTML = i.ok === true ? ICON_CHECK : i.ok === false ? ICON_X : ICON_DOT;
+    row.firstChild.style.color = i.ok === true ? "var(--accent)" : i.ok === false ? "var(--warn)" : "var(--dim)";
+    row.append(el("span", "", i.vars ? tf(i.text, i.vars) : t(i.text)));
+    return row;
+  }));
   // a new version waiting
   const u = update;
   $("updateCard").classList.toggle("hidden", !(u && (u.ready || u.fetch_available)));
@@ -656,9 +693,12 @@ function renderGarage() {
   const changes = since ? s.audit.filter((a) => a.event === "set" && a.t > since) : [];
   $("changesCard").classList.toggle("hidden", !changes.length);
   $("changesList").replaceChildren(...changes.slice(0, 5).map((a) => {
-    const row = el("div", "line"); row.style.minHeight = "40px";
-    row.append(el("span", "", t(titles[a.key] || a.key)));
-    const v = typeof a.new === "boolean" ? (a.new ? t("ligado") : t("desligado")) : String(a.new);
+    const row = el("div", "line"); row.style.minHeight = "48px";
+    const o = optionOf(a.key), name = el("span", "stack"); name.style.gap = "0";
+    name.append(el("span", "", t(titles[a.key] || a.key)));
+    if (o) name.append(el("span", "small", t(LPL.applies(o))));
+    row.append(name);
+    const v = typeof a.new === "boolean" ? (a.new ? t("ligado") : t("desligado")) : o && o.kind === "enum" && o.choices[a.new] ? t(o.choices[a.new]) : String(a.new);
     const b = el("span", "", v); b.style.cssText = "font-weight:700;color:" + (a.new === false ? "var(--muted)" : "var(--accent)");
     row.append(b); return row;
   }));
@@ -681,25 +721,30 @@ function renderGarage() {
 
 async function refreshLive() {
   const r = await api("/api/live");
-  if (r.status !== 200) return;
-  live = r.data;
-  const l = live;
-  if (!l.driving) { $("who").textContent = t("carro desligado"); return; }
-  const op = l.steering;
-  $("band").className = "band " + (op ? "op" : "you");
-  $("who").textContent = op ? (l.driver ? t("você e openpilot") : t("openpilot dirigindo")) : t("você dirigindo");
-  const why = !l.engaged ? (l.why || []).map(t) : [];
-  $("whySub").textContent = why.length ? tf("não engata: {motivos}", { motivos: why.join(", ") }) : op ? t("volante ativo") : t("openpilot desligado");
-  $("accSet").textContent = l.acc ? (l.acc_set || "•") : "—";
-  $("liveAlert").textContent = l.alert || "";
-  $("liveAlert").classList.toggle("hidden", !l.alert);
-  const tileOf = (value, unit, label) => { const d = el("div", "tile"); const b = el("b", "", String(value)); if (unit) { b.append(" "); const s = el("small", "", unit); s.style.cssText = "font-size:16px;color:var(--muted);font-family:var(--font)"; b.append(s); } d.append(b, el("span", "", label)); return d; };
+  if (r.status === 200) { live = r.data; liveAt = Date.now(); }
+  renderDrive();
+}
+
+function renderDrive() {
+  const l = live, b = LPL.band(l, { online, age: Date.now() - liveAt, now: Date.now() }, latSince);
+  latSince = b.latSince;
+  $("band").className = "band " + b.cls;
+  $("drive").classList.toggle("stale", b.stale);
+  $("who").textContent = t(b.who);
+  $("whySub").textContent = b.why ? tf(b.sub, { motivos: b.why.map(t).join(", ") }) : t(b.sub);
+  $("accBox").classList.toggle("hidden", b.acc == null);
+  $("accSet").textContent = b.acc == null ? "" : String(b.acc);
+  const alert = !b.stale && l && l.driving ? l.alert : "";
+  $("liveAlert").textContent = alert || "";
+  $("liveAlert").classList.toggle("hidden", !alert);
+  $("liveAlert").classList.toggle("crit", b.cls === "fail");
+  if (b.stale || !l || !l.driving) return;  // the rest stays as it was, dimmed: nothing old passes as now
+  const tileOf = (value, unit, label) => { const d = el("div", "tile"); const v = el("b", "", String(value)); if (unit) { v.append(" "); const u = el("small", "", unit); u.style.cssText = "font-size:16px;color:var(--muted);font-family:var(--font)"; v.append(u); } d.append(v, el("span", "", label)); return d; };
   $("driveTiles").replaceChildren(
     tileOf(l.v, "km/h", t("velocidade")),
     l.lead ? tileOf(l.lead.d, "m", tf("carro à frente, {v} km/h", { v: l.lead.v })) : tileOf("—", "", t("nenhum carro à frente")),
-    tileOf(wheelText(l.wheel), "", t("volante")),
-    tileOf(l.torque + "%", "", t("força do openpilot")),
   );
+  $("driveDetails").replaceChildren(tileOf(wheelText(l.wheel), "", t("volante")), tileOf(l.torque + "%", "", t("força do openpilot")));
   renderLane(l);
   renderResume(l.resume);
   const off = l.last_off;
@@ -710,19 +755,44 @@ function renderLane(l) {
   const ln = l.lane;
   $("laneCard").classList.toggle("hidden", !ln);
   if (!ln) return;
-  const left = Math.abs(ln.left), right = Math.abs(ln.right), width = left + right || 1;
-  const off = (left - right) / 2;  // > 0: the car is right of the middle
-  const pos = 8 + 84 * (left / width);
-  $("laneL").style.left = "8%"; $("laneR").style.right = "8%";
-  $("laneL").className = ln.left_ok ? "" : "dash"; $("laneR").className = ln.right_ok ? "" : "dash";
-  $("laneCar").style.left = pos + "%";
-  $("laneCar").style.background = l.steering ? "var(--accent)" : "var(--you)";
-  const cm = Math.round(Math.abs(off) * 100);
-  $("laneText").textContent = cm < 5 ? t("No centro da faixa") : tf(off > 0 ? "Na faixa · {cm} cm à direita" : "Na faixa · {cm} cm à esquerda", { cm });
+  const lt = LPL.laneText(ln);
+  $("laneText").textContent = lt.vars ? tf(lt.text, lt.vars) : t(lt.text);
   const bs = l.blindspot || {};
-  $("bsL").classList.toggle("hidden", !bs.left); $("bsR").classList.toggle("hidden", !bs.right);
   $("bsPill").classList.toggle("hidden", !(bs.left || bs.right));
   $("bsPill").textContent = bs.left && bs.right ? t("ponto cego dos dois lados") : bs.left ? t("ponto cego à esquerda") : t("ponto cego à direita");
+  drawRoad(l);
+}
+
+// The lane ahead with its curve, as the model sees it (UI-05). A weak line is dashed.
+const ROAD_M = 40, ROAD_WIDTH_M = 8;
+function drawRoad(l) {
+  const c = $("road"), ratio = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+  if (!w || !h) return;
+  if (c.width !== Math.round(w * ratio) || c.height !== Math.round(h * ratio)) { c.width = Math.round(w * ratio); c.height = Math.round(h * ratio); }
+  const g = c.getContext("2d"), css = getComputedStyle(document.documentElement), color = (name) => css.getPropertyValue(name).trim();
+  g.setTransform(ratio, 0, 0, ratio, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const px = w / ROAD_WIDTH_M, ahead = (d) => h - 34 - d * (h - 54) / ROAD_M;
+  const side = (lat, d) => w / 2 + (lat + l.lane.curve * d * d / 2) * px;  // right of the car is positive
+  const line = (lat, ok) => {
+    g.beginPath();
+    for (let d = 0; d <= ROAD_M; d += 5) { const x = side(lat, d), y = ahead(d); if (d) g.lineTo(x, y); else g.moveTo(x, y); }
+    g.setLineDash(ok ? [] : [8, 8]); g.lineWidth = 3; g.strokeStyle = ok ? color("--text") : color("--dim"); g.stroke();
+  };
+  line(l.lane.left, l.lane.left_ok);
+  line(l.lane.right, l.lane.right_ok);
+  g.setLineDash([]);
+  const bs = l.blindspot || {};
+  g.fillStyle = color("--warn");
+  if (bs.left) g.fillRect(4, ahead(0) - 6, 10, 38);
+  if (bs.right) g.fillRect(w - 14, ahead(0) - 6, 10, 38);
+  g.fillStyle = l.steering ? color("--accent") : color("--you");
+  g.fillRect(w / 2 - .95 * px, ahead(0), 1.9 * px, 26);
+  if (l.lead) {
+    const d = Math.min(l.lead.d, ROAD_M);
+    g.fillStyle = color("--muted");
+    g.fillRect(side(0, d) - .95 * px, ahead(d) - 10, 1.9 * px, 10);
+  }
 }
 
 const RESUME = [["engaged", "openpilot engajado"], ["pedals", "sem pedal"], ["looking", "olhando para a frente"], ["lead", "carro à frente"]];
@@ -795,6 +865,10 @@ async function openMark(mark, reason) {
   const tapped = Date.now();
   if (!marksState.reasons.length) await refreshMarks();
   if (!marksState.reasons.length) { toast(t("Sem conexão com o comma.")); return; }
+  if (!askPassenger(() => openMarkNow(mark, reason, tapped))) openMarkNow(mark, reason, tapped);
+}
+
+function openMarkNow(mark, reason, tapped) {
   clearTimeout(markTimer);
   editing = { id: mark && mark.id || null, tapped: mark && mark.id ? null : tapped, t: mark && mark.t };
   picked = reason || null;
@@ -833,6 +907,21 @@ async function saveMark() {
   } else toast(res.data.error || t("Não foi possível salvar."));
   refreshMarks();
 }
+
+// ----- passenger: with the car moving, the phone is for the passenger. A reminder, not a check -----
+function carNow() { return { on: carOn, moving: carOn && !carStopped }; }
+
+function askPassenger(next) {  // true: the question is open and next() runs on Continuar
+  const g = LPL.passenger({ ok: passengerOk }, carNow());
+  passengerOk = g.ok;
+  if (!g.ask) return false;
+  passNext = next;
+  $("passCheck").checked = false; $("passGo").disabled = true;
+  $("passScrim").classList.remove("hidden"); $("passSheet").classList.remove("hidden");
+  return true;
+}
+
+function closePassenger() { passNext = null; $("passScrim").classList.add("hidden"); $("passSheet").classList.add("hidden"); }
 
 // ----- trips -----
 async function refreshTrips(force) {
@@ -873,6 +962,10 @@ const SIDE_CHIPS = [["mesmo", "Mesmo sentido"], ["contrario", "Sentido oposto"],
 const POINT = { radar: "Radar", blitz: "Blitz", lombada: "Lombada", edit: "Correção" };
 const NEAR_BADGE_M = 1000;
 let point = null, pick = {}, moving = false;
+function bumpContext() {
+  const lg = (state && state.longitudinal) || {};
+  return { alert: !!(optionOf("RadarAlert") || {}).value, slowdown: !!(optionOf("BumpSlowdown") || {}).value, long: !!lg.enabled, calibrated: !!lg.calibrated };
+}
 
 function pointRow(p) {
   const b = el("button", "point"); b.type = "button";
@@ -880,6 +973,7 @@ function pointRow(p) {
   const mid = el("span", "stack grow"); mid.style.cssText = "gap:0;flex:1;min-width:0";
   mid.append(el("span", "title", t(POINT[p.kind] || p.kind) + (p.mine ? " · " + t("seu") : "")));
   const extra = [];
+  if (p.kind === "lombada" && p.limit) extra.push(speedText(p));
   if (p.side === "?") extra.push(t("sentido ?")); else if (p.side) extra.push(t(SIDES[p.side]));
   if (!p.ahead) extra.push(t("atrás"));
   if (p.confirmed) extra.push(t("confirmado"));
@@ -910,10 +1004,10 @@ async function refreshNear() {
   const mine = $("mineRadars");
   mine.replaceChildren(...d.mine.map((m) => {
     const row = el("div", "line");
-    row.append(el("span", "desc", `${m.removed ? t("Tirado da lista") : t(POINT[m.kind] || m.kind)} · ${m.limit ? m.limit + " km/h · " : ""}${m.side === "dois" ? t("dois sentidos") + " · " : ""}${dayTime(m.t)}`));
+    row.append(el("span", "desc", `${m.removed ? t("Tirado da lista") : t(POINT[m.kind] || m.kind)} · ${m.limit ? speedText(m) + " · " : ""}${m.side === "dois" ? t("dois sentidos") + " · " : ""}${dayTime(m.t)}`));
     const b = el("button", "link", m.removed ? t("desfazer") : t("editar")); b.type = "button";
     b.addEventListener("click", async () => {
-      if (!m.removed) { openPoint({ ...m, own: m.kind !== "edit" }); return; }
+      if (!m.removed) { openPoint({ ...m, own: m.kind !== "edit" }); return; }  // m.passed comes along
       if (!confirm(t("Desfazer e voltar este ponto para a lista?"))) return;
       const res = await api("/api/radars/delete", { key: m.key });
       toast(res.status === 200 ? t("Desfeito.") : (res.data.error || t("Não foi possível.")));
@@ -927,28 +1021,35 @@ async function refreshNear() {
 
 function drawPoint() {
   const chip = (text, on, click, disabled) => { const b = el("button", "", text); b.type = "button"; b.setAttribute("aria-pressed", on ? "true" : "false"); b.disabled = !!disabled; b.addEventListener("click", click); return b; };
-  const limits = [["", t("Não sei")]];
-  for (let v = 20; v <= 120; v += 10) limits.push([v, String(v)]);
-  $("pointLimits").replaceChildren(...limits.map(([v, txt]) => chip(txt, (pick.limit ?? "") === v, () => { pick.limit = v === "" ? null : v; drawPoint(); })));
+  const bump = point.kind === "lombada";
+  const speeds = LPL.speedChoices(point.kind, point.passed, point.limit);
+  $("pointLimits").replaceChildren(...speeds.map((c) => chip(c.vars ? tf(c.label, c.vars) : t(c.label), (pick.limit ?? null) === c.v, () => { pick.limit = c.v; drawPoint(); })));
+  $("pointLimitLabel").textContent = bump ? t("Velocidade para passar aqui") : t("Velocidade");
   $("pointSides").replaceChildren(...SIDE_CHIPS.map(([v, txt]) => chip(t(txt), pick.side === v, () => { pick.side = v; drawPoint(); }, v !== "dois" && !moving)));
   $("pointSideNote").textContent = moving ? t("Mesmo sentido é o sentido em que o carro está andando agora.") : t("Com o carro parado, só dá para escolher dois sentidos.");
-  const bump = point.kind === "lombada";
-  $("pointLimitBox").classList.toggle("hidden", bump || !!pick.removed);
+  $("pointLimitBox").classList.toggle("hidden", !!pick.removed);
   $("pointSideBox").classList.toggle("hidden", !!pick.removed);
+  const msg = bump && !pick.removed ? LPL.bumpMessage(pick.limit, bumpContext()) : "";  // information: Salvar stays as it is
+  $("bumpMsg").textContent = t(msg);
+  $("bumpMsg").classList.toggle("hidden", !msg);
   $("pointRemove").setAttribute("aria-pressed", pick.removed ? "true" : "false");
   $("pointRemove").style.background = pick.removed ? "var(--danger)" : "none";
   $("pointRemove").style.color = pick.removed ? "#fff" : "var(--danger)";
   const kind = t(POINT[point.kind] || point.kind);
   $("pointSummary").textContent = pick.removed ? t("Ao salvar, este ponto sai da lista.")
-    : tf("Ao salvar: {ponto}.", { ponto: [kind, bump ? null : (pick.limit ? `${pick.limit} km/h` : t("velocidade não informada")), t(SIDES[pick.side || "?"])].filter(Boolean).join(", ") });
+    : tf("Ao salvar: {ponto}.", { ponto: [kind, pick.limit ? speedText({ kind: point.kind, limit: pick.limit }) : t("velocidade não informada"), t(SIDES[pick.side || "?"])].join(", ") });
 }
 
-function openPoint(p) {
+// The place is kept before anything else (the pin, or the point tapped); the passenger question comes after.
+function openPoint(p) { if (!askPassenger(() => openPointNow(p))) openPointNow(p); }
+
+function openPointNow(p) {
   point = p;
-  pick = { limit: p.limit ?? null, side: p.key ? (p.side === "?" ? "" : p.side) : (p.kind === "lombada" || !moving ? "dois" : "mesmo"), removed: false };
+  pick = { limit: p.limit ?? LPL.keptSpeed(p.kind, p.passed), side: p.key ? (p.side === "?" ? "" : p.side) : (p.kind === "lombada" || !moving ? "dois" : "mesmo"), removed: false };
   const kind = t(POINT[p.kind] || p.kind);
   $("pointTitle").textContent = p.key ? (p.distance == null ? tf("Editar: {ponto}", { ponto: kind }) : `${kind} · ${p.distance} m`) : tf("{ponto} neste lugar", { ponto: kind });
-  $("pointHint").textContent = p.key ? t("Nada muda antes de você tocar em Salvar.") : t("Lugar guardado. Nada foi salvo ainda.");
+  $("pointHint").textContent = p.key ? t("Nada muda antes de você tocar em Salvar.")
+    : t("Lugar guardado. Nada foi salvo ainda.") + (p.kind === "lombada" && p.passed > 0 ? " " + tf("Você passou a {n} km/h.", { n: p.passed }) : "");
   $("pointRemove").textContent = p.own ? t("Apagar este ponto") : t("Não existe mais");
   $("pointRemove").classList.toggle("hidden", !p.key);
   drawPoint();
@@ -971,7 +1072,7 @@ async function savePoint() {
 
 async function addPoint(kind) {
   const r = await api("/api/radars/pin", {});
-  if (r.status === 200) { moving = !!r.data.moving; openPoint({ kind, limit: null, pin: r.data.pin }); }
+  if (r.status === 200) { moving = !!r.data.moving; openPoint({ kind, limit: null, pin: r.data.pin, passed: r.data.speed }); }
   else toast(r.data.error || t("Sem GPS agora."));
 }
 
@@ -1134,6 +1235,14 @@ $("addBump").addEventListener("click", () => addPoint("lombada"));
 $("pointSave").addEventListener("click", savePoint);
 $("pointCancel").addEventListener("click", closePoint);
 $("pointScrim").addEventListener("click", closePoint);
+$("passCheck").addEventListener("change", () => { $("passGo").disabled = !$("passCheck").checked; });
+$("passGo").addEventListener("click", () => {
+  if (!$("passCheck").checked) return;
+  passengerOk = true;  // until the car turns off
+  const next = passNext; closePassenger(); if (next) next();
+});
+$("passCancel").addEventListener("click", closePassenger);  // nothing was saved
+$("passScrim").addEventListener("click", closePassenger);
 $("pointRemove").addEventListener("click", () => { pick.removed = !pick.removed; drawPoint(); });
 $("radarUpdate").addEventListener("click", async () => {
   if (!confirm(t("Baixar a lista de radares de novo?"))) return;

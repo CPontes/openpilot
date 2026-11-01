@@ -23,7 +23,7 @@ from openpilot.selfdrive.hexa import radars
 from openpilot.selfdrive.hexa import phone
 from openpilot.selfdrive.hexa import timeline
 from openpilot.selfdrive.hexa import updates
-from openpilot.selfdrive.hexa.options import GROUPS, OPTIONS, get_option, supported
+from openpilot.selfdrive.hexa.options import GROUPS, LONG_CALIBRATED, OPTIONS, get_option, supported
 from openpilot.selfdrive.hexa.phone import VehicleState
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -40,6 +40,7 @@ STATIC_FILES = {
   "/icon-512.png": ("icon-512.png", "image/png"),
   "/lp.css": ("lp.css", "text/css; charset=utf-8"),
   "/i18n.js": ("i18n.js", "text/javascript; charset=utf-8"),
+  "/lp-logic.js": ("lp-logic.js", "text/javascript; charset=utf-8"),
   "/fonts/barlow-400.woff2": ("fonts/barlow-400.woff2", "font/woff2"),
   "/fonts/barlow-600.woff2": ("fonts/barlow-600.woff2", "font/woff2"),
   "/fonts/barlow-700.woff2": ("fonts/barlow-700.woff2", "font/woff2"),
@@ -192,6 +193,8 @@ class PanelBackend:
         "groups": groups,
         "audit": list(reversed(audit)),
         "titles": {o.key: o.title for o in OPTIONS},
+        # what a speed bump below the Haval ACC's 30 km/h would need: shown in the bump editor, changes nothing
+        "longitudinal": {"enabled": bool(self.store.get_bool("AlphaLongitudinalEnabled")), "calibrated": LONG_CALIBRATED},
         "you": who.get("name", ""),
       }
 

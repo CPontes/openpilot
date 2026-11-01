@@ -15,7 +15,7 @@ HEXA = Path(__file__).parent
 ROOT = HEXA.parents[1]  # openpilot/openpilot
 PY_SOURCES = [ROOT / "system/hexaweb/hexaweb.py", HEXA / "phone.py", HEXA / "updates.py", HEXA / "marks.py",
               ROOT / "selfdrive/ui/mici/layouts/settings/hexa.py"]
-PAGES = [ROOT / "system/hexaweb/static" / n for n in ("index.html", "viagens.html", "replay.html")]
+PAGES = [ROOT / "system/hexaweb/static" / n for n in ("index.html", "viagens.html", "replay.html", "lp-logic.js")]
 # objects in the pages whose values are passed through t() by name
 PAGE_TABLES = ("UPDATE_ACTIONS", "EVENTS", "RADAR_ACTIONS", "RESUME", "SIDES", "SIDE_CHIPS", "POINT", "KINDS")
 FIELD = re.compile(r"\{[^{}]*\}")
@@ -116,7 +116,7 @@ def page_texts() -> set[str]:
   out: set[str] = set()
   for path in PAGES:
     src = path.read_text()
-    script = src[src.find("<script"):]
+    script = src if path.suffix == ".js" else src[src.find("<script"):]  # lp-logic.js marks its texts with T()
     for m in re.finditer(r"<[a-z0-9]+(?=[^>]*\sdata-t[\s>])[^>]*>([^<]+)<", src):  # <x data-t>texto</x>
       out.add(m.group(1).strip())
     for m in re.finditer(r'data-t-(?:ph|aria)="([^"]+)"', src):

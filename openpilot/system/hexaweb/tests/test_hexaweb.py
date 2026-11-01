@@ -91,7 +91,7 @@ def test_page_is_served_with_security_headers(panel):
 
 def test_shared_files_are_served(panel):
   # fonts ship with the comma: on its hotspot the phone has no internet
-  for path, ctype in (("/lp.css", "text/css"), ("/i18n.js", "text/javascript"), ("/fonts/barlow-400.woff2", "font/woff2"),
+  for path, ctype in (("/lp.css", "text/css"), ("/i18n.js", "text/javascript"), ("/lp-logic.js", "text/javascript"), ("/fonts/barlow-400.woff2", "font/woff2"),
                       ("/fonts/barlow-semi-condensed-700.woff2", "font/woff2"), ("/i18n/en.json", "application/json"), ("/i18n/es.json", "application/json")):
     status, headers, body = panel.request(path)
     assert status == 200 and headers["Content-Type"].startswith(ctype) and body, path
@@ -141,6 +141,15 @@ def test_state_lists_options_and_device(panel):
   assert {"LaneOffsetEnabled", "HexaWebEnabled"} <= keys
   assert s["audit"][0]["event"] == "paired"
   assert s["titles"]["LaneOffsetEnabled"] == "posição na faixa pelo volante"
+
+
+def test_state_says_if_the_comma_longitudinal_is_on_and_never_calibrated(panel):
+  token = panel.pair()
+  assert panel.json("/api/state", token=token)[1]["longitudinal"] == {"enabled": False, "calibrated": False}
+  panel.store.put_bool("AlphaLongitudinalEnabled", True)
+  assert panel.json("/api/state", token=token)[1]["longitudinal"] == {"enabled": True, "calibrated": False}
+  bump = next(o for g in panel.json("/api/state", token=token)[1]["groups"] for o in g["options"] if o["key"] == "BumpSlowdown")
+  assert bump["testing"] is True and bump["value"] is False
 
 
 def test_set_option_parked_and_audited(panel):

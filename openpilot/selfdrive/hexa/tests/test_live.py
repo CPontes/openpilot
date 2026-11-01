@@ -13,7 +13,7 @@ def device(started=True):
 def parts():
   cs = NS(vEgo=10., steeringAngleDeg=-12.4, steeringPressed=False, brakePressed=False, gasPressed=False, leftBlinker=True,
           rightBlinker=False, leftBlindspot=False, rightBlindspot=True, cruiseState=NS(enabled=True, speed=-1, speedCluster=16.7, driving=True))
-  sd = NS(enabled=True, alertText1="Take Control", alertText2="")
+  sd = NS(enabled=True, alertText1="Take Control", alertText2="", alertStatus="userPrompt")
   return cs, sd, NS(latActive=True), NS(actuatorsOutput=NS(torqueOutputCan=-126)), NS(present=True, dRel=18.6, vLead=9.)
 
 
@@ -25,7 +25,7 @@ def test_driving():
   s = live.snapshot(*parts(), gps(), 1., device(), True)
   assert s["driving"] and s["v"] == 36 and s["wheel"] == -12 and s["torque"] == 50
   assert s["acc_set"] == 60 and s["lead"] == {"d": 19, "v": 32} and s["blinker"] == "esquerda"
-  assert s["alert"] == "Take Control" and s["blindspot"] == {"left": False, "right": True}
+  assert s["alert"] == "Take Control" and s["alert_status"] == "userPrompt" and s["blindspot"] == {"left": False, "right": True}
   assert s["device"]["cpu"] == 15 and s["device"]["free"] == 58
 
 
@@ -135,3 +135,9 @@ def test_learned_from_real_messages():
 def test_learned_shows_only_what_arrived():
   assert live.learned(None, None, None) == {}
 
+
+
+def test_alert_status_from_a_real_message():
+  sd = message("selfdriveState", enabled=True, alertText1="TAKE CONTROL IMMEDIATELY", alertStatus="critical")
+  cs, _, cc, out, lead = parts()
+  assert live.snapshot(cs, sd, cc, out, lead, gps(), 1., device(), True)["alert_status"] == "critical"

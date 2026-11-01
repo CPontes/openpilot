@@ -15,6 +15,10 @@ GROUPS: tuple[tuple[str, str], ...] = (
 )
 GROUP_KEYS = tuple(k for k, _ in GROUPS)
 
+# The comma's own longitudinal (AlphaLongitudinalEnabled) was never tested nor calibrated in this car. The phone
+# says so when a speed bump asks for less than the Haval ACC goes. True only after the calibration (LONG-02).
+LONG_CALIBRATED = False
+
 
 @dataclass(frozen=True)
 class HexaOption:
@@ -126,6 +130,7 @@ OPTIONS: tuple[HexaOption, ...] = (
     description="Antes de uma lombada marcada, o comma toca o − do ACC até a velocidade que você escolheu, de 30 km/h para cima. Abaixo disso, só avisa.\n" +
                 "Em teste: fique pronto para frear. Precisa do aviso de radar e lombada ligado. Depois da lombada, suba com o + da alavanca.",
     restart_needed=True,
+    testing=True,
   ),
   HexaOption(
     key="LeadDepartAlert",

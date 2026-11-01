@@ -122,6 +122,7 @@ def snapshot(cs, sd, cc, out, lead, gps, gps_age: float, ds, car_fresh: bool, ev
     "blinker": "esquerda" if cs.leftBlinker else ("direita" if cs.rightBlinker else ""),
     "blindspot": {"left": bool(cs.leftBlindspot), "right": bool(cs.rightBlindspot)},
     "alert": " ".join(t for t in (sd.alertText1, sd.alertText2) if t),
+    "alert_status": str(sd.alertStatus),  # normal, userPrompt or critical: the phone colours the band by it
     "why": why_not(events),
     "lane": lane(model) if model is not None else None,
     "resume": resume_checks(cs, sd, lead, monitoring) if monitoring is not None else None,
