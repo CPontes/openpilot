@@ -142,3 +142,31 @@ class TestLaneOffset:
       lo.update(True, True, car_state(pressed=True), model(-0.35, prob=0.1))
     lo.update(True, True, car_state(), model(-0.35, prob=0.1))
     assert lo.learned == 0.0
+
+  def test_margin_blocks_outward_correction_on_both_sides(self):
+    for side in (-1, 1):
+      for lane_width, limit in ((3.6, 0.5), (3.0, 0.35)):
+        lo = LaneOffset()
+        lo.learned = lo.target = side * limit
+        position = side * (limit + 0.06)
+        correction = lo.update(True, True, car_state(), model(position, lane_width=lane_width))
+        # Positive curvature turns left: its product with position is negative only when outward.
+        assert correction * position >= 0
+        assert correction == 0
+        assert lo.integral == 0
+
+  def test_margin_keeps_inward_correction_on_both_sides(self):
+    for side in (-1, 1):
+      for lane_width, limit in ((3.6, 0.5), (3.0, 0.35)):
+        lo = LaneOffset()
+        lo.learned = lo.target = side * limit
+        position = side * (limit + 0.35)
+        correction = lo.update(True, True, car_state(), model(position, lane_width=lane_width))
+        assert correction * position > 0
+
+  def test_margin_does_not_block_target_correction_inside_boundary(self):
+    for side in (-1, 1):
+      lo = LaneOffset()
+      lo.learned = lo.target = side * 0.35
+      correction = lo.update(True, True, car_state(), model(side * 0.1))
+      assert correction * side < 0

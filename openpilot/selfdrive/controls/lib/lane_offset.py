@@ -151,7 +151,7 @@ class LaneOffset:
 
     # never push the car further out once it is past the allowed offset
     if abs(self.position) > abs(self._limit(self.position)) + 0.05:
-      outward = (correction < 0) if self.position < 0 else (correction > 0)
+      outward = (correction > 0) if self.position < 0 else (correction < 0)
       if outward:
         correction = 0.0
         self.integral = 0.0
