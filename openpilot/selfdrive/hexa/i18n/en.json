@@ -471,5 +471,18 @@
  "Funciona mesmo se o comma mudar de rede. Lá você pareia uma vez com o código do comma e adiciona à tela de início de novo.": "Works even if the comma changes network. There you pair once with the code on the comma and add it to the home screen again.",
  "Abrir pelo endereço fixo": "Open by the fixed address",
  "Endereço fixo: funciona mesmo se o comma mudar de rede.": "Fixed address: works even if the comma changes network.",
- "Endereço que você está usando agora. Muda quando o comma troca de rede.": "The address you are using now. It changes when the comma changes network."
+ "Endereço que você está usando agora. Muda quando o comma troca de rede.": "The address you are using now. It changes when the comma changes network.",
+ "Calculando quem dirigiu…": "Working out who drove…",
+ "Você ajudou em {ajudou} min e dirigiu {dirigiu} min.": "You helped for {ajudou} min and drove {dirigiu} min.",
+ "Você ajudou em {ajudou} min e dirigiu {dirigiu} min. Parado no trânsito: {parado} min.": "You helped for {ajudou} min and drove {dirigiu} min. Stopped in traffic: {parado} min.",
+ "de volante por conta do openpilot": "of steering handled by openpilot",
+ "openpilot com a sua mão": "openpilot with your hand",
+ "openpilot sozinho": "openpilot alone",
+ "você dirigiu nesta viagem": "you drove this trip",
+ "você sozinho": "you alone",
+ "{h} h {m} min": "{h} h {m} min",
+ "{km} km em {n} viagens": "{km} km in {n} trips",
+ "{m} min": "{m} min",
+ "{op} de {andando} min com o openpilot": "{op} of {andando} min with openpilot",
+ "Últimos 7 dias": "Last 7 days"
 }

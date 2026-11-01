@@ -65,6 +65,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"HexaMarkReasons", {PERSISTENT, JSON}},
     {"HexaMarks", {PERSISTENT, JSON}},
     {"HexaRadarEdits", {PERSISTENT | DONT_LOG, JSON}},
+    {"HexaTripSummaries", {PERSISTENT, JSON}},
     {"HexaWebAudit", {PERSISTENT, JSON}},
     {"HexaWebEnabled", {PERSISTENT, BOOL, "0"}},
     {"HexaWebPin", {CLEAR_ON_MANAGER_START | DONT_LOG, STRING}},

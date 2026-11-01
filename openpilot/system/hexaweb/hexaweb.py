@@ -53,6 +53,9 @@ STATIC_FILES = {
 REPLAY_CACHE = 3
 TRIP_CACHE = 120  # minutes of trips kept in memory
 TRIP_INDEX_S = 30.  # the page asks once per minute of the trip: don't walk the log folder every time
+SUMMARY_PARAM = "HexaTripSummaries"  # {route: who had the wheel, for how long and how far}
+SUMMARY_NEWEST = 10  # drives summarized in the background, newest first, with the car off
+SUMMARY_KEEP = 60
 GZIP_MIN_BYTES = 16 * 1024  # segments kept in memory
 SERVE_RETRY = 5.  # s between tries when the port can't be opened
 SECURITY_HEADERS = {
@@ -73,7 +76,8 @@ class PanelBackend:
                signal_updater: Callable[[str], None] = updates.signal_updater,
                live_state: Callable[[], dict] | None = None, radar_path: Path | None = None,
                gps_fix: Callable[[], tuple[float, float, float, float] | None] | None = None,
-               health_state: Callable[[], dict] | None = None):
+               health_state: Callable[[], dict] | None = None,
+               summarize: Callable[[dict], dict] = timeline.trip_summary, spawn: Callable[[Callable[[], None]], None] | None = None):
     self.store = store  # Params, or anything with get/put/get_bool/put_bool/remove
     self._vehicle_state = vehicle_state
     self.clock = clock  # wall clock: token, audit and mark dates
@@ -98,6 +102,9 @@ class PanelBackend:
     self._health_state = health_state or dict
     self._was_engaged = False
     self._last_off: dict | None = None
+    self._summarize = summarize
+    self._spawn = spawn or (lambda job: threading.Thread(target=job, daemon=True).start())
+    self._summary_busy = False
 
   def vehicle_state(self) -> VehicleState:
     with self._vs_lock:
@@ -353,8 +360,33 @@ class PanelBackend:
       return 404, {"error": "Sem pasta de logs."}
     with self._replay_lock:
       trips = self._trips()[:60]
+    todo = [t for t in trips[:SUMMARY_NEWEST] if self._summary_of(t) is None]
+    if todo and not self._summary_busy:
+      self._summary_busy = True
+      self._spawn(lambda: self._summarize_trips(todo))
     return 200, {"trips": [{"id": t["id"], "mtime": int(t["mtime"]), "minutes": len(t["files"]),
-                            "segments": sorted(t["files"])} for t in trips]}
+                            "segments": sorted(t["files"]), "summary": self._summary_of(t)} for t in trips],
+                 "pending": any(self._summary_of(t) is None for t in trips[:SUMMARY_NEWEST])}
+
+  def _summary_of(self, trip: dict) -> dict | None:
+    s = (self.store.get(SUMMARY_PARAM) or {}).get(trip["id"])
+    return s if isinstance(s, dict) and s.get("segments") == len(trip["files"]) else None  # a drive that grew is redone
+
+  def _summarize_trips(self, todo: list[dict]) -> None:
+    """Reads each drive once, after it ended, and keeps the numbers. Stops as soon as the car is on again."""
+    try:
+      for trip in todo:
+        if self.vehicle_state().onroad:
+          return
+        summary = self._summarize(trip["files"])
+        with self.lock:
+          kept = self.store.get(SUMMARY_PARAM) or {}
+          kept[trip["id"]] = summary
+          for old in sorted(kept)[:-SUMMARY_KEEP]:  # route names grow with each drive
+            del kept[old]
+          self.store.put(SUMMARY_PARAM, kept)
+    finally:
+      self._summary_busy = False
 
   def _with_reasons(self, events: list[dict]) -> list[dict]:
     with self.lock:

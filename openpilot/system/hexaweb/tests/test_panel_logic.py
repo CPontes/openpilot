@@ -182,3 +182,35 @@ def test_fixed_address_plan():
   assert run("addressPlan", "192.168.0.23", True, False) == "move"   # not paired: go there before the code
   assert run("addressPlan", "192.168.0.23", True, True) == "offer"   # paired by address: suggest, pairs again once
   assert run("addressPlan", "192.168.0.23", False, True) == "ip"     # the name doesn't answer here
+
+
+# ----- who had the wheel
+
+SUMMARY = {"moving_s": 31 * 60, "op_s": 23 * 60, "help_s": 3 * 60, "you_s": 5 * 60, "stop_s": 6 * 60,
+           "op_km": 23.4, "help_km": 2.1, "you_km": 3.5, "km": 29.0, "acc_s": 27 * 60}
+
+
+def test_trip_split_in_minutes_km_and_shares():
+  t = run("tripSplit", SUMMARY)
+  assert [(p["key"], p["min"], p["km"]) for p in t["parts"]] == [("op", 23, 23.4), ("help", 3, 2.1), ("you", 5, 3.5)]
+  assert abs(sum(p["pct"] for p in t["parts"]) - 100) < .01
+  assert t["big"] == {"text": "{m} min", "vars": {"m": 23}} and t["line"] == "de volante por conta do openpilot"
+  assert t["sub"]["vars"] == {"ajudou": 3, "dirigiu": 5, "parado": 6} and "Parado" in t["sub"]["text"]
+  assert t["accPct"] == 87 and t["short"]["vars"] == {"op": 23, "andando": 31}
+
+
+def test_trip_split_when_you_drove_and_without_data():
+  t = run("tripSplit", {**SUMMARY, "op_s": 10, "help_s": 0, "you_s": 31 * 60, "stop_s": 0, "acc_s": 0})
+  assert t["line"] == "você dirigiu nesta viagem" and t["big"]["vars"] == {"m": 31} and t["accPct"] is None
+  assert "Parado" not in t["sub"]["text"]
+  assert run("tripSplit", None) is None and run("tripSplit", {"moving_s": 0}) is None
+
+
+def test_week_total_is_a_sum_of_the_last_7_days():
+  now = 1_800_000_000
+  trips = [{"mtime": now - 3600, "summary": SUMMARY}, {"mtime": now - 86400, "summary": SUMMARY},
+           {"mtime": now - 8 * 86400, "summary": SUMMARY}, {"mtime": now - 60, "summary": None}]
+  w = run("weekTotal", trips, now)
+  assert w["trips"] == 2 and abs(w["km"] - 58.0) < .01 and w["op"] == {"text": "{m} min", "vars": {"m": 46}}
+  assert run("duration", 130) == {"text": "{h} h {m} min", "vars": {"h": 2, "m": 10}}
+  assert run("weekTotal", [], now) is None

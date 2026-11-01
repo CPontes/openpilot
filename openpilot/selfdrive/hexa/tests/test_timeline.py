@@ -8,7 +8,7 @@ from openpilot.selfdrive.hexa import timeline as tl
 NS = int(1e9)
 
 
-def write_rlog(path, seconds=8.0, bookmark_at=None, mark=None, oscillate=(2.0, 6.0), limit=(6.5, 7.5)):
+def write_rlog(path, seconds=8.0, bookmark_at=None, mark=None, oscillate=(2.0, 6.0), limit=(6.5, 7.5), pressed=None, acc=None, stop=None):
   """A small rlog made of real cereal messages, as the comma would record it."""
   import zstandard
   from openpilot.cereal import log
@@ -28,7 +28,11 @@ def write_rlog(path, seconds=8.0, bookmark_at=None, mark=None, oscillate=(2.0, 6
     tq = (1 if (i // 25) % 2 else -1) * 0.6 if osc else (1.0 if limit[0] <= s < limit[1] else 0.1)
 
     def cs(c, s=s, osc=osc):
-      c.vEgo = 10.
+      c.vEgo = 0. if stop and stop[0] <= s < stop[1] else 10.
+      if pressed:
+        c.steeringPressed = pressed[0] <= s < pressed[1]
+      if acc:
+        c.cruiseState.driving = acc[0] <= s < acc[1]
       c.steeringAngleDeg = (8. if (int(s * 4) % 2) else -8.) if osc else 1.
       c.steeringTorque = 150 if 1.0 <= s < 1.2 else 0
       c.cruiseState.speed = 20.
@@ -209,3 +213,18 @@ def test_trip_files_groups_by_route(tmp_path):
   trips = {t["id"]: t for t in tl.trip_files(str(tmp_path))}
   assert set(trips) == {"00000001--aaaa", "00000002--bbbb"}
   assert sorted(trips["00000001--aaaa"]["files"]) == [0, 2]
+
+
+def test_trip_summary_splits_who_had_the_wheel(tmp_path):
+  files = {}
+  for n in (0, 1):
+    write_rlog(tmp_path / f"{n}.zst", seconds=8.0, pressed=(2.0, 3.0), acc=(0.0, 4.0), stop=(6.0, 7.0))
+    files[n] = str(tmp_path / f"{n}.zst")
+  (tmp_path / "2.zst").write_bytes(b"broken")
+  files[2] = str(tmp_path / "2.zst")
+  s = tl.trip_summary(files)
+  # per minute: you 0-0.5 s, openpilot 0.5-2 and 3-6 and 7-8, your hand 2-3, stopped 6-7
+  assert abs(s["you_s"] - 1.0) < .1 and abs(s["help_s"] - 2.0) < .1 and abs(s["op_s"] - 11.0) < .1 and abs(s["stop_s"] - 2.0) < .1
+  assert abs(s["op_s"] + s["help_s"] + s["you_s"] - s["moving_s"]) < .05
+  assert abs(s["op_km"] - .11) < .005 and abs(s["acc_s"] - 8.0) < .1
+  assert s["segments"] == 3 and s["unread"] == 1

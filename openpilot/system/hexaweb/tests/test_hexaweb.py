@@ -462,6 +462,40 @@ def test_trips_are_listed_and_read_by_minute(panel, tmp_path):
   assert status == 200 and d["points"] and d["summary"]["km"] > 0 and d["summary"]["marks"] == 1
 
 
+def test_each_trip_gets_its_summary_once_with_the_car_off(panel, tmp_path):
+  trip_logs(panel, tmp_path)
+  jobs = []
+  panel.backend._spawn = jobs.append  # run the background job by hand
+  token = panel.pair()
+  t = panel.json("/api/trips", token=token)[1]
+  assert t["pending"] and t["trips"][0]["summary"] is None and len(jobs) == 1
+  assert len(panel.json("/api/trips", token=token)[1]) and len(jobs) == 1  # one job at a time
+  jobs.pop()()
+  t = panel.json("/api/trips", token=token)[1]
+  s = t["trips"][0]["summary"]
+  assert not t["pending"] and s["segments"] == 2 and abs(s["op_s"] - 15.) < .2 and abs(s["you_s"] - 1.) < .2 and not jobs
+  # a drive that grew is summarized again
+  d = tmp_path / "0000000f--8784034901--2"
+  d.mkdir()
+  from openpilot.selfdrive.hexa.tests.test_timeline import write_rlog
+  write_rlog(d / "qlog.zst")
+  panel.backend._trip_index = (-1e9, [])
+  panel.now += 100
+  assert panel.json("/api/trips", token=token)[1]["trips"][0]["summary"] is None and len(jobs) == 1
+
+
+def test_summaries_stop_when_the_car_turns_on(panel, tmp_path):
+  trip_logs(panel, tmp_path)
+  jobs, read = [], []
+  panel.backend._spawn = jobs.append
+  panel.backend._summarize = lambda files: read.append(files) or {"segments": len(files)}
+  token = panel.pair()
+  panel.json("/api/trips", token=token)
+  panel.vs = VehicleState(onroad=True)
+  jobs.pop()()
+  assert read == [] and panel.backend._summary_busy is False
+
+
 def test_trips_only_with_the_car_off(panel, tmp_path):
   trip_logs(panel, tmp_path)
   token = panel.pair()

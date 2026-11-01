@@ -471,5 +471,18 @@
  "Funciona mesmo se o comma mudar de rede. Lá você pareia uma vez com o código do comma e adiciona à tela de início de novo.": "Funciona aunque el comma cambie de red. Allí empareja una vez con el código del comma y lo agrega de nuevo a la pantalla de inicio.",
  "Abrir pelo endereço fixo": "Abrir por la dirección fija",
  "Endereço fixo: funciona mesmo se o comma mudar de rede.": "Dirección fija: funciona aunque el comma cambie de red.",
- "Endereço que você está usando agora. Muda quando o comma troca de rede.": "La dirección que está usando ahora. Cambia cuando el comma cambia de red."
+ "Endereço que você está usando agora. Muda quando o comma troca de rede.": "La dirección que está usando ahora. Cambia cuando el comma cambia de red.",
+ "Calculando quem dirigiu…": "Calculando quién condujo…",
+ "Você ajudou em {ajudou} min e dirigiu {dirigiu} min.": "Usted ayudó {ajudou} min y condujo {dirigiu} min.",
+ "Você ajudou em {ajudou} min e dirigiu {dirigiu} min. Parado no trânsito: {parado} min.": "Usted ayudó {ajudou} min y condujo {dirigiu} min. Detenido en el tráfico: {parado} min.",
+ "de volante por conta do openpilot": "de volante a cargo de openpilot",
+ "openpilot com a sua mão": "openpilot con su mano",
+ "openpilot sozinho": "openpilot solo",
+ "você dirigiu nesta viagem": "usted condujo en este viaje",
+ "você sozinho": "usted solo",
+ "{h} h {m} min": "{h} h {m} min",
+ "{km} km em {n} viagens": "{km} km en {n} viajes",
+ "{m} min": "{m} min",
+ "{op} de {andando} min com o openpilot": "{op} de {andando} min con openpilot",
+ "Últimos 7 dias": "Últimos 7 días"
 }

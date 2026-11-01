@@ -121,6 +121,39 @@
     return paired ? "offer" : "move";
   }
 
+  // Who had the wheel in a drive (timeline.trip_summary): openpilot alone, openpilot with your hand, you alone, all
+  // while moving; stopped is apart. Light, never a score: helping when needed is right, so it's never "less is better".
+  const MIN_S = 60;
+  function minutes(x) { return Math.round((x || 0) / MIN_S); }
+  function duration(min) { return min >= 60 ? { text: T("{h} h {m} min"), vars: { h: Math.floor(min / 60), m: min % 60 } } : { text: T("{m} min"), vars: { m: min } }; }
+  function tripSplit(s) {
+    if (!s || !(s.moving_s > 0)) return null;
+    const pct = (x) => 100 * (x || 0) / s.moving_s;
+    const parts = [
+      { key: "op", label: T("openpilot sozinho"), min: minutes(s.op_s), km: s.op_km || 0, pct: pct(s.op_s) },
+      { key: "help", label: T("openpilot com a sua mão"), min: minutes(s.help_s), km: s.help_km || 0, pct: pct(s.help_s) },
+      { key: "you", label: T("você sozinho"), min: minutes(s.you_s), km: s.you_km || 0, pct: pct(s.you_s) },
+    ];
+    const op = (s.op_s || 0) >= 30;
+    return {
+      parts, movingMin: minutes(s.moving_s), stopMin: minutes(s.stop_s), km: s.km || 0,
+      big: duration(op ? parts[0].min : parts[2].min),
+      line: op ? T("de volante por conta do openpilot") : T("você dirigiu nesta viagem"),
+      sub: { text: s.stop_s >= 30 ? T("Você ajudou em {ajudou} min e dirigiu {dirigiu} min. Parado no trânsito: {parado} min.") : T("Você ajudou em {ajudou} min e dirigiu {dirigiu} min."),
+             vars: { ajudou: parts[1].min, dirigiu: parts[2].min, parado: minutes(s.stop_s) } },
+      short: { text: T("{op} de {andando} min com o openpilot"), vars: { op: parts[0].min, andando: minutes(s.moving_s) } },
+      accPct: s.acc_s > 0 ? Math.round(pct(s.acc_s)) : null,  // older drives don't have it
+    };
+  }
+
+  // The last 7 days added up: a sum, never a streak (a streak would reward not putting the hand on the wheel).
+  function weekTotal(trips, nowS) {
+    const recent = (trips || []).filter((t) => t.summary && t.mtime >= nowS - 7 * 86400);
+    if (!recent.length) return null;
+    const op = recent.reduce((a, t) => a + (t.summary.op_s || 0), 0), km = recent.reduce((a, t) => a + (t.summary.km || 0), 0);
+    return { op: duration(minutes(op)), km, trips: recent.length };
+  }
+
   // With the car moving, the phone is for the passenger. Asked once per trip, before Marcar or a point; never parked,
   // never stored on the phone or the comma. Stopping in traffic doesn't ask again; turning the car off does.
   function passenger(gate, car) {
@@ -128,6 +161,6 @@
     return { ok, ask: !!car.on && !!car.moving && !ok };
   }
 
-  root.LPL = { FIXED_HOST, addressPlan, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
+  root.LPL = { FIXED_HOST, addressPlan, tripSplit, weekTotal, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

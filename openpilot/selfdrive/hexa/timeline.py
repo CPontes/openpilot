@@ -36,6 +36,8 @@ GPS_MAX_AGE_S = 3.0
 DRIVER_MIN_S = 0.5  # on the wheel for at least this long counts as an intervention
 SKIP_ALERTS = ("Bookmark Saved",)  # already a mark event
 TOOK_RANK = {None: 0, "wheel": 1, "gas": 2, "brake": 3}  # a path point covers 2 s: a pedal says more than a hand on the wheel
+# who had the wheel while moving: openpilot alone, openpilot with the driver's hand on it, the driver alone
+SPLIT_KEYS = ("op_s", "help_s", "you_s", "stop_s", "op_km", "help_km", "you_km", "acc_s")
 
 
 def read_rlog(path) -> list:
@@ -296,7 +298,8 @@ def trip_segment(events: Iterable) -> dict:
   step = dpsi = 0.
   fix = None
   fix_t = -1e9
-  total = {"s": 0., "km": 0., "moving_s": 0., "on_s": 0., "driver": 0, "gas": 0, "brake": 0, "off": 0, "marks": 0}
+  total = {"s": 0., "km": 0., "moving_s": 0., "on_s": 0., "driver": 0, "gas": 0, "brake": 0, "off": 0, "marks": 0,
+           **dict.fromkeys(SPLIT_KEYS, 0.)}
   driver_since = None
   driver_told = False
   took = None  # what the driver took from openpilot since the last path point
@@ -345,6 +348,12 @@ def trip_segment(events: Iterable) -> dict:
       if cs.vEgo > .5:
         total["moving_s"] += dt
         total["on_s"] += dt if lat else 0.
+        part = "you" if not lat else ("help" if cs.steeringPressed else "op")
+        total[part + "_s"] += dt
+        total[part + "_km"] += cs.vEgo * dt / 1e3
+        total["acc_s"] += dt if getattr(getattr(cs, "cruiseState", None), "driving", False) else 0.  # logs before the field: 0, shown only when > 0
+      else:
+        total["stop_s"] += dt
       if en and cs.steeringPressed:
         driver_since = t if driver_since is None else driver_since
         if t - driver_since >= DRIVER_MIN_S:
@@ -364,5 +373,26 @@ def trip_segment(events: Iterable) -> dict:
         step = dpsi = 0.
         next_point += TRIP_STEP_S
 
-  total["s"], total["km"], total["moving_s"], total["on_s"] = (_r(total[k], 3) for k in ("s", "km", "moving_s", "on_s"))
+  for k in ("s", "km", "moving_s", "on_s", *SPLIT_KEYS):
+    total[k] = _r(total[k], 3)
   return {"points": points, "events": out, "summary": total}
+
+
+def trip_summary(files: dict[int, str]) -> dict:
+  """The whole drive in numbers, for the trip list: who had the wheel, for how long and how far, minute by minute.
+  A minute that can't be read is left out and counted, so a broken file doesn't lose the drive."""
+  keys = ("s", "km", "moving_s", "on_s", "driver", "gas", "brake", "off", "marks", *SPLIT_KEYS)
+  total: dict = dict.fromkeys(keys, 0.)
+  unread = 0
+  for seg in sorted(files):
+    try:
+      part = trip_segment(read_rlog(files[seg]))["summary"]
+    except Exception:
+      unread += 1
+      continue
+    for k in keys:
+      total[k] += part.get(k, 0)
+  out = {k: _r(v, 2) for k, v in total.items()}
+  for k in ("driver", "gas", "brake", "off", "marks"):
+    out[k] = int(total[k])
+  return {**out, "segments": len(files), "unread": unread}
