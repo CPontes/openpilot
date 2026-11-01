@@ -139,3 +139,9 @@ def local_ip() -> str:
 
 def panel_url(ip: str | None = None) -> str:
   return f"http://{ip or local_ip()}:{PORT}"
+
+
+def pair_url(ip: str | None = None) -> str:
+  """What the QR on the comma opens: the panel, straight on the pairing screen. It carries no secret:
+  the 6-digit code shown on the comma is still needed."""
+  return panel_url(ip) + "/#parear"
