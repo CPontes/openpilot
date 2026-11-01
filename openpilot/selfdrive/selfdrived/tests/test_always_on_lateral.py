@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+from opendbc.car.gwm.tests.test_always_on import ALWAYS_ON
+from opendbc.car.gwm.tests.test_carstate import Car
 from openpilot.selfdrive.selfdrived.always_on_lateral import LongitudinalPause, ButtonType
 
 
@@ -26,3 +28,14 @@ class TestLongitudinalPause:
     p.update(True, True, cs(brake=True))
     p.update(False, False, cs())
     assert not p.update(True, False, cs())
+
+
+class TestThroughTheCar:
+  def test_lever_ends_the_pause_from_can_frames(self):
+    car, p = Car(ALWAYS_ON), LongitudinalPause()
+    car.lever()
+    assert p.update(True, True, car.brake())
+    assert p.update(True, False, car.brake(0))
+    assert p.update(True, False, car.pull())
+    assert not p.update(True, False, car.release())
+    assert not p.update(True, False, car.step())
