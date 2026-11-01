@@ -90,6 +90,15 @@
   .pending { border-color: var(--warn); }
   textarea { width: 100%; font: inherit; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
              background: var(--bg); color: var(--text); resize: vertical; }
+  .pick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .pick.three { grid-template-columns: repeat(3, 1fr); }
+  .pick button { background: var(--bg); color: var(--text); border: 1px solid var(--line); min-height: 48px; padding: 4px; font-weight: 500; }
+  .pick button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .pick button:disabled { opacity: .4; }
+  .reasons.three { grid-template-columns: repeat(3, 1fr); }
+  button.gone { background: none; color: var(--danger); width: 100%; min-height: 44px; margin-top: 8px; }
+  button.gone[aria-pressed="true"] { background: var(--danger); color: #fff; }
+  button.plain { background: none; color: var(--text); width: 100%; min-height: 44px; margin-top: 4px; }
   button.edit { background: none; color: var(--accent); padding: 0 0 0 12px; min-height: 44px; min-width: 44px; flex: none; }
   .pending .when { font-weight: 600; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -133,7 +142,7 @@
       <label class="field" for="editReason">Motivo</label>
       <select id="editReason"></select>
       <label class="field" for="editNote">Comentário (opcional)</label>
-      <textarea id="editNote" rows="3" maxlength="140" placeholder="ex.: moto colou na lateral"></textarea>
+      <textarea id="editNote" rows="3" maxlength="500" placeholder="ex.: moto colou na lateral"></textarea>
       <button class="primary" id="editSave">Salvar</button>
       <div class="rowlinks"><button id="editCancel">Cancelar</button></div>
     </div>
@@ -180,23 +189,28 @@
     <div data-tab="radares" class="hidden">
       <div class="card hidden" id="pointEditor">
         <div class="title" id="pointTitle">Radar</div>
-        <label class="field" for="pointLimit">Velocidade</label>
-        <select id="pointLimit"></select>
-        <label class="field" for="pointSide" id="pointSideLabel">Sentido</label>
-        <select id="pointSide">
-          <option value="">não mudar</option><option value="mesmo">o sentido em que estou</option>
-          <option value="contrario">o sentido contrário</option><option value="?">não sei / os dois</option>
-        </select>
-        <button class="primary" id="pointSave">Confirmar</button>
-        <div class="rowlinks"><button id="pointCancel">Cancelar</button><button id="pointRemove">Não existe mais</button></div>
+        <div class="desc" id="pointHint"></div>
+        <div id="pointLimitBox">
+          <label class="field">Velocidade</label>
+          <div class="pick" id="pointLimits"></div>
+        </div>
+        <div id="pointSideBox">
+          <label class="field">Sentido</label>
+          <div class="pick three" id="pointSides"></div>
+          <div class="desc" id="pointSideNote"></div>
+        </div>
+        <button class="gone hidden" id="pointRemove" aria-pressed="false">Não existe mais</button>
+        <div class="desc" id="pointSummary"></div>
+        <button class="primary" id="pointSave">Salvar</button>
+        <button class="plain" id="pointCancel">Cancelar</button>
+      </div>
+      <h2>Informar agora</h2>
+      <div class="card">
+        <div class="desc">Toque ao passar pelo ponto: o lugar fica guardado no toque. Nada é salvo antes de você tocar em Salvar. Blitz some sozinha em 12 horas.</div>
+        <div class="reasons three"><button id="addRadar">Radar</button><button id="addBlitz">Blitz</button><button id="addBump">Lombada</button></div>
       </div>
       <h2>Perto de você</h2>
       <div class="card"><ul class="audit" id="nearList"></ul></div>
-      <h2>Adicionar onde o carro está</h2>
-      <div class="card">
-        <div class="desc">Toque ao passar pelo ponto: o lugar fica guardado nesse toque e só salva ao confirmar. Blitz some sozinha em 12 horas.</div>
-        <div class="reasons"><button id="addRadar">Radar aqui</button><button id="addBlitz">Blitz aqui</button></div>
-      </div>
       <h2>Meus pontos</h2>
       <div class="card">
         <ul class="audit" id="mineRadars"></ul>
@@ -672,18 +686,19 @@ async function refreshUpdate() {
   $("rebootBtn").disabled = !u.allowed;
 }
 
-const SIDES = { mesmo: "no seu sentido", contrario: "no sentido contrário", "?": "sentido não confirmado" };
-const POINT = { radar: "Radar", blitz: "Blitz", edit: "Correção" };
+const SIDES = { mesmo: "no seu sentido", contrario: "no sentido contrário", dois: "nos dois sentidos", "?": "sentido não confirmado" };
+const SIDE_CHIPS = [["mesmo", "Mesmo sentido"], ["contrario", "Sentido oposto"], ["dois", "Dois sentidos"]];
+const POINT = { radar: "Radar", blitz: "Blitz", lombada: "Lombada", edit: "Correção" };
 const NEAR_BADGE_M = 1000;
-let point = null;
+let point = null, pick = {}, moving = false;
 
 function pointLine(p) {
   const li = document.createElement("li"); li.className = "line";
   const t = document.createElement("span");
-  const limit = p.limit ? `${p.limit} km/h` : "limite desconhecido";
-  t.textContent = `${POINT[p.kind]} a ${p.distance} m ${p.ahead ? "à frente" : "atrás"} · ${limit} · ${SIDES[p.side]}${p.confirmed ? " · confirmado" : ""}`;
-  const b = document.createElement("button"); b.className = "edit"; b.textContent = "conferir";
-  b.addEventListener("click", () => openPoint(p));
+  const limit = p.kind === "lombada" ? "" : (p.limit ? `${p.limit} km/h · ` : "limite desconhecido · ");
+  t.textContent = `${POINT[p.kind]} a ${p.distance} m ${p.ahead ? "à frente" : "atrás"} · ${limit}${SIDES[p.side]}${p.confirmed ? " · confirmado" : ""}`;
+  const b = document.createElement("button"); b.className = "edit"; b.textContent = "editar";
+  b.addEventListener("click", () => openPoint({ ...p, own: p.mine }));
   li.append(t, b);
   return li;
 }
@@ -693,21 +708,22 @@ async function refreshNear() {
   if (r.status !== 200) return;
   const d = r.data, ul = $("nearList");
   ul.replaceChildren(...d.near.map(pointLine));
-  if (!d.near.length) { const li = document.createElement("li"); li.textContent = d.gps ? "Nenhum ponto a menos de 1,7 km." : "Sem GPS agora."; ul.append(li); }
-  $("addRadar").disabled = $("addBlitz").disabled = !d.gps;
+  if (!d.near.length) { const li = document.createElement("li"); li.textContent = d.gps ? "Nenhum ponto a menos de 3 km." : "Sem GPS agora."; ul.append(li); }
+  moving = !!d.moving;
+  $("addRadar").disabled = $("addBlitz").disabled = $("addBump").disabled = !d.gps;
   document.querySelector('[data-go="radares"]').classList.toggle("perto", d.near.some(p => p.ahead && p.distance < NEAR_BADGE_M));
   const mine = $("mineRadars");
   mine.replaceChildren(...d.mine.map(m => {
     const li = document.createElement("li"); li.className = "line";
     const t = document.createElement("span");
     const when = new Date(m.t * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-    t.textContent = `${m.removed ? "Tirado da lista" : POINT[m.kind]} · ${m.limit ? m.limit + " km/h · " : ""}${when}`;
-    const own = m.kind !== "edit";
-    const b = document.createElement("button"); b.className = "edit"; b.textContent = own ? "apagar" : "desfazer";
+    t.textContent = `${m.removed ? "Tirado da lista" : POINT[m.kind]} · ${m.limit ? m.limit + " km/h · " : ""}${m.side === "dois" ? "dois sentidos · " : ""}${when}`;
+    const b = document.createElement("button"); b.className = "edit"; b.textContent = m.removed ? "desfazer" : "editar";
     b.addEventListener("click", async () => {
-      if (!confirm(own ? "Apagar este ponto?" : "Desfazer esta correção?")) return;
+      if (!m.removed) { openPoint({ ...m, own: m.kind !== "edit" }); return; }
+      if (!confirm("Desfazer e voltar este ponto para a lista?")) return;
       const res = await api("/api/radars/delete", { key: m.key });
-      toast(res.status === 200 ? "Apagado." : (res.data.error || "Não foi possível."));
+      toast(res.status === 200 ? "Desfeito." : (res.data.error || "Não foi possível."));
       refreshNear();
     });
     li.append(t, b);
@@ -716,39 +732,53 @@ async function refreshNear() {
   if (!d.mine.length) { const li = document.createElement("li"); li.textContent = "Nenhum ainda."; mine.append(li); }
 }
 
-function fillLimits(value) {
-  const sel = $("pointLimit"); sel.replaceChildren();
-  const add = (v, t) => { const o = document.createElement("option"); o.value = v; o.textContent = t; o.selected = String(value ?? "") === v; sel.append(o); };
-  add("", "não sei");
-  for (let v = 20; v <= 130; v += 10) add(String(v), `${v} km/h`);
+function drawPoint() {
+  const chip = (text, on, click, disabled) => {
+    const b = document.createElement("button"); b.textContent = text; b.setAttribute("aria-pressed", on ? "true" : "false");
+    b.disabled = !!disabled; b.addEventListener("click", click);
+    return b;
+  };
+  const limits = [["", "Não sei"]];
+  for (let v = 20; v <= 120; v += 10) limits.push([v, String(v)]);
+  $("pointLimits").replaceChildren(...limits.map(([v, t]) => chip(t, (pick.limit ?? "") === v, () => { pick.limit = v === "" ? null : v; drawPoint(); })));
+  $("pointSides").replaceChildren(...SIDE_CHIPS.map(([v, t]) => chip(t, pick.side === v, () => { pick.side = v; drawPoint(); }, v !== "dois" && !moving)));
+  $("pointSideNote").textContent = moving ? "Mesmo sentido é o sentido em que o carro está andando agora." : "Com o carro parado, só dá para escolher dois sentidos.";
+  const bump = point.kind === "lombada";
+  $("pointLimitBox").classList.toggle("hidden", bump || pick.removed);
+  $("pointSideBox").classList.toggle("hidden", !!pick.removed);
+  $("pointRemove").setAttribute("aria-pressed", pick.removed ? "true" : "false");
+  $("pointSummary").textContent = pick.removed ? "Ao salvar, este ponto sai da lista."
+    : `Ao salvar: ${POINT[point.kind]}${bump ? "" : pick.limit ? `, ${pick.limit} km/h` : ", velocidade não informada"}, ${SIDES[pick.side || "?"]}.`;
 }
 
 function openPoint(p) {
   point = p;
-  $("pointTitle").textContent = p.key ? `${POINT[p.kind]} a ${p.distance} m` : POINT[p.kind] + " aqui";
-  fillLimits(p.limit);
-  $("pointSide").value = "";
-  $("pointSideLabel").classList.toggle("hidden", !p.key);
-  $("pointSide").classList.toggle("hidden", !p.key);
+  pick = { limit: p.limit ?? null, side: p.key ? (p.side === "?" ? "" : p.side) : (p.kind === "lombada" || !moving ? "dois" : "mesmo"), removed: false };
+  $("pointTitle").textContent = p.key ? (p.distance == null ? `Editar ${POINT[p.kind].toLowerCase()}` : `${POINT[p.kind]} a ${p.distance} m`) : `${POINT[p.kind]} neste lugar`;
+  $("pointHint").textContent = p.key ? "Nada muda antes de você tocar em Salvar." : "Lugar guardado. Nada foi salvo ainda.";
+  $("pointRemove").textContent = p.own ? "Apagar este ponto" : "Não existe mais";
   $("pointRemove").classList.toggle("hidden", !p.key);
   $("pointEditor").classList.remove("hidden");
+  drawPoint();
   $("pointEditor").scrollIntoView({ block: "center" });
 }
 
 function closePoint() { point = null; $("pointEditor").classList.add("hidden"); }
 
-async function savePoint(removed) {
-  const v = $("pointLimit").value, limit = v ? Number(v) : null;
-  const res = point.key ? await api("/api/radars/edit", { key: point.key, limit, side: $("pointSide").value || undefined, confirmed: !removed, removed })
-                        : await api("/api/radars/add", { kind: point.kind, limit, pin: point.pin });
+async function savePoint() {
+  const side = pick.side && pick.side !== point.side ? pick.side : undefined, removed = !!pick.removed;
+  let res;
+  if (point.key && removed && point.own) res = await api("/api/radars/delete", { key: point.key });
+  else if (point.key) res = await api("/api/radars/edit", { key: point.key, limit: pick.limit, side, confirmed: !removed, removed });
+  else res = await api("/api/radars/add", { kind: point.kind, limit: pick.limit, side: pick.side, pin: point.pin });
   toast(res.status === 200 ? (res.data.message || "Salvo.") : (res.data.error || "Não foi possível salvar."));
-  if (res.status === 200 || !point.key) closePoint();  // a refused add has spent its tap
+  if (res.status === 200) closePoint();
   refreshNear();
 }
 
 async function addPoint(kind) {
   const r = await api("/api/radars/pin", {});
-  if (r.status === 200) openPoint({ kind, limit: null, pin: r.data.pin });
+  if (r.status === 200) { moving = !!r.data.moving; openPoint({ kind, limit: null, pin: r.data.pin }); }
   else toast(r.data.error || "Sem GPS agora.");
 }
 
@@ -880,7 +910,7 @@ $("radarExport").addEventListener("click", async () => {
   saveFile(`radares-${new Date().toISOString().slice(0, 10)}.json`, r.data);
 });
 
-$("radarImport").addEventListener("click", () => $("radarFile").click());
+$("radarImport").addEventListener("click", () => { if (confirm("Restaurar os pontos de uma cópia?")) $("radarFile").click(); });
 $("radarFile").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   e.target.value = "";
@@ -920,10 +950,12 @@ refresh();
 document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.go)));
 $("addRadar").addEventListener("click", () => addPoint("radar"));
 $("addBlitz").addEventListener("click", () => addPoint("blitz"));
-$("pointSave").addEventListener("click", () => savePoint(false));
+$("addBump").addEventListener("click", () => addPoint("lombada"));
+$("pointSave").addEventListener("click", savePoint);
 $("pointCancel").addEventListener("click", closePoint);
-$("pointRemove").addEventListener("click", () => { if (confirm("Tirar este ponto da lista?")) savePoint(true); });
+$("pointRemove").addEventListener("click", () => { pick.removed = !pick.removed; drawPoint(); });
 $("radarUpdate").addEventListener("click", async () => {
+  if (!confirm("Baixar a lista de radares de novo?")) return;
   const r = await api("/api/radars", {});
   toast(r.status === 200 ? "Baixando a lista de radares." : (r.data.error || "Não foi possível."));
   refreshRadars();

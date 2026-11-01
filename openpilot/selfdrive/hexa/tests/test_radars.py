@@ -207,6 +207,24 @@ def test_blitz_warns_with_its_kind():
   assert drive(radars.RadarWatch(r))[0][1]["kind"] == radars.BLITZ
 
 
+def test_speed_bump_warns_with_its_kind_and_never_expires():
+  r = radars.merge(np.zeros((0, 4)), [{**edit(), "kind": "lombada", "limit": None, "direction": None, "expires": None}], 1e12)
+  hit = drive(radars.RadarWatch(r))[0][1]
+  assert hit["kind"] == radars.BUMP and hit["limit"] is None and radars.KIND_TEXT[hit["kind"]] == "Lombada"
+
+
+def test_every_kind_has_a_text_for_the_alert():
+  assert set(radars.KIND_TEXT) == set(radars.KINDS.values())
+
+
+def test_both_ways_warns_coming_from_either_side():
+  assert radars.direction_of("dois", 90.) is None
+  assert radars.direction_of("mesmo", 90.) == 90.
+  assert radars.direction_of("contrario", 270.) == 90.
+  r = radars.merge(np.zeros((0, 4)), [{**edit(), "kind": "radar", "limit": 60, "direction": None, "both": True, "expires": None}], 0.)
+  assert drive(radars.RadarWatch(r))[0][1]["limit"] == 60
+
+
 def test_one_entry_per_point_and_a_cap():
   e = radars.apply_edit([{"key": "a", "limit": 1}], {"key": "a", "limit": 2}, 0.)
   assert e == [{"key": "a", "limit": 2}]
@@ -254,6 +272,27 @@ def test_points_ahead_come_first_and_far_behind_ones_go():
   near = radars.nearby(r, [], *at(), 0.)
   assert near[0]["ahead"] is True and near[0]["distance"] == 1500
   assert [p["distance"] for p in near[1:]] == [100, 200, 290]
+
+
+def test_a_bump_can_sit_by_a_camera_but_not_by_another_bump():
+  rows = np.array([[LAT, LON, 60., np.nan, radars.RADAR]])
+  assert not radars.taken(rows, LAT, LON, None, radars.BUMP)
+  assert radars.taken(rows, LAT, LON, None, radars.BLITZ)
+  rows[0, 4] = radars.BUMP
+  assert radars.taken(rows, LAT, LON, None, radars.BUMP) and not radars.taken(rows, LAT, LON, None, radars.RADAR)
+
+
+def test_nearby_says_both_ways_and_the_kind():
+  own = {**edit(100), "kind": "lombada", "limit": None, "direction": None, "both": True, "expires": None}
+  rows = radars.merge(np.zeros((0, 4)), [own], 0.)
+  p = radars.nearby(rows, [own], own["lat"] - .001, own["lon"], 0.)[0]
+  assert p["kind"] == "lombada" and p["side"] == "dois" and p["mine"]
+
+
+def test_a_saved_copy_keeps_both_ways_only_with_no_direction():
+  ok = {**edit(10), "kind": "radar", "limit": 60, "direction": None, "both": True}
+  bad = {**edit(20), "kind": "radar", "limit": 60, "direction": 90., "both": True}
+  assert [c["both"] for c in radars.clean_edits([ok, bad])] == [True, False]
 
 
 def test_a_saved_copy_keeps_only_what_is_valid():

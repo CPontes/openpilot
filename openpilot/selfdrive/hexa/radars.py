@@ -1,4 +1,4 @@
-"""Speed cameras ahead: the list on the comma and the warning logic. It only warns: nothing here touches the car.
+"""Speed cameras and speed bumps ahead: the list on the comma and the warning logic. It only warns: nothing here touches the car.
 
 The list comes from OpenStreetMap (c) OpenStreetMap contributors, ODbL. It stays on the comma, so the warning works with
 no internet and the car's position goes nowhere. Most cameras have no direction in the data, so one on the other side of
@@ -25,12 +25,16 @@ out body;"""
 EDITS_PARAM = "HexaRadarEdits"
 MAX_EDITS = 500
 MATCH_RADIUS = 25.  # m, an edit finds its camera again after the list is updated
-RADAR, BLITZ = 0, 1
-KINDS = {"radar": RADAR, "blitz": BLITZ}
+RADAR, BLITZ, BUMP = 0, 1, 2
+KINDS = {"radar": RADAR, "blitz": BLITZ, "lombada": BUMP}
+KIND_NAMES = {v: k for k, v in KINDS.items()}
+KIND_TEXT = {RADAR: "Radar", BLITZ: "Blitz", BUMP: "Lombada"}
+SIDES = ("mesmo", "contrario", "dois")  # as the driver sees it: this way, the other way, both ways
 BLITZ_HOURS = 12.  # a checkpoint moves: it leaves by itself
 PIN_SECONDS = 300.  # how long a tap holds the place while the note is filled in
 DIRECTION_MIN_SPEED = 2.  # m/s, the GPS bearing wanders below this and freezes when stopped
-NEAR_LIST = 6
+NEAR_LIST = 10
+LIST_REACH = 3000.  # m
 NEAR_BEHIND = 300.  # m, a point just passed can still be checked. Farther back it only hides the ones ahead
 MAX_DOWNLOAD = 8 * 1024 * 1024
 MIN_RADARS = 1000  # fewer than this is a bad answer, not a smaller country
@@ -184,12 +188,13 @@ def apply_edit(edits: list[dict] | None, edit: dict, now: float) -> list[dict]:
   return (kept + [edit])[-MAX_EDITS:]
 
 
-def taken(rows: np.ndarray, lat: float, lon: float, direction: float | None) -> bool:
-  """A point already here for this direction. The other carriageway of a road can be this close."""
+def taken(rows: np.ndarray, lat: float, lon: float, direction: float | None, kind: int = RADAR) -> bool:
+  """A point of this kind already here for this direction. The other carriageway of a road can be this close, and a bump can sit by a camera."""
   if not len(rows):
     return False
   east, north = _meters(rows, lat, lon)
   close = np.hypot(east, north) < MATCH_RADIUS
+  close &= (rows[:, 4] == BUMP) == (kind == BUMP)
   if direction is None:
     return bool(close.any())
   return bool((close & (np.isnan(rows[:, 3]) | (angle_diff(rows[:, 3], direction) < DIRECTION_TOLERANCE))).any())
@@ -209,11 +214,19 @@ def clean_edits(raw) -> list[dict]:
       if direction is not None and not 0. <= float(direction) <= 360.:
         continue
       out.append({"key": key(lat, lon), "lat": lat, "lon": lon, "kind": kind, "limit": None if limit is None else int(limit),
-                  "direction": None if direction is None else float(direction), "confirmed": bool(e.get("confirmed")), "removed": bool(e.get("removed")),
+                  "direction": None if direction is None else float(direction), "both": bool(e.get("both")) and direction is None,
+                  "confirmed": bool(e.get("confirmed")), "removed": bool(e.get("removed")),
                   "who": str(e.get("who", ""))[:40], "t": int(e.get("t") or 0), "expires": None if expires is None else float(expires)})
     except (AttributeError, KeyError, OverflowError, TypeError, ValueError):
       continue
   return out[-MAX_EDITS:]
+
+
+def direction_of(side: str, bearing: float) -> float | None:
+  """The stored direction for what the driver picked. Both ways is no direction at all: it warns coming from either side."""
+  if side == "mesmo":
+    return bearing
+  return (bearing + 180.) % 360. if side == "contrario" else None
 
 
 def relative(direction: float, bearing: float) -> str:
@@ -222,7 +235,7 @@ def relative(direction: float, bearing: float) -> str:
   return "mesmo" if float(angle_diff(direction, bearing)) < DIRECTION_TOLERANCE else "contrario"
 
 
-def nearby(rows: np.ndarray, edits: list[dict] | None, lat: float, lon: float, bearing: float, reach: float = REACH) -> list[dict]:
+def nearby(rows: np.ndarray, edits: list[dict] | None, lat: float, lon: float, bearing: float, reach: float = LIST_REACH) -> list[dict]:
   """The closest points, for the phone: distance and side, never a position."""
   if not len(rows):
     return []
@@ -236,8 +249,8 @@ def nearby(rows: np.ndarray, edits: list[dict] | None, lat: float, lon: float, b
   for i in shown[np.lexsort((dist[shown], ~ahead[shown]))][:NEAR_LIST]:
     k = key(rows[i, 0], rows[i, 1])
     e = mine.get(k) or next((x for x in mine.values() if abs(x["lat"] - rows[i, 0]) < 3e-4 and abs(x["lon"] - rows[i, 1]) < 3e-4), None)
-    out.append({"key": k, "kind": "blitz" if rows[i, 4] == BLITZ else "radar", "distance": round(float(dist[i])), "ahead": bool(ahead[i]),
-                "limit": None if math.isnan(rows[i, 2]) else round(float(rows[i, 2])), "side": relative(rows[i, 3], bearing),
+    out.append({"key": k, "kind": KIND_NAMES.get(int(rows[i, 4]), "radar"), "distance": round(float(dist[i])), "ahead": bool(ahead[i]),
+                "limit": None if math.isnan(rows[i, 2]) else round(float(rows[i, 2])), "side": "dois" if e and e.get("both") else relative(rows[i, 3], bearing),
                 "confirmed": bool(e and e.get("confirmed")), "mine": bool(e and e.get("kind") in KINDS)})
   return out
 

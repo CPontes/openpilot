@@ -102,8 +102,8 @@ OPTIONS: tuple[HexaOption, ...] = (
   HexaOption(
     key="RadarAlert",
     group="avisos",
-    title="aviso de radar",
-    description="Avisa com som antes dos radares e blitz da lista, com a distância e o limite.\n" +
+    title="aviso de radar e lombada",
+    description="Avisa com som antes dos radares, blitz e lombadas da lista, com a distância e o limite. Só avisa: não reduz sozinho.\n" +
                 "Precisa de GPS. Pode faltar ponto. Corrija e adicione na aba Radares.",
     driving=False,
     restart_needed=True,

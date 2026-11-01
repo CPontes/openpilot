@@ -651,6 +651,44 @@ def test_a_stopped_car_saves_no_direction(panel, tmp_path):
   assert panel.store.get(r.EDITS_PARAM)[0]["direction"] is None
 
 
+def test_the_owner_picks_the_side_of_a_new_point(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path)
+  assert add_point(panel, token, limit=60, side="contrario")[0] == 200
+  assert panel.store.get(r.EDITS_PARAM)[0]["direction"] == 180.
+  panel.fix = (panel.fix[0] - .01, panel.fix[1], 0., panel.fix[3])
+  assert add_point(panel, token, "lombada", side="dois")[0] == 200
+  e = panel.store.get(r.EDITS_PARAM)[-1]
+  assert (e["kind"], e["direction"], e["both"], e["expires"]) == ("lombada", None, True, None)
+  near = panel.json("/api/radars/near", token=token)[1]
+  assert near["moving"] is True and next(p for p in near["near"] if p["kind"] == "lombada")["side"] == "dois"
+  assert next(m for m in near["mine"] if m["kind"] == "lombada")["side"] == "dois"
+
+
+def test_a_stopped_car_can_only_say_both_ways_and_keeps_the_tap(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path, speed=.5)
+  got = panel.json("/api/radars/pin", {}, token=token)[1]
+  assert got["moving"] is False
+  body = {"kind": "lombada", "pin": got["pin"]}
+  assert panel.json("/api/radars/add", {**body, "side": "mesmo"}, token=token)[0] == 409
+  assert panel.json("/api/radars/add", {**body, "side": "dois"}, token=token)[0] == 200
+
+
+def test_edit_a_point_to_both_ways_and_back(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path)
+  p = panel.json("/api/radars/near", token=token)[1]["near"][0]
+  assert panel.json("/api/radars/edit", {"key": p["key"], "limit": 60, "side": "dois", "confirmed": True}, token=token)[0] == 200
+  e = panel.store.get(r.EDITS_PARAM)[0]
+  assert (e["direction"], e["both"]) == (None, True)
+  panel.backend._radar_rows = ((), None)
+  q = panel.json("/api/radars/near", token=token)[1]["near"][0]
+  assert q["side"] == "dois"
+  assert panel.json("/api/radars/edit", {"key": p["key"], "limit": 60, "confirmed": True}, token=token)[0] == 200
+  assert panel.store.get(r.EDITS_PARAM)[0]["both"] is True  # no side sent: nothing changes
+  assert panel.json("/api/radars/edit", {"key": p["key"], "limit": 60, "side": "mesmo", "confirmed": True}, token=token)[0] == 200
+  e = panel.store.get(r.EDITS_PARAM)[0]
+  assert e["direction"] == 0. and e["both"] is False
+
+
 def test_an_old_tap_expires(panel, tmp_path):
   token, r = radar_panel(panel, tmp_path)
   pin = panel.json("/api/radars/pin", {}, token=token)[1]["pin"]

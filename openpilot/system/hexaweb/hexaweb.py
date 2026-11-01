@@ -409,11 +409,11 @@ class PanelBackend:
     fix = self._gps()
     with self.lock:
       rows, edits = self._rows()
-      mine = [{"key": e["key"], "kind": e["kind"], "limit": e.get("limit"), "t": e.get("t"), "removed": bool(e.get("removed"))}
-              for e in reversed(radars.active(edits, self.clock()))][:40]
+      mine = [{"key": e["key"], "kind": e["kind"], "limit": e.get("limit"), "t": e.get("t"), "removed": bool(e.get("removed")),
+               "side": "dois" if e.get("both") else "?"} for e in reversed(radars.active(edits, self.clock()))][:40]
     if fix is None:
-      return {"gps": False, "near": [], "mine": mine}
-    return {"gps": True, "near": radars.nearby(rows, edits, fix[0], fix[1], fix[2]), "mine": mine}
+      return {"gps": False, "moving": False, "near": [], "mine": mine}
+    return {"gps": True, "moving": fix[3] >= radars.DIRECTION_MIN_SPEED, "near": radars.nearby(rows, edits, fix[0], fix[1], fix[2]), "mine": mine}
 
   def radars_export(self) -> dict:
     """The owner's points in a file of their own: a reset of the comma erases them. Only on request, and it has positions."""
@@ -444,7 +444,7 @@ class PanelBackend:
       self._radar_pins = {k: v for k, v in self._radar_pins.items() if now - v[0] < radars.PIN_SECONDS}
       pin = secrets.token_urlsafe(8)
       self._radar_pins[pin] = (now, fix)
-    return 200, {"pin": pin}
+    return 200, {"pin": pin, "moving": fix[3] >= radars.DIRECTION_MIN_SPEED}
 
   def radars_edit(self, who: dict, body: dict) -> tuple[int, dict]:
     fix = self._gps()
@@ -463,17 +463,17 @@ class PanelBackend:
         return 409, {"error": "Sem GPS para saber o sentido."}
       if side in ("mesmo", "contrario") and fix[3] < radars.DIRECTION_MIN_SPEED:
         return 409, {"error": "Com o carro parado o GPS não sabe o sentido. Marque andando."}
-      direction = None if math.isnan(row[3]) else float(row[3])
-      if side == "mesmo":
-        direction = fix[2]
-      elif side == "contrario":
-        direction = (fix[2] + 180.) % 360.
-      elif side == "?":
-        direction = None
       old = next((e for e in edits if e["key"] == point_key), {})
+      direction = None if math.isnan(row[3]) else float(row[3])
+      both = bool(old.get("both"))
+      if side in radars.SIDES:
+        direction = radars.direction_of(side, fix[2] if fix else 0.)
+        both = side == "dois"
+      elif side == "?":
+        direction, both = None, False
       entry = {**old, "key": point_key, "lat": float(row[0]), "lon": float(row[1]), "kind": old.get("kind", "edit"), "limit": limit,
-               "direction": direction, "confirmed": bool(body.get("confirmed")), "removed": bool(body.get("removed")), "who": who.get("name", ""),
-               "t": int(self.clock())}
+               "direction": direction, "both": both, "confirmed": bool(body.get("confirmed")), "removed": bool(body.get("removed")),
+               "who": who.get("name", ""), "t": int(self.clock())}
       self.store.put(radars.EDITS_PARAM, radars.apply_edit(edits, entry, self.clock()))
       self._audit({"event": "radar", "who": who.get("name", ""), "key": "removed" if entry["removed"] else "edit", "new": limit})
     return 200, {"ok": True, "message": "Vale na próxima partida do carro."}
@@ -487,16 +487,23 @@ class PanelBackend:
       return 400, {"error": "Limite inválido."}
     with self.lock:
       now = self.clock()
-      held = self._radar_pins.pop(str(body.get("pin", "")), None)  # the phone never sends a position
+      pin = str(body.get("pin", ""))
+      held = self._radar_pins.get(pin)  # the phone never sends a position
       if held is None or now - held[0] >= radars.PIN_SECONDS:
+        self._radar_pins.pop(pin, None)
         return 409, {"error": "Esse toque expirou. Toque de novo ao passar pelo ponto."}
       lat, lon, bearing, speed = held[1]
-      direction = bearing if speed >= radars.DIRECTION_MIN_SPEED else None
+      side = body.get("side")
+      moving = speed >= radars.DIRECTION_MIN_SPEED
+      if side in ("mesmo", "contrario") and not moving:
+        return 409, {"error": "Com o carro parado o GPS não sabe o sentido. Escolha dois sentidos."}  # keeps the tap
+      del self._radar_pins[pin]
+      direction = radars.direction_of(side, bearing) if side in radars.SIDES else (bearing if moving else None)
       rows, edits = self._rows()
-      if radars.taken(rows, lat, lon, direction):
+      if radars.taken(rows, lat, lon, direction, radars.KINDS[kind]) or any(e["key"] == radars.key(lat, lon) for e in edits):
         return 409, {"error": "Já tem um ponto aqui: confira na lista."}
-      entry = {"key": radars.key(lat, lon), "lat": lat, "lon": lon, "kind": kind, "limit": limit, "direction": direction, "who": who.get("name", ""),
-               "t": int(now), "expires": now + radars.BLITZ_HOURS * 3600 if kind == "blitz" else None}
+      entry = {"key": radars.key(lat, lon), "lat": lat, "lon": lon, "kind": kind, "limit": limit, "direction": direction, "both": side == "dois",
+               "who": who.get("name", ""), "t": int(now), "expires": now + radars.BLITZ_HOURS * 3600 if kind == "blitz" else None}
       self.store.put(radars.EDITS_PARAM, radars.apply_edit(edits, entry, now))
       self._audit({"event": "radar", "who": who.get("name", ""), "key": "add", "new": kind})
     return 200, {"ok": True, "message": "Salvo. Vale na próxima partida do carro."}

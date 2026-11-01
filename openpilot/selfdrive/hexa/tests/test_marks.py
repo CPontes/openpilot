@@ -46,7 +46,7 @@ def test_custom_reason_limit_and_removal():
 def test_label_and_note_are_bounded():
   _, r = marks.add_reason([], "x" * 100)
   assert len(r["label"]) == marks.MAX_LABEL
-  assert len(marks.clean_note("y" * 500)) == marks.MAX_NOTE
+  assert len(marks.clean_note("y" * 900)) == marks.MAX_NOTE
   assert marks.clean_note("  a \n b  ") == "a b"
 
 
