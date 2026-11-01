@@ -57,6 +57,10 @@ SUMMARY_PARAM = "HexaTripSummaries"  # {route: who had the wheel, for how long a
 SUMMARY_NEWEST = 10  # drives summarized in the background, newest first, with the car off
 SUMMARY_KEEP = 60
 ERRORS_EVERY_S = 30.
+CLIP_BEFORE_S = 10.  # the clip of a mark starts this long before it
+CLIP_TICKET_S = 600.  # a clip link works this long, for that clip only
+CLIP_VIDEO = "qcamera.ts"  # the light video loggerd keeps for each minute
+SEGMENT_S = 60.
 PROFILES_PARAM = "HexaOptionProfiles"  # {name: {option key: value}}, saved by the owner from the phone
 MAX_PROFILES = 6
 MAX_PROFILE_NAME = 20
@@ -109,6 +113,7 @@ class PanelBackend:
     self._summarize = summarize
     self._spawn = spawn or (lambda job: threading.Thread(target=job, daemon=True).start())
     self._summary_busy = False
+    self._clips: dict[str, dict] = {}  # ticket -> {expires, files, start, name}
 
   def vehicle_state(self) -> VehicleState:
     with self._vs_lock:
@@ -235,6 +240,57 @@ class PanelBackend:
       self._audit({"event": "set", "who": who.get("name", ""), "key": key, "old": old, "new": value})
       msg = "Vale na próxima partida do carro." if opt.restart_needed else "Vale no próximo engate."
       return 200, {"ok": True, "message": msg}
+
+  # *** the clip of a mark: the light video of that moment, on the phone, with the car off ***
+
+  def clip_ticket(self, who: dict, mark_id: str) -> tuple[int, dict]:
+    """A short-lived link to the minutes of video around a mark. The phone's video player can't send the token,
+    so it gets a ticket good for this clip only, for 10 minutes."""
+    if self.vehicle_state().onroad:
+      return 409, {"error": "As viagens só abrem com o carro desligado."}
+    with self.lock:
+      mark = next((m for m in self._marks() if m.get("id") == mark_id), None)
+    if mark is None or not mark.get("t"):
+      return 404, {"error": "Marca não encontrada."}
+    t = float(mark["t"])
+    with self._replay_lock:
+      trips = self._trips()
+    for trip in trips:
+      segs = sorted(trip["files"])
+      videos = {n: Path(trip["files"][n]).parent / CLIP_VIDEO for n in segs}
+      ends = {n: Path(trip["files"][n]).stat().st_mtime for n in segs}  # the minute's log closes when the minute ends
+      seg = next((n for n in segs if ends[n] - SEGMENT_S - 2 <= t <= ends[n] + 2), None)
+      if seg is None:
+        continue
+      offset = max(0., t - (ends[seg] - SEGMENT_S))
+      parts = [n for n in (seg - 1, seg, seg + 1) if n in videos and videos[n].is_file()
+               and (n == seg or (n < seg and offset < CLIP_BEFORE_S + 2) or (n > seg and offset > SEGMENT_S - CLIP_BEFORE_S - 2))]
+      if seg not in parts:
+        break
+      start = offset + (SEGMENT_S if parts[0] < seg else 0.) - CLIP_BEFORE_S
+      ticket = secrets.token_urlsafe(18)
+      now = self.mono()
+      self._clips = {k: v for k, v in self._clips.items() if v["expires"] > now}
+      while len(self._clips) >= 8:
+        self._clips.pop(next(iter(self._clips)))
+      self._clips[ticket] = {"expires": now + CLIP_TICKET_S, "files": [str(videos[n]) for n in parts], "start": max(0., start),
+                             "name": f"lizpilot-marca-{time.strftime('%Y%m%d-%H%M%S', time.localtime(t))}"}
+      return 200, {"ticket": ticket, "playlist": f"/api/clip.m3u8?ticket={ticket}", "video": f"/api/clip.ts?ticket={ticket}&n={parts.index(seg)}&download=1"}
+    return 404, {"error": "Sem vídeo para esta marca."}
+
+  def clip(self, ticket: str) -> dict | None:
+    c = self._clips.get(ticket)
+    return c if c is not None and c["expires"] > self.mono() else None
+
+  def clip_playlist(self, ticket: str) -> str | None:
+    c = self.clip(ticket)
+    if c is None:
+      return None
+    lines = ["#EXTM3U", "#EXT-X-VERSION:3", f"#EXT-X-TARGETDURATION:{int(SEGMENT_S) + 1}", "#EXT-X-PLAYLIST-TYPE:VOD",
+             f"#EXT-X-START:TIME-OFFSET={c['start']:.1f},PRECISE=YES"]
+    for i in range(len(c["files"])):
+      lines += [f"#EXTINF:{SEGMENT_S:.1f},", f"/api/clip.ts?ticket={ticket}&n={i}"]
+    return "\n".join(lines + ["#EXT-X-ENDLIST", ""])
 
   # *** a copy of the options, and profiles ***
 
@@ -732,9 +788,9 @@ def make_handler(backend: PanelBackend):
     def log_message(self, format, *args):  # noqa: A002 - keep the request log out of stderr
       pass
 
-    def _send(self, status: int, body: bytes, content_type: str) -> None:
+    def _send(self, status: int, body: bytes, content_type: str, compress: bool = True, extra: dict | None = None) -> None:
       # a replay is ~400 KB of JSON per minute and ~50 KB gzipped
-      gz = len(body) >= GZIP_MIN_BYTES and "gzip" in self.headers.get("Accept-Encoding", "")
+      gz = compress and len(body) >= GZIP_MIN_BYTES and "gzip" in self.headers.get("Accept-Encoding", "")
       if gz:
         body = gzip.compress(body, compresslevel=5)
       self.send_response(status)
@@ -743,7 +799,7 @@ def make_handler(backend: PanelBackend):
       self.send_header("Vary", "Accept-Encoding")
       if gz:
         self.send_header("Content-Encoding", "gzip")
-      for k, v in SECURITY_HEADERS.items():
+      for k, v in {**SECURITY_HEADERS, **(extra or {})}.items():
         self.send_header(k, v)
       self.end_headers()
       self.wfile.write(body)
@@ -826,6 +882,23 @@ def make_handler(backend: PanelBackend):
       elif path == "/api/radars/export":
         if self._who() is not None:
           self._json(200, backend.radars_export())
+      elif path in ("/api/clip.m3u8", "/api/clip.ts"):  # the video player can't send the token: the clip's own ticket
+        q = parse_qs(query)
+        ticket = (q.get("ticket") or [""])[0]
+        if path == "/api/clip.m3u8":
+          playlist = backend.clip_playlist(ticket)
+          if playlist is None:
+            self._json(404, {"error": "Esse link do clipe expirou. Abra a marca de novo."})
+          else:
+            self._send(200, playlist.encode(), "application/vnd.apple.mpegurl", compress=False)
+        else:
+          c = backend.clip(ticket)
+          n = (q.get("n") or ["0"])[0]
+          if c is None or not n.isdigit() or int(n) >= len(c["files"]):
+            self._json(404, {"error": "Esse link do clipe expirou. Abra a marca de novo."})
+          else:
+            extra = {"Content-Disposition": f'attachment; filename="{c["name"]}.ts"'} if "download" in q else None
+            self._send(200, Path(c["files"][int(n)]).read_bytes(), "video/mp2t", compress=False, extra=extra)
       elif path == "/api/options/export":
         if self._who() is not None:
           self._json(200, backend.options_export())
@@ -865,6 +938,7 @@ def make_handler(backend: PanelBackend):
         "/api/radars/delete": lambda who, b: backend.radars_delete(who, str(b.get("key", ""))),
         "/api/radars/import": lambda who, b: backend.radars_import(who, b.get("edits")),
         "/api/options/import": lambda who, b: backend.options_import(who, b.get("options"), bool(b.get("apply"))),
+        "/api/mark/clip": lambda who, b: backend.clip_ticket(who, str(b.get("id", ""))),
         "/api/profiles/save": lambda who, b: backend.profile_save(who, b.get("name", "")),
         "/api/profiles/delete": lambda who, b: backend.profile_delete(who, str(b.get("name", ""))),
         "/api/update": lambda who, b: backend.update_action(who, str(b.get("action", "")), str(b.get("branch", ""))),

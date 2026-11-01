@@ -79,7 +79,9 @@
   .reasons button { min-height: 58px; text-align: left; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); font-weight: 600; font-size: 16px; line-height: 1.2;
                     display: flex; align-items: center; gap: 10px; }
   .reasons button svg, .mk svg { flex: none; }
-  .mk { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .mk { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+  .mk > span { min-width: 0; overflow-wrap: anywhere; }
+  .line > .row { flex: none; }
   .reasons button.mine { border-style: dashed; }
   .reasons button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
   .pick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
@@ -426,6 +428,19 @@
   <button class="btn ghost" id="pointCancel" type="button" data-t>Cancelar</button>
 </section>
 
+<!-- Vídeo da marca: phone only, car off. The light video of that minute, from 10 s before the mark. -->
+<div class="scrim hidden" id="clipScrim"></div>
+<section class="sheet hidden" id="clipSheet" role="dialog" aria-modal="true" aria-labelledby="clipTitle">
+  <span class="grab"></span>
+  <div class="row" style="align-items:baseline"><h2 class="grow" id="clipTitle" data-t>Vídeo da marca</h2><span class="small num" id="clipWhen"></span></div>
+  <div class="desc" id="clipWhat" style="margin-top:4px"></div>
+  <video id="clipVideo" controls playsinline preload="metadata" style="display:block;width:100%;aspect-ratio:16/10;border-radius:16px;background:#000;margin:12px 0 6px"></video>
+  <div class="small" id="clipNote"></div>
+  <a class="btn" id="clipDownload" href="#" style="margin-top:14px" data-t>Baixar o vídeo para enviar</a>
+  <div class="small" style="text-align:center;margin-top:6px" data-t>Arquivo .ts, abre no VLC. Nada sai do comma sozinho.</div>
+  <button class="btn ghost" id="clipClose" type="button" data-t>Fechar</button>
+</section>
+
 <!-- Passageiro: moving, asked once per trip before Marcar or a point. What was tapped is already kept. -->
 <div class="scrim hidden" id="passScrim"></div>
 <section class="sheet hidden" id="passSheet" role="dialog" aria-modal="true" aria-labelledby="passTitle">
@@ -616,7 +631,7 @@ function show(which) {
   $("app").classList.toggle("hidden", which !== "app");
   $("tabs").classList.toggle("hidden", which !== "app");
   if (which === "app") showView(view);
-  else { closeMark(); closePoint(); closePassenger(); document.body.classList.remove("driving"); }
+  else { closeMark(); closePoint(); closePassenger(); closeClip(); document.body.classList.remove("driving"); }
 }
 
 // ----- state: car, options, history -----
@@ -977,7 +992,9 @@ function renderMarks(m) {
     txt.append(el("span", "", `${hhmmss(x.t)} · ${t(x.label)}${x.note ? " — " + x.note : ""}${x.source === "comma" ? " " + t("(bandeira)") : ""}`));
     row.append(txt);
     const b = el("button", "link", t("editar")); b.type = "button"; b.addEventListener("click", () => openMark(x, x.reason));
-    row.append(b); list.append(row);
+    const acts = el("span", "row"); acts.style.gap = "4px";
+    if (!carOn) { const v = el("button", "link", t("vídeo")); v.type = "button"; v.addEventListener("click", () => openClip(x)); acts.append(v); }
+    acts.append(b); row.append(acts); list.append(row);
   }
   const mine = m.reasons.filter((r) => r.custom);
   $("mineHint").textContent = mine.length ? t("Seus motivos (toque para remover):") : "";
@@ -1045,6 +1062,19 @@ async function saveMark() {
   } else toast(res.data.error || t("Não foi possível salvar."));
   refreshMarks();
 }
+
+// ----- the video of a mark: a short-lived link from the comma, played by the phone's own player -----
+async function openClip(mark) {
+  const r = await api("/api/mark/clip", { id: mark.id });
+  if (r.status !== 200) { toast(r.data.error || t("Não foi possível.")); return; }
+  $("clipWhen").textContent = hhmmss(mark.t);
+  $("clipWhat").textContent = t(mark.label || "") + (mark.note ? " — " + mark.note : "");
+  $("clipNote").textContent = t("Começa 10 s antes da marca. Vídeo leve da câmera da frente.");
+  $("clipVideo").src = r.data.playlist;
+  $("clipDownload").href = r.data.video;
+  $("clipScrim").classList.remove("hidden"); $("clipSheet").classList.remove("hidden");
+}
+function closeClip() { const v = $("clipVideo"); v.pause(); v.removeAttribute("src"); v.load(); $("clipScrim").classList.add("hidden"); $("clipSheet").classList.add("hidden"); }
 
 // ----- passenger: with the car moving, the phone is for the passenger. A reminder, not a check -----
 function carNow() { return { on: carOn, moving: carOn && !carStopped }; }
@@ -1462,6 +1492,9 @@ $("passGo").addEventListener("click", () => {
 });
 $("passCancel").addEventListener("click", closePassenger);  // nothing was saved
 $("passScrim").addEventListener("click", closePassenger);
+$("clipClose").addEventListener("click", closeClip);
+$("clipScrim").addEventListener("click", closeClip);
+$("clipVideo").addEventListener("error", () => { if ($("clipVideo").getAttribute("src")) $("clipNote").textContent = t("Este celular não toca o vídeo aqui: baixe e abra no VLC."); });
 $("pointRemove").addEventListener("click", () => { pick.removed = !pick.removed; drawPoint(); });
 $("radarUpdate").addEventListener("click", async () => {
   if (!confirm(t("Baixar a lista de radares de novo?"))) return;

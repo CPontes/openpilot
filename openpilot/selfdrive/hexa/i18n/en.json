@@ -516,5 +516,14 @@
  "Enviar para análise": "Send for analysis",
  "Erros": "Errors",
  "Gera um arquivo com os erros e a versão, para você mandar. Nada sai do comma sozinho.": "Makes a file with the errors and the version for you to send. Nothing leaves the comma by itself.",
- "Nenhum erro recente.": "No recent errors."
+ "Nenhum erro recente.": "No recent errors.",
+ "Arquivo .ts, abre no VLC. Nada sai do comma sozinho.": ".ts file, opens in VLC. Nothing leaves the comma by itself.",
+ "Baixar o vídeo para enviar": "Download the video to send",
+ "Começa 10 s antes da marca. Vídeo leve da câmera da frente.": "Starts 10 s before the mark. Light video from the front camera.",
+ "Esse link do clipe expirou. Abra a marca de novo.": "This clip link has expired. Open the mark again.",
+ "Este celular não toca o vídeo aqui: baixe e abra no VLC.": "This phone can't play the video here: download it and open it in VLC.",
+ "Fechar": "Close",
+ "Sem vídeo para esta marca.": "No video for this mark.",
+ "Vídeo da marca": "Mark video",
+ "vídeo": "video"
 }

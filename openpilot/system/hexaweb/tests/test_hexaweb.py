@@ -912,3 +912,42 @@ def test_profiles_are_saved_from_now_and_applied_like_a_copy(panel):
   assert panel.json("/api/profiles/delete", {"name": "Estrada"}, token=token)[0] == 200
   assert panel.json("/api/profiles/delete", {"name": "Estrada"}, token=token)[0] == 404
   assert panel.store.get(phone.AUDIT_PARAM)[-1]["event"] == "profile_removed"
+
+
+def test_mark_clip_by_ticket_with_the_car_off(panel, tmp_path):
+  import os
+  end0 = 50_000.
+  for n in (0, 1):
+    d = tmp_path / f"00000020--abcdef0123--{n}"
+    d.mkdir()
+    (d / "qlog.zst").write_bytes(b"q")
+    (d / "qcamera.ts").write_bytes(f"video{n}".encode())
+    for f in ("qlog.zst", "qcamera.ts"):
+      os.utime(d / f, (end0 + 60 * n, end0 + 60 * n))
+  panel.backend.log_root = str(tmp_path)
+  panel.store.put(marks.MARKS_PARAM, [{"id": "m1", "t": end0 + 5, "reason": "curva", "label": "curva difícil"}])  # 5 s into minute 1
+  token = panel.pair()
+  status, c = panel.json("/api/mark/clip", {"id": "m1"}, token=token)
+  assert status == 200 and c["ticket"]
+  status, _, playlist = panel.request(c["playlist"])  # no token: the ticket is the key
+  text = playlist.decode()
+  assert status == 200 and text.count("#EXTINF") == 2 and "TIME-OFFSET=55.0" in text  # minute 0 too: the clip starts 10 s before
+  status, headers, video = panel.request(c["video"])
+  assert status == 200 and video == b"video1" and headers["Content-Type"] == "video/mp2t" and "attachment" in headers["Content-Disposition"]
+  assert panel.request("/api/clip.ts?ticket=wrong&n=0")[0] == 404
+  assert panel.request(c["playlist"].replace(c["ticket"], c["ticket"] + "x"))[0] == 404
+  panel.now += hexaweb.CLIP_TICKET_S + 1
+  assert panel.request(c["playlist"])[0] == 404  # expired
+  assert panel.json("/api/mark/clip", {"id": "nope"}, token=token)[0] == 404
+  panel.vs = VehicleState(onroad=True)
+  assert panel.json("/api/mark/clip", {"id": "m1"}, token=token)[0] == 409
+
+
+def test_mark_clip_without_video(panel, tmp_path):
+  d = tmp_path / "00000021--abcdef0123--0"
+  d.mkdir()
+  (d / "qlog.zst").write_bytes(b"q")
+  panel.backend.log_root = str(tmp_path)
+  panel.store.put(marks.MARKS_PARAM, [{"id": "m2", "t": (d / "qlog.zst").stat().st_mtime - 30}])
+  token = panel.pair()
+  assert panel.json("/api/mark/clip", {"id": "m2"}, token=token) == (404, {"error": "Sem vídeo para esta marca."})

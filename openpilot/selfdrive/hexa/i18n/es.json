@@ -516,5 +516,14 @@
  "Enviar para análise": "Enviar para análisis",
  "Erros": "Errores",
  "Gera um arquivo com os erros e a versão, para você mandar. Nada sai do comma sozinho.": "Genera un archivo con los errores y la versión para que usted lo envíe. Nada sale del comma solo.",
- "Nenhum erro recente.": "Ningún error reciente."
+ "Nenhum erro recente.": "Ningún error reciente.",
+ "Arquivo .ts, abre no VLC. Nada sai do comma sozinho.": "Archivo .ts, se abre en VLC. Nada sale del comma solo.",
+ "Baixar o vídeo para enviar": "Descargar el video para enviar",
+ "Começa 10 s antes da marca. Vídeo leve da câmera da frente.": "Empieza 10 s antes de la marca. Video liviano de la cámara frontal.",
+ "Esse link do clipe expirou. Abra a marca de novo.": "Este enlace del clip expiró. Abra la marca de nuevo.",
+ "Este celular não toca o vídeo aqui: baixe e abra no VLC.": "Este celular no reproduce el video aquí: descárguelo y ábralo en VLC.",
+ "Fechar": "Cerrar",
+ "Sem vídeo para esta marca.": "Sin video para esta marca.",
+ "Vídeo da marca": "Video de la marca",
+ "vídeo": "video"
 }
