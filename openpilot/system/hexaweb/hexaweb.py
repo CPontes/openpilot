@@ -16,6 +16,7 @@ from urllib.parse import parse_qs
 
 from openpilot.selfdrive.hexa import live as hexa_live
 from openpilot.selfdrive.hexa import marks as hexa_marks
+from openpilot.selfdrive.hexa import radars
 from openpilot.selfdrive.hexa import phone
 from openpilot.selfdrive.hexa import timeline
 from openpilot.selfdrive.hexa import updates
@@ -50,7 +51,7 @@ class PanelBackend:
                clock: Callable[[], float] = phone.wall_time, mono: Callable[[], float] = time.monotonic,
                log_event: Callable[[dict], None] | None = None, log_root: str | None = None,
                signal_updater: Callable[[str], None] = updates.signal_updater,
-               live_state: Callable[[], dict] | None = None):
+               live_state: Callable[[], dict] | None = None, radar_path: Path | None = None):
     self.store = store  # Params, or anything with get/put/get_bool/put_bool/remove
     self._vehicle_state = vehicle_state
     self.clock = clock  # wall clock: token, audit and mark dates
@@ -66,6 +67,8 @@ class PanelBackend:
     self._trip_cache: OrderedDict[str, dict] = OrderedDict()
     self._trip_index: tuple[float, list[dict]] = (-TRIP_INDEX_S, [])
     self.signal_updater = signal_updater
+    self.radar_path = radar_path
+    self._radar_job = {"busy": False, "error": ""}
     self._live_state = live_state or dict
 
   def vehicle_state(self) -> VehicleState:
@@ -344,6 +347,38 @@ class PanelBackend:
       data = self._trip_cache[key]
     return 200, {**data, "events": self._with_reasons(data["events"])}
 
+  # *** speed cameras ***
+
+  def radars_state(self) -> dict:
+    updated = self.radar_path is not None and self.radar_path.is_file()
+    path = self.radar_path if updated else radars.BUNDLED
+    with open(path) as f:
+      count = sum(1 for line in f if not line.startswith("#"))
+    allowed, reason = updates.can_update(self.vehicle_state())
+    return {"count": count, "date": int(path.stat().st_mtime) if updated else None, "allowed": allowed, "reason": reason, **self._radar_job}
+
+  def radars_update(self, who: dict) -> tuple[int, dict]:
+    allowed, reason = updates.can_update(self.vehicle_state())
+    if not allowed:
+      return 409, {"error": reason}
+    if self.radar_path is None:
+      return 404, {"error": "Sem lugar para guardar a lista."}
+    with self.lock:
+      if self._radar_job["busy"]:
+        return 409, {"error": "A lista já está sendo baixada."}
+      self._radar_job = {"busy": True, "error": ""}
+      self._audit({"event": "update", "who": who.get("name", ""), "key": "radars", "new": ""})
+
+    def run():
+      try:
+        radars.download(self.radar_path)
+        self._radar_job = {"busy": False, "error": ""}
+      except Exception as e:
+        self._radar_job = {"busy": False, "error": f"Não foi possível baixar: {type(e).__name__}"}
+
+    threading.Thread(target=run, daemon=True).start()
+    return 200, {"ok": True}
+
   # *** updates ***
 
   def update_state(self) -> dict:
@@ -475,6 +510,9 @@ def make_handler(backend: PanelBackend):
       elif path == "/api/update":
         if self._who() is not None:
           self._json(200, backend.update_state())
+      elif path == "/api/radars":
+        if self._who() is not None:
+          self._json(200, backend.radars_state())
       elif path == "/api/live":
         if self._who() is not None:
           self._json(200, backend.live())
@@ -497,6 +535,7 @@ def make_handler(backend: PanelBackend):
                                                              b.get("replace_note") is True),
         "/api/reasons": lambda who, b: backend.add_reason(who, str(b.get("label", ""))),
         "/api/reasons/remove": lambda who, b: backend.remove_reason(who, str(b.get("key", ""))),
+        "/api/radars": lambda who, b: backend.radars_update(who),
         "/api/update": lambda who, b: backend.update_action(who, str(b.get("action", "")), str(b.get("branch", ""))),
       }
       if path not in routes and path != "/api/logout":
@@ -565,7 +604,7 @@ def main():
 
   from openpilot.common.hardware.hw import Paths
   backend = PanelBackend(params, vehicle_state, log_event=lambda fields: cloudlog.event("hexa_mark", **fields),
-                         log_root=Paths.log_root(), live_state=live_state)
+                         log_root=Paths.log_root(), live_state=live_state, radar_path=radars.updated_path())
 
   def watch_bookmarks():
     # every bookmark in the log becomes a mark: with the reason from the phone, or "sem motivo" to classify later

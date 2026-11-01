@@ -23,6 +23,7 @@ from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
 from openpilot.selfdrive.selfdrived.always_on_lateral import LongitudinalPause
 from openpilot.selfdrive.selfdrived.traffic_alerts import LeadDepartAlert
+from openpilot.selfdrive.hexa import radars
 from opendbc.car.gwm.values import GwmSafetyFlags
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
 
@@ -112,6 +113,12 @@ class SelfdriveD:
                              bool(self.CP.safetyConfigs[-1].safetyParam & GwmSafetyFlags.ALWAYS_ON_LATERAL)
     self.long_pause = LongitudinalPause()
     self.lead_depart_alert = LeadDepartAlert() if self.params.get_bool("LeadDepartAlert") else None
+    self.radar_watch = None
+    if self.params.get_bool("RadarAlert"):
+      try:
+        self.radar_watch = radars.RadarWatch(radars.load(radars.current()))
+      except Exception:
+        cloudlog.exception("radar list failed")
 
     # cleanup old params
     if not self.CP.alphaLongitudinalAvailable:
@@ -209,6 +216,9 @@ class SelfdriveD:
       prime_type = self.params.get("PrimeType")
       paired = prime_type is not None and int(prime_type) >= 0
       self.events.add(EventName.userBookmark if paired else EventName.userBookmarkNotPaired)
+
+    if self.radar_watch is not None and self.sm.updated[self.gps_location_service]:
+      self.check_radars()
 
     if self.lead_depart_alert is not None:
       lead = self.sm['radarState'].leadOne
@@ -581,6 +591,19 @@ class SelfdriveD:
     self.publish_selfdriveState(CS)
 
     self.CS_prev = CS
+
+  def check_radars(self):
+    # a warning is never worth taking selfdrived down: on any failure it just stops warning
+    try:
+      gps = self.sm[self.gps_location_service]
+      hit = self.radar_watch.update(time.monotonic(), gps.latitude, gps.longitude, gps.bearingDeg, gps.speed, gps.horizontalAccuracy) if gps.hasFix else None
+    except Exception:
+      cloudlog.exception("radar check failed")
+      self.radar_watch = None
+      return
+    if hit is not None:
+      radars.last_hit = hit
+      self.events.add(EventName.radarAhead)
 
   def params_thread(self, evt):
     while not evt.is_set():

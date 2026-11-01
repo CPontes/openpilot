@@ -131,6 +131,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"PairingEmail", {PERSISTENT, STRING}},
     {"PairingProvider", {PERSISTENT, STRING}},
     {"PrimeType", {PERSISTENT, INT}},
+    {"RadarAlert", {PERSISTENT, BOOL, "0"}},
     {"RecordAudio", {PERSISTENT, BOOL}},
     {"RecordFront", {PERSISTENT, BOOL}},
     {"RecordFrontLock", {PERSISTENT, BOOL}},  // for the internal fleet

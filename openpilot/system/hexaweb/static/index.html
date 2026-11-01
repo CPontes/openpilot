@@ -182,6 +182,13 @@
       </div>
       <div class="note" id="updNote"></div>
     </div>
+    <h2>Radares</h2>
+    <div class="card">
+      <div class="title" id="radarCount">—</div>
+      <div class="desc" id="radarDesc"></div>
+      <div class="rowlinks"><button id="radarUpdate">Atualizar a lista</button></div>
+      <div class="note" id="radarNote"></div>
+    </div>
     <h2>Aparelho</h2>
     <div class="card">
       <div class="desc" id="sysDesc">Reinicia só com o carro desligado. Instala a versão que já estiver baixada.</div>
@@ -245,6 +252,7 @@ function showTab(name) {
   document.querySelectorAll("[data-go]").forEach(b => b.dataset.go === name ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
   clearInterval(liveTimer); liveTimer = null;
   if (name === "agora") { refreshLive(); liveTimer = setInterval(refreshLive, 1000); }
+  if (name === "sistema") refreshRadars();
   window.scrollTo(0, 0);
 }
 
@@ -292,7 +300,7 @@ function show(which) {
   if (which === "panel") timer = setInterval(refresh, 3000);
 }
 
-const UPDATE_ACTIONS = { check: "verificou", download: "baixou", install: "instalou", branch: "escolheu", reboot: "reiniciou" };
+const UPDATE_ACTIONS = { radars: "atualizou a lista de radares", check: "verificou", download: "baixou", install: "instalou", branch: "escolheu", reboot: "reiniciou" };
 const EVENTS = { paired: "pareou", logout: "desconectou", pin_locked: "código bloqueado por tentativas erradas",
                  reason_added: "adicionou motivo", reason_removed: "removeu motivo" };
 function auditText(a) {
@@ -480,6 +488,16 @@ async function refreshUpdate() {
   $("rebootBtn").disabled = !u.allowed;
 }
 
+async function refreshRadars() {
+  const r = await api("/api/radars");
+  if (r.status !== 200) return;
+  const d = r.data;
+  $("radarCount").textContent = `${d.count.toLocaleString("pt-BR")} radares no comma`;
+  $("radarDesc").textContent = d.busy ? "Baixando a lista…" : d.date ? `Lista atualizada em ${new Date(d.date * 1000).toLocaleDateString("pt-BR")}.` : "Lista que veio com esta versão, do OpenStreetMap.";
+  $("radarUpdate").disabled = !d.allowed || d.busy;
+  $("radarNote").textContent = d.error || (d.allowed ? "" : "Só com o carro desligado e com internet.");
+}
+
 async function updateAction(action, branch) {
   const r = await api("/api/update", { action, branch });
   toast(r.status === 200 ? "Pedido enviado ao comma." : (r.data.error || "Não foi possível."));
@@ -493,6 +511,7 @@ async function refreshMarks() {
 
 async function refresh() {
   refreshUpdate();
+  if (tab === "sistema") refreshRadars();
   if (!token) { show("pair"); return; }
   try {
     const r = await api("/api/state");
@@ -553,6 +572,11 @@ $("logoutBtn").addEventListener("click", async () => {
 
 refresh();
 document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.go)));
+$("radarUpdate").addEventListener("click", async () => {
+  const r = await api("/api/radars", {});
+  toast(r.status === 200 ? "Baixando a lista de radares." : (r.data.error || "Não foi possível."));
+  refreshRadars();
+});
 $("rebootBtn").addEventListener("click", () => {
   if (confirm("Reiniciar o comma agora? Leva alguns minutos para voltar.")) updateAction("reboot");
 });

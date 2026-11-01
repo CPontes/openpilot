@@ -525,3 +525,39 @@ def test_mark_delay_from_outside_is_checked(panel):
     mark = panel.json("/api/mark", {"reason": "balancou", "delay_s": bad}, token=token)[1]["mark"]
     assert mark["delay_s"] == 0.
 
+
+def test_radar_list_shows_what_the_comma_has(panel, tmp_path):
+  token = panel.pair()
+  panel.backend.radar_path = tmp_path / "r.csv"
+  status, d = panel.json("/api/radars", token=token)
+  assert status == 200 and d["count"] > 1000 and d["date"] is None and d["allowed"] is True
+  assert panel.json("/api/radars")[0] == 401
+
+
+def test_radar_download_only_with_the_car_off(panel, tmp_path, monkeypatch):
+  token = panel.pair()
+  panel.backend.radar_path = tmp_path / "r.csv"
+  done = threading.Event()
+  monkeypatch.setattr(hexaweb.radars, "download", lambda p: (p.write_text("# x\\n1,2,60,nan\\n"), done.set()))
+  panel.vs = VehicleState(onroad=True, parked=True, standstill=True)
+  assert panel.json("/api/radars", {}, token=token)[0] == 409
+  assert not done.is_set()
+  panel.vs = VehicleState(onroad=False)
+  assert panel.json("/api/radars", {}, token=token)[0] == 200
+  assert done.wait(2)
+
+
+def test_radar_download_failure_is_shown(panel, tmp_path, monkeypatch):
+  token = panel.pair()
+  panel.backend.radar_path = tmp_path / "r.csv"
+
+  def fail(p):
+    raise ValueError("bad")
+  monkeypatch.setattr(hexaweb.radars, "download", fail)
+  assert panel.json("/api/radars", {}, token=token)[0] == 200
+  for _ in range(100):
+    d = panel.json("/api/radars", token=token)[1]
+    if not d["busy"]:
+      break
+  assert "ValueError" in d["error"]
+

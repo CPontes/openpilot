@@ -11,6 +11,7 @@ import openpilot.cereal.messaging as messaging
 from openpilot.common.constants import CV
 from openpilot.common.git import get_short_branch
 from openpilot.common.realtime import DT_CTRL
+from openpilot.selfdrive.hexa import radars
 from openpilot.selfdrive.locationd.calibrationd import MIN_SPEED_FILTER
 from openpilot.common.hardware import HARDWARE
 
@@ -284,6 +285,16 @@ def posenet_invalid_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.Sub
   return NoEntryAlert(msg, alert_text_1="Posenet Speed Invalid")
 
 
+def radar_ahead_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
+  hit = radars.last_hit
+  limit = hit.get("limit")
+  return Alert(
+    f"Radar a {round(hit.get('distance', 0.) / 10) * 10:.0f} m",
+    f"Limite {limit:.0f} km/h" if limit else "",
+    AlertStatus.normal, AlertSize.mid if limit else AlertSize.small,
+    Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 4.)
+
+
 def process_not_running_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
   not_running = [p.name for p in sm['managerState'].processes if not p.running and p.shouldBeRunning]
   msg = ', '.join(not_running)
@@ -496,6 +507,10 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
       "Risk of Collision",
       AlertStatus.critical, AlertSize.full,
       Priority.HIGHEST, VisualAlert.fcw, AudibleAlert.warningSoft, 2.),
+  },
+
+  EventName.radarAhead: {
+    ET.PERMANENT: radar_ahead_alert,
   },
 
   EventName.leadDeparted: {

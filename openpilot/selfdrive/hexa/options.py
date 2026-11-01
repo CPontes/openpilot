@@ -100,6 +100,15 @@ OPTIONS: tuple[HexaOption, ...] = (
     driving=False,
   ),
   HexaOption(
+    key="RadarAlert",
+    group="avisos",
+    title="aviso de radar",
+    description="Avisa com som antes dos radares da lista, com a distância e o limite.\n" +
+                "Precisa de GPS. Pode faltar radar, e pode avisar do outro sentido da via.",
+    driving=False,
+    restart_needed=True,
+  ),
+  HexaOption(
     key="LeadDepartAlert",
     group="avisos",
     title="aviso de carro da frente saiu",
