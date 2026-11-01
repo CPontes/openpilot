@@ -22,6 +22,7 @@ from openpilot.selfdrive.selfdrived.events import Events, ET
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
 from openpilot.selfdrive.selfdrived.always_on_lateral import LongitudinalPause
+from openpilot.selfdrive.selfdrived.traffic_alerts import LeadDepartAlert
 from opendbc.car.gwm.values import GwmSafetyFlags
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
 
@@ -110,6 +111,7 @@ class SelfdriveD:
     self.always_on_lateral = self.CP.brand == 'gwm' and len(self.CP.safetyConfigs) > 0 and \
                              bool(self.CP.safetyConfigs[-1].safetyParam & GwmSafetyFlags.ALWAYS_ON_LATERAL)
     self.long_pause = LongitudinalPause()
+    self.lead_depart_alert = LeadDepartAlert() if self.params.get_bool("LeadDepartAlert") else None
 
     # cleanup old params
     if not self.CP.alphaLongitudinalAvailable:
@@ -207,6 +209,12 @@ class SelfdriveD:
       prime_type = self.params.get("PrimeType")
       paired = prime_type is not None and int(prime_type) >= 0
       self.events.add(EventName.userBookmark if paired else EventName.userBookmarkNotPaired)
+
+    if self.lead_depart_alert is not None:
+      lead = self.sm['radarState'].leadOne
+      in_drive = CS.gearShifter == car.CarState.GearShifter.drive
+      if self.lead_depart_alert.update(CS.standstill, in_drive, CS.gasPressed, lead.present, lead.dRel, lead.vLead):
+        self.events.add(EventName.leadDeparted)
 
     # Don't add any more events while in dashcam mode
     if self.CP.passive:

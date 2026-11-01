@@ -74,6 +74,15 @@ OPTIONS: tuple[HexaOption, ...] = (
                 "Segure de volta ao centro para voltar. Zera ao desengatar.",
   ),
   HexaOption(
+    key="LeadDepartAlert",
+    group="avisos",
+    title="aviso de carro da frente saiu",
+    description="Parado, um som avisa quando o carro da frente anda.\n" +
+                "Só avisa: o carro não sai sozinho.",
+    driving=False,
+    restart_needed=True,
+  ),
+  HexaOption(
     key="HexaWebEnabled",
     group="celular",
     title="painel no celular",
