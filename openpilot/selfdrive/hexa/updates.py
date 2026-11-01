@@ -1,0 +1,52 @@
+"""Updating the comma from the phone: what the panel may ask of the updater.
+
+Same steps as the Software page on the comma: check, download, install. All of them need the car off, because
+installing reboots the comma. Only the fork's own branches are offered, and uninstalling is never here.
+"""
+import subprocess
+
+from openpilot.selfdrive.hexa.phone import VehicleState
+
+UPDATER_PROC = "openpilot.system.updated.updated"
+SIGNALS = {"check": "SIGUSR1", "download": "SIGHUP"}  # the same the Software page sends
+BRANCH_PREFIX = "h6gt"
+
+
+def signal_updater(sig: str) -> None:
+  subprocess.run(["pkill", f"-{sig}", "-f", UPDATER_PROC], check=False)
+
+
+def can_update(state: VehicleState) -> tuple[bool, str]:
+  if state.onroad:
+    return False, "Desligue o carro para atualizar."
+  return True, ""
+
+
+def branches(available: str | None) -> list[str]:
+  return [b for b in (available or "").split(",") if b.startswith(BRANCH_PREFIX)]
+
+
+def describe(desc: str | None) -> dict:
+  # "version / branch / commit / date"
+  parts = [p.strip() for p in (desc or "").split(" / ")]
+  if len(parts) != 4:
+    return {}
+  return dict(zip(("version", "branch", "commit", "date"), parts, strict=True))
+
+
+def state(store) -> dict:
+  target = store.get("UpdaterTargetBranch") or store.get("GitBranch") or ""
+  offered = branches(store.get("UpdaterAvailableBranches"))
+  if target and target not in offered:
+    offered = [target, *offered]
+  return {
+    "current": describe(store.get("UpdaterCurrentDescription")),
+    "new": describe(store.get("UpdaterNewDescription")),
+    "target": target,
+    "branches": offered,
+    "state": store.get("UpdaterState") or "",
+    "fetch_available": bool(store.get_bool("UpdaterFetchAvailable")),
+    "ready": bool(store.get_bool("UpdateAvailable")),
+    "failed": int(store.get("UpdateFailedCount") or 0),
+    "last_check": str(store.get("LastUpdateTime") or ""),
+  }

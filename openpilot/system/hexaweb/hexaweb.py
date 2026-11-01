@@ -17,6 +17,7 @@ from urllib.parse import parse_qs
 from openpilot.selfdrive.hexa import marks as hexa_marks
 from openpilot.selfdrive.hexa import phone
 from openpilot.selfdrive.hexa import timeline
+from openpilot.selfdrive.hexa import updates
 from openpilot.selfdrive.hexa.options import GROUPS, OPTIONS, get_option, supported
 from openpilot.selfdrive.hexa.phone import VehicleState
 
@@ -27,8 +28,11 @@ STATIC_FILES = {
   "/index.html": ("index.html", "text/html; charset=utf-8"),
   "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
   "/replay": ("replay.html", "text/html; charset=utf-8"),
+  "/viagens": ("viagens.html", "text/html; charset=utf-8"),
 }
 REPLAY_CACHE = 3
+TRIP_CACHE = 120  # minutes of trips kept in memory
+TRIP_INDEX_S = 30.  # the page asks once per minute of the trip: don't walk the log folder every time
 GZIP_MIN_BYTES = 16 * 1024  # segments kept in memory
 SERVE_RETRY = 5.  # s between tries when the port can't be opened
 SECURITY_HEADERS = {
@@ -43,7 +47,8 @@ SECURITY_HEADERS = {
 class PanelBackend:
   def __init__(self, store, vehicle_state: Callable[[], VehicleState],
                clock: Callable[[], float] = phone.wall_time, mono: Callable[[], float] = time.monotonic,
-               log_event: Callable[[dict], None] | None = None, log_root: str | None = None):
+               log_event: Callable[[dict], None] | None = None, log_root: str | None = None,
+               signal_updater: Callable[[str], None] = updates.signal_updater):
     self.store = store  # Params, or anything with get/put/get_bool/put_bool/remove
     self._vehicle_state = vehicle_state
     self.clock = clock  # wall clock: token, audit and mark dates
@@ -56,6 +61,9 @@ class PanelBackend:
     self.log_root = log_root
     self._replay_cache: OrderedDict[str, dict] = OrderedDict()
     self._replay_lock = threading.Lock()
+    self._trip_cache: OrderedDict[str, dict] = OrderedDict()
+    self._trip_index: tuple[float, list[dict]] = (-TRIP_INDEX_S, [])
+    self.signal_updater = signal_updater
 
   def vehicle_state(self) -> VehicleState:
     with self._vs_lock:
@@ -269,6 +277,90 @@ class PanelBackend:
       self._replay_cache.move_to_end(seg_id)
       return 200, self._replay_cache[seg_id]
 
+  # *** trips ***
+
+  def _trips(self) -> list[dict]:
+    at, trips = self._trip_index
+    if self.mono() - at >= TRIP_INDEX_S:
+      trips = timeline.trip_files(self.log_root or "", limit=10_000)
+      self._trip_index = (self.mono(), trips)
+    return trips
+
+  def trips_list(self) -> tuple[int, dict]:
+    if self.vehicle_state().onroad:
+      return 409, {"error": "As viagens só abrem com o carro desligado."}
+    if not self.log_root:
+      return 404, {"error": "Sem pasta de logs."}
+    with self._replay_lock:
+      trips = self._trips()[:60]
+    return 200, {"trips": [{"id": t["id"], "mtime": int(t["mtime"]), "minutes": len(t["files"]),
+                            "segments": sorted(t["files"])} for t in trips]}
+
+  def _with_reasons(self, events: list[dict]) -> list[dict]:
+    with self.lock:
+      marks = [m for m in self._marks() if m.get("mono_ns") and m.get("label")]
+    out = []
+    for e in events:
+      e = dict(e)
+      mono = e.pop("mono_ns", None)
+      if mono is not None:
+        for m in marks:
+          if abs(m["mono_ns"] - mono) < 2e9:
+            e["text"] = m["label"] + (f": {m['note']}" if m.get("note") else "")
+      out.append(e)
+    return out
+
+  def trip_data(self, route: str, segment: str) -> tuple[int, dict]:
+    if self.vehicle_state().onroad:
+      return 409, {"error": "As viagens só abrem com o carro desligado."}
+    if not self.log_root:
+      return 404, {"error": "Sem pasta de logs."}
+    with self._replay_lock:
+      trip = next((t for t in self._trips() if t["id"] == route), None)  # only ids from the list: no paths from outside
+      path = trip["files"].get(int(segment)) if trip and segment.isdigit() else None
+      if path is None:
+        return 404, {"error": "Viagem não encontrada."}
+      key = f"{route}--{segment}"
+      if key not in self._trip_cache:
+        try:
+          self._trip_cache[key] = timeline.trip_segment(timeline.read_rlog(path))
+        except Exception as e:
+          return 500, {"error": f"Não foi possível ler a viagem: {type(e).__name__}"}
+        while len(self._trip_cache) > TRIP_CACHE:
+          self._trip_cache.popitem(last=False)
+      self._trip_cache.move_to_end(key)
+      data = self._trip_cache[key]
+    return 200, {**data, "events": self._with_reasons(data["events"])}
+
+  # *** updates ***
+
+  def update_state(self) -> dict:
+    allowed, reason = updates.can_update(self.vehicle_state())
+    with self.lock:
+      return {**updates.state(self.store), "allowed": allowed, "reason": reason}
+
+  def update_action(self, who: dict, action: str, branch: str = "") -> tuple[int, dict]:
+    allowed, reason = updates.can_update(self.vehicle_state())
+    with self.lock:
+      if not allowed:
+        self._audit({"event": "denied", "who": who.get("name", ""), "key": "update", "new": action, "reason": reason})
+        return 409, {"error": reason}
+      if action == "branch":
+        if branch not in updates.branches(self.store.get("UpdaterAvailableBranches")):
+          return 400, {"error": "Versão desconhecida."}
+        self.store.put("UpdaterTargetBranch", branch)
+        self.signal_updater(updates.SIGNALS["check"])
+      elif action in updates.SIGNALS:
+        self.signal_updater(updates.SIGNALS[action])
+      elif action == "install":
+        if not self.store.get_bool("UpdateAvailable"):
+          return 409, {"error": "Nenhuma versão pronta para instalar."}
+        self.store.put_bool("DoReboot", True)
+      else:
+        return 400, {"error": "Ação desconhecida."}
+      self._audit({"event": "update", "who": who.get("name", ""), "key": action, "new": branch})
+      return 200, {"ok": True}
+
   def logout(self, who: dict) -> tuple[int, dict]:
     with self.lock:
       self.store.put(phone.TOKENS_PARAM, phone.revoke_token(self._tokens(), who.get("id", "")))
@@ -359,6 +451,16 @@ def make_handler(backend: PanelBackend):
       elif path == "/api/replay/data":
         if self._who() is not None:
           self._json(*backend.replay_data(parse_qs(query).get("id", [""])[0]))
+      elif path == "/api/trips":
+        if self._who() is not None:
+          self._json(*backend.trips_list())
+      elif path == "/api/trip/segment":
+        if self._who() is not None:
+          q = parse_qs(query)
+          self._json(*backend.trip_data(q.get("route", [""])[0], q.get("n", [""])[0]))
+      elif path == "/api/update":
+        if self._who() is not None:
+          self._json(200, backend.update_state())
       else:
         self._json(404, {"error": "Não encontrado."})
 
@@ -377,6 +479,7 @@ def make_handler(backend: PanelBackend):
         "/api/mark/classify": lambda who, b: backend.classify(who, str(b.get("id", "")), str(b.get("reason", "")), b.get("note", "")),
         "/api/reasons": lambda who, b: backend.add_reason(who, str(b.get("label", ""))),
         "/api/reasons/remove": lambda who, b: backend.remove_reason(who, str(b.get("key", ""))),
+        "/api/update": lambda who, b: backend.update_action(who, str(b.get("action", "")), str(b.get("branch", ""))),
       }
       if path not in routes and path != "/api/logout":
         self._json(404, {"error": "Não encontrado."})

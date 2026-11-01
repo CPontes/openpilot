@@ -99,6 +99,11 @@
       </div>
       <span class="status" id="vehicleBadge"></span>
     </div>
+    <a class="card row" href="/viagens" style="text-decoration:none;color:inherit">
+      <div class="text"><div class="title">Ver como foi a viagem</div>
+        <div class="desc">Resumo e caminho, com as marcas. Arraste para percorrer o trajeto. Abre com o carro desligado.</div></div>
+      <span class="status ok">abrir</span>
+    </a>
     <a class="card row" href="/replay" style="text-decoration:none;color:inherit">
       <div class="text"><div class="title">Assistir viagens gravadas</div>
         <div class="desc">Replay com a linha do tempo marcada: bandeiras, força no limite, balanço, alertas. Abre com o carro desligado.</div></div>
@@ -124,6 +129,19 @@
     </div>
     <div class="card"><ul class="audit" id="markList"></ul></div>
     <div id="groups"></div>
+    <h2>Atualização</h2>
+    <div class="card">
+      <div class="title" id="updNow">—</div>
+      <div class="desc" id="updDesc"></div>
+      <label class="field" for="updBranch">Versão</label>
+      <select id="updBranch"></select>
+      <div class="rowlinks">
+        <button id="updCheck">Verificar</button>
+        <button id="updDownload">Baixar</button>
+        <button id="updInstall">Instalar</button>
+      </div>
+      <div class="note" id="updNote"></div>
+    </div>
     <h2>Últimas mudanças</h2>
     <div class="card"><ul class="audit" id="audit"></ul></div>
     <button class="link" id="logoutBtn">Desconectar este celular</button>
@@ -167,6 +185,7 @@ function show(which) {
   if (which === "panel") timer = setInterval(refresh, 3000);
 }
 
+const UPDATE_ACTIONS = { check: "verificou", download: "baixou", install: "instalou", branch: "escolheu" };
 const EVENTS = { paired: "pareou", logout: "desconectou", pin_locked: "código bloqueado por tentativas erradas",
                  reason_added: "adicionou motivo", reason_removed: "removeu motivo" };
 function auditText(a) {
@@ -178,6 +197,7 @@ function auditText(a) {
     return `${when} · ${who}${name}: ${a.old} → ${a.new}`;
   }
   if (a.event === "denied") return `${when} · ${who}${name}: recusado (${a.reason})`;
+  if (a.event === "update") return `${when} · ${who}atualização: ${UPDATE_ACTIONS[a.key] || a.key}${a.new ? " " + a.new : ""}`;
   if (a.event === "reason_added") return `${when} · ${who}adicionou o motivo "${a.new}"`;
   return `${when} · ${who}${EVENTS[a.event] || a.event}`;
 }
@@ -306,12 +326,45 @@ async function doMark(reason, btn) {
   refreshMarks();
 }
 
+function versionText(v) { return v.branch ? `${v.branch} (${v.commit}), ${v.date}` : "—"; }
+
+async function refreshUpdate() {
+  const r = await api("/api/update");
+  if (r.status !== 200) return;
+  const u = r.data;
+  $("updNow").textContent = "Instalada: " + versionText(u.current);
+  const busy = u.state && u.state !== "idle";
+  let desc = u.ready ? "Pronta para instalar: " + versionText(u.new) : "Nenhuma versão nova pronta.";
+  if (u.fetch_available) desc = "Tem versão nova para baixar.";
+  if (busy) desc = "Atualizador: " + u.state;
+  if (u.failed) desc += ` Falhou ${u.failed} vez(es): confira a internet do comma.`;
+  $("updDesc").textContent = desc;
+  const sel = $("updBranch");
+  if (document.activeElement !== sel && sel.dataset.list !== u.branches.join() + u.target) {
+    sel.dataset.list = u.branches.join() + u.target;
+    sel.replaceChildren();
+    for (const b of u.branches) { const o = document.createElement("option"); o.value = o.textContent = b; o.selected = b === u.target; sel.append(o); }
+  }
+  sel.disabled = !u.allowed || busy;
+  $("updCheck").disabled = !u.allowed || busy;
+  $("updDownload").disabled = !u.allowed || busy || !u.fetch_available;
+  $("updInstall").disabled = !u.allowed || busy || !u.ready;
+  $("updNote").textContent = u.allowed ? "" : u.reason;
+}
+
+async function updateAction(action, branch) {
+  const r = await api("/api/update", { action, branch });
+  toast(r.status === 200 ? "Pedido enviado ao comma." : (r.data.error || "Não foi possível."));
+  refreshUpdate();
+}
+
 async function refreshMarks() {
   const r = await api("/api/marks");
   if (r.status === 200) renderMarks(r.data);
 }
 
 async function refresh() {
+  refreshUpdate();
   if (!token) { show("pair"); return; }
   try {
     const r = await api("/api/state");
@@ -371,6 +424,12 @@ $("logoutBtn").addEventListener("click", async () => {
 });
 
 refresh();
+$("updCheck").addEventListener("click", () => updateAction("check"));
+$("updDownload").addEventListener("click", () => updateAction("download"));
+$("updInstall").addEventListener("click", () => {
+  if (confirm("Instalar agora? O comma reinicia e compila: pode levar alguns minutos.")) updateAction("install");
+});
+$("updBranch").addEventListener("change", (e) => updateAction("branch", e.target.value));
 </script>
 </body>
 </html>

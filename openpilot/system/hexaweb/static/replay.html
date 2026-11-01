@@ -124,16 +124,16 @@ async function loadList() {
   const sel = $("seg"); sel.replaceChildren();
   for (const s of r.body.segments) { const o = document.createElement("option"); o.value = s.id; o.textContent = s.label || s.id; sel.appendChild(o); }
   if (!r.body.segments.length) { showMsg("Nenhum trecho gravado encontrado."); return; }
-  const want = new URLSearchParams(location.search).get("id");
+  const query = new URLSearchParams(location.search), want = query.get("id");
   if (want) sel.value = want;
-  loadSeg(sel.value);
+  loadSeg(sel.value, Number(query.get("t")) || 0);
 }
 
-async function loadSeg(id) {
+async function loadSeg(id, start = 0) {
   showMsg("Carregando…");
   const r = await get("/api/replay/data?id=" + encodeURIComponent(id));
   if (r.status !== 200) { showMsg(r.body.error || "Não foi possível abrir o trecho."); return; }
-  data = r.body; t = 0; idx = 0; playing = false; $("playBtn").textContent = "▶ tocar";
+  data = r.body; t = start; idx = 0; playing = false; $("playBtn").textContent = "▶ tocar";
   const s = data.summary, c = s.counts || {};
   $("summary").textContent = `${fmt(data.duration)} · openpilot dirigindo ${s.lat_pct}% · máx ${Math.round(s.v_max)} km/h · ` +
     Object.keys(KINDS).filter(k => c[k]).map(k => `${c[k]} ${KINDS[k][0]}`).join(" · ");
