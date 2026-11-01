@@ -91,7 +91,7 @@ def test_you_driving_and_why_it_does_not_engage():
 
 # ----- the comma card, car off
 
-HEALTH = {"device": {"temp": 48, "thermal": "green", "free": 57}, "down": [], "learned": {}, "commit": "abc1234"}
+HEALTH = {"device": {"temp": 48, "thermal": "ok", "free": 57}, "down": [], "learned": {}, "commit": "abc1234"}
 
 
 def test_comma_ok_says_what_it_checked_and_never_that_the_car_is_ready():
@@ -102,8 +102,14 @@ def test_comma_ok_says_what_it_checked_and_never_that_the_car_is_ready():
   assert {i["text"] for i in info} == {"Versão {versao}", "Aprendizado aparece depois de dirigir"}  # not checks
 
 
+def test_comma_temperature_follows_the_status_of_the_comma():
+  for thermal, ok in (("ok", True), ("overheated", False), ("critical", False)):
+    c = run("commaChecks", True, {**HEALTH, "device": {"temp": 69, "thermal": thermal, "free": 57}})
+    assert next(i["ok"] for i in c["items"] if "{graus}" in i["text"]) is ok
+
+
 def test_comma_problems():
-  c = run("commaChecks", True, {**HEALTH, "down": ["modeld"], "device": {"temp": 80, "thermal": "red", "free": 4}})
+  c = run("commaChecks", True, {**HEALTH, "down": ["modeld"], "device": {"temp": 80, "thermal": "overheated", "free": 4}})
   assert c["title"] == "Atenção no comma" and c["cls"] == "att"
   assert [i["ok"] for i in c["items"] if i["ok"] is not None] == [False, False, False]
   assert run("commaChecks", False, HEALTH)["title"] == "Sem dados do comma"

@@ -55,7 +55,7 @@
     const d = h.device, n = h.learned || {}, items = [];
     if (h.down) items.push(h.down.length ? { ok: false, text: T("Processo parado: {nomes}"), vars: { nomes: h.down.join(", ") } } : { ok: true, text: T("Processos rodando") });
     if (d.temp !== undefined) {
-      const ok = ["green", "yellow"].includes(d.thermal || "green");
+      const ok = !["overheated", "critical"].includes(d.thermal);  // deviceState.thermalStatus
       items.push({ ok, text: ok ? T("Comma {graus} °C") : T("Comma quente: {graus} °C"), vars: { graus: d.temp } });
     }
     if (d.free !== undefined) items.push({ ok: d.free >= 10, text: d.free >= 10 ? T("Disco {livre}% livre") : T("Disco quase cheio: {livre}% livre"), vars: { livre: d.free } });
