@@ -1,0 +1,11 @@
+{
+  "name": "Hexa",
+  "short_name": "Hexa",
+  "description": "Painel do comma: estado e opções do fork Hexa",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#101418",
+  "theme_color": "#101418"
+}
