@@ -347,3 +347,19 @@ def test_options_missing_from_this_build_are_neither_shown_nor_writable(panel):
   assert status == 200 and "AlwaysOnLateral" not in keys and "LaneOffsetEnabled" in keys
   assert panel.json("/api/option", {"key": "AlwaysOnLateral", "value": True}, token=token)[0] == 404
   assert panel.store.get("AlwaysOnLateral") is None
+
+
+def test_serve_survives_a_busy_port(monkeypatch):
+  # a dead process disengages openpilot, so a failed server must keep trying
+  calls = []
+
+  def fail(backend):
+    calls.append(backend)
+    if len(calls) == 3:
+      raise KeyboardInterrupt  # how the manager stops a process
+    raise OSError("port busy")
+
+  monkeypatch.setattr(hexaweb, "make_server", fail)
+  with pytest.raises(KeyboardInterrupt):
+    hexaweb.serve("backend", retry=0)
+  assert len(calls) == 3

@@ -30,6 +30,7 @@ STATIC_FILES = {
 }
 REPLAY_CACHE = 3
 GZIP_MIN_BYTES = 16 * 1024  # segments kept in memory
+SERVE_RETRY = 5.  # s between tries when the port can't be opened
 SECURITY_HEADERS = {
   "Cache-Control": "no-store",
   "X-Content-Type-Options": "nosniff",
@@ -399,6 +400,19 @@ def make_server(backend: PanelBackend, host: str = "0.0.0.0", port: int = phone.
   return server
 
 
+def serve(backend: PanelBackend, retry: float = SERVE_RETRY) -> None:
+  # selfdrived takes a dead process as a system fault and disengages: the panel must never go down with the car
+  from openpilot.common.swaglog import cloudlog
+  while True:
+    try:
+      server = make_server(backend)
+      cloudlog.info(f"hexaweb: serving on port {phone.PORT}")
+      server.serve_forever()
+    except Exception:
+      cloudlog.exception("hexaweb: server failed, trying again")
+      time.sleep(retry)
+
+
 def main():
   from openpilot.cereal import messaging
   from openpilot.common.params import Params
@@ -434,9 +448,7 @@ def main():
         backend.on_bookmark(bookmarks.logMonoTime["userBookmark"])
 
   threading.Thread(target=watch_bookmarks, daemon=True).start()
-  server = make_server(backend)
-  cloudlog.info(f"hexaweb: serving on port {phone.PORT}")
-  server.serve_forever()
+  serve(backend)
 
 
 if __name__ == "__main__":
