@@ -114,18 +114,18 @@ class TestLaneOffset:
   def test_correction_direction(self):
     lo = LaneOffset()
     hold(lo, -0.35, HOLD_TIME + 0.1)
-    # model pulls the car back to center: correction must steer left (positive curvature)
-    assert lo.update(True, True, car_state(), model(-0.1)) > 0
+    # model pulls the car back to center: correction must steer left (negative curvature)
+    assert lo.update(True, True, car_state(), model(-0.1)) < 0
     # car went too far left: steer right
     lo.target = lo.learned
-    assert lo.update(True, True, car_state(), model(-0.5)) < 0
+    assert lo.update(True, True, car_state(), model(-0.5)) > 0
 
   def test_converges_without_jump(self):
     lo = LaneOffset()
     hold(lo, -0.35, HOLD_TIME + 0.1)
     # right after learning, the car is where the target starts: only the small feedforward that holds it there
     correction = lo.update(True, True, car_state(), model(-0.35))
-    assert 0 < correction < 5e-4
+    assert -5e-4 < correction < 0
 
   def test_reset_on_disengage_and_lane_change(self):
     lo = LaneOffset()
@@ -142,3 +142,83 @@ class TestLaneOffset:
       lo.update(True, True, car_state(pressed=True), model(-0.35, prob=0.1))
     lo.update(True, True, car_state(), model(-0.35, prob=0.1))
     assert lo.learned == 0.0
+
+
+class Road:
+  """Straight lane with the signs and the pull of the real car, measured on rlogs of the H6 GT:
+  positive curvature turns right, the model pulls back to center with PULL_POSITION and PULL_HEADING."""
+  PULL_POSITION = 1.03e-3  # 1/m per m
+  PULL_HEADING = 65e-3     # 1/m per rad
+  LAG = 0.3                # s
+
+  def __init__(self, position=0., v_ego=15.):
+    self.position = position
+    self.heading = 0.
+    self.curvature = 0.
+    self.v_ego = v_ego
+
+  def step(self, correction):
+    desired = -self.PULL_POSITION * self.position - self.PULL_HEADING * self.heading + correction
+    self.curvature += (desired - self.curvature) * DT_CTRL / self.LAG
+    self.heading += self.v_ego * self.curvature * DT_CTRL
+    self.position += self.v_ego * self.heading * DT_CTRL
+
+
+def drive(lo, road, seconds, **kwargs):
+  positions = []
+  for _ in range(int(seconds / DT_CTRL)):
+    road.step(lo.update(True, True, car_state(v_ego=road.v_ego), model(road.position, **kwargs)))
+    positions.append(road.position)
+  return positions
+
+
+class TestClosedLoop:
+  def test_road_pulls_back_to_center_alone(self):
+    # without a correction the car must go back, or the tests below prove nothing
+    road = Road(position=0.3)
+    for _ in range(int(40 / DT_CTRL)):
+      road.step(0.)
+    assert abs(road.position) < 0.05
+
+  def test_keeps_taught_position_on_both_sides(self):
+    for taught in (0.30, -0.30):
+      for v_ego in (8., 15., 25.):
+        lo = LaneOffset()
+        road = Road(position=taught, v_ego=v_ego)
+        hold(lo, taught, HOLD_TIME + 0.1, v_ego=v_ego)
+        positions = drive(lo, road, 40.)
+        side = 1 if taught > 0 else -1
+        assert min(side * p for p in positions) > 0.1, "must not go through the center"
+        assert max(side * p for p in positions) < 0.45, "must not run away from the target"
+        assert abs(positions[-1] - taught) < 0.05
+
+  def test_goes_back_to_center_when_taught_center(self):
+    for side in (1, -1):
+      lo = LaneOffset()
+      road = Road(position=side * 0.3)
+      hold(lo, road.position, HOLD_TIME + 0.1)
+      hold(lo, side * 0.05, HOLD_TIME + 0.1)
+      road.position = side * 0.05
+      assert lo.learned == 0.0
+      assert max(abs(p) for p in drive(lo, road, 20.)) < 0.1
+
+  def test_narrow_lane_keeps_the_car_inside_the_limit(self):
+    for side in (1, -1):
+      lo = LaneOffset()
+      road = Road(position=side * 0.45)
+      hold(lo, road.position, HOLD_TIME + 0.1)
+      assert abs(lo.learned - side * 0.45) < 1e-6
+      positions = drive(lo, road, 40., lane_width=3.0)
+      assert abs(positions[-1] - side * 0.35) < 0.05
+      assert max(side * p for p in positions) < 0.47
+
+  def test_never_steers_further_out_past_the_limit(self):
+    # past the allowed offset and coming back fast: the predicted error points out, the correction must not
+    for side in (1, -1):
+      lo = LaneOffset()
+      hold(lo, side * 0.3, HOLD_TIME + 0.1)
+      lo.target = lo.learned = side * 0.3
+      lo.rate = -side * 3.
+      lo.last_position, lo.last_position_t = None, 0.
+      assert lo.update(True, True, car_state(), model(side * 0.5, lane_width=2.4)) == 0.0
+      assert lo.integral == 0.0

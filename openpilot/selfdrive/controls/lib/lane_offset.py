@@ -8,6 +8,8 @@ Holding the car back near the center restores the default (centered) behavior.
 
 Frames: model laneLines are in the calibrated frame, y positive to the right.
 Offsets here use the same convention: positive = car right of lane center.
+Curvature follows the model too: positive turns right. Both measured on the road
+against GPS and the steering wheel, not assumed.
 """
 import numpy as np
 
@@ -85,7 +87,7 @@ class LaneOffset:
     return float(np.clip(offset, -max_offset, max_offset))
 
   def update(self, enabled: bool, lat_active: bool, CS, model_v2) -> float:
-    """Returns the curvature correction (1/m, positive = left) to add to the desired curvature."""
+    """Returns the curvature correction (1/m, positive = right) to add to the desired curvature."""
     lane_changing = model_v2.meta.laneChangeState != LaneChangeState.off
     if not enabled or lane_changing:
       self.reset()
@@ -144,10 +146,10 @@ class LaneOffset:
     predicted_error = target - (self.position + self.rate * DAMPING_TIME)
 
     lookahead = max(CS.vEgo * LOOKAHEAD_TIME, MIN_LOOKAHEAD)
-    # pure pursuit, positive curvature turns left:
+    # pure pursuit, positive curvature turns right:
     # - feedforward cancels the model pulling the car back to the lane center at the target offset
     # - feedback on the error to the target, integral for the mismatch between both
-    correction = -2. * (FEEDFORWARD * target + predicted_error + self.integral) / lookahead ** 2
+    correction = 2. * (FEEDFORWARD * target + predicted_error + self.integral) / lookahead ** 2
 
     # never push the car further out once it is past the allowed offset
     if abs(self.position) > abs(self._limit(self.position)) + 0.05:
