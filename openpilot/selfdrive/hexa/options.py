@@ -62,9 +62,8 @@ OPTIONS: tuple[HexaOption, ...] = (
     group="direcao",
     title="direção sempre ativa",
     description="O freio pausa só o acelerador e o freio do ACC; a direção continua.\n" +
-                "Puxe a alavanca para voltar o ACC. O cancelar desliga tudo.",
+                "Em teste: depois de frear, o volante segue ativo. Puxe a alavanca para voltar o ACC. Só o cancelar desliga a direção.",
     restart_needed=True,
-    blocked="the cancel is the only way out with this on: 1 of the 5 tries asked for so far (STATE-01)",
   ),
   HexaOption(
     key="LaneOffsetEnabled",

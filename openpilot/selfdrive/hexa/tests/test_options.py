@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from openpilot.selfdrive.hexa import options
 from openpilot.selfdrive.hexa.options import GROUP_KEYS, OPTIONS, HexaOption, get_option, is_on, options_in_group, supported
 
 PARAMS_KEYS_H = Path(__file__).parents[3] / "common" / "params_keys.h"
@@ -77,8 +78,11 @@ def test_option_without_its_param_in_this_build_is_hidden():
   assert all(supported(o, object()) for o in OPTIONS if not o.blocked)
 
 
-def test_always_on_lateral_stays_hidden_until_the_cancel_is_proven():
-  assert not supported(get_option("AlwaysOnLateral"), object())
+def test_always_on_lateral_is_offered_and_starts_off():
+  opt = get_option("AlwaysOnLateral")
+  assert supported(opt, object()) and not opt.blocked and opt.default is False and opt.restart_needed
+  assert is_on(Stored(), "AlwaysOnLateral") is False
+  assert is_on(Stored(AlwaysOnLateral=True), "AlwaysOnLateral") is True
 
 
 class Stored:
@@ -89,9 +93,10 @@ class Stored:
     return self.values.get(key, False)
 
 
-def test_a_blocked_option_stays_off_even_if_it_was_on():
-  assert get_option("AlwaysOnLateral").blocked
-  assert is_on(Stored(AlwaysOnLateral=True), "AlwaysOnLateral") is False
+def test_a_blocked_option_stays_off_even_if_it_was_on(monkeypatch):
+  blocked = HexaOption(key="AutoResume", group="velocidade", title="x", description="x", blocked="not proven")
+  monkeypatch.setattr(options, "get_option", lambda key: blocked)
+  assert is_on(Stored(AutoResume=True), "AutoResume") is False
 
 
 def test_a_normal_option_reads_its_param():
