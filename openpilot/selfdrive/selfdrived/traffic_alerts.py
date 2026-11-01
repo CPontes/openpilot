@@ -11,7 +11,7 @@ LEAD_DEPART_DISTANCE = 3.  # m, over the vision distance noise at a stop: 2.3 m 
 LEAD_DEPART_SPEED = .5  # m/s
 LEAD_DEPART_TIME = .5  # s
 
-AUTO_RESUME_MAX_STOP = 60.  # s, after this long the street in front may be another one. Longest stop in the logs: 62.8 s
+AUTO_RESUME_MAX_STOP = 180.  # s, a 2 min red light plus the queue ahead. Longest engaged stop in the logs: 93 s, the ACC still waiting
 AUTO_RESUME_REQUEST = .5  # s, it has to outlast the messages between here and the car port
 
 

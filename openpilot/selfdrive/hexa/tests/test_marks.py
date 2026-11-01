@@ -7,8 +7,14 @@ def test_default_reasons_have_unique_stable_keys():
   keys = [k for k, _ in marks.DEFAULT_REASONS]
   assert len(keys) == len(set(keys))
   assert all(r["custom"] is False for r in marks.reasons(None))
-  assert marks.reason_label(None, "balancou") == "balançou"
+  assert marks.reason_label(None, "balancou") == "balançou sem motivo"
+  assert marks.reason_label(None, "estrada") == "balançou: estrada ruim"
   assert marks.reason_label(None, "nope") is None
+
+
+def test_old_mark_keeps_its_label():
+  old = {"id": "a", "reason": "balancou", "label": "balançou"}
+  assert marks.public(old)["label"] == "balançou"
 
 
 def test_add_custom_reason():
@@ -20,7 +26,7 @@ def test_add_custom_reason():
   assert r2["key"] == "c-buraco-na-pista-2"
 
 
-@pytest.mark.parametrize("label", ["", "   ", "BALANÇOU", "curva difícil"])
+@pytest.mark.parametrize("label", ["", "   ", "BALANÇOU SEM MOTIVO", "curva difícil"])
 def test_add_reason_rejects_empty_and_duplicates(label):
   with pytest.raises(ValueError):
     marks.add_reason([], label)

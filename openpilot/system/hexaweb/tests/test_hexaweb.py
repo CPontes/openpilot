@@ -205,7 +205,7 @@ def test_phone_mark_while_driving(panel):
   status, body = panel.json("/api/mark", {"reason": "balancou", "note": " no  trânsito "}, token=token)
   assert status == 200
   m = body["mark"]
-  assert (m["reason"], m["label"], m["note"], m["source"], m["who"]) == ("balancou", "balançou", "no trânsito", "celular", "passageiro")
+  assert (m["reason"], m["label"], m["note"], m["source"], m["who"]) == ("balancou", "balançou sem motivo", "no trânsito", "celular", "passageiro")
   assert "_req_mono_ns" not in m
   assert panel.store.get(marks.BOOKMARK_REQUEST_PARAM) is True  # the comma raises its own bookmark
   assert panel.logged[-1]["reason"] == "balancou" and panel.logged[-1]["mono_ns"] is None

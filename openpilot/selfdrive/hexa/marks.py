@@ -21,7 +21,8 @@ BOOKMARK_REQUEST_PARAM = "HexaBookmarkRequest"
 
 # (key, label) in display order. Keys never change once in use: old marks keep pointing to them.
 DEFAULT_REASONS: tuple[tuple[str, str], ...] = (
-  ("balancou", "balançou"),
+  ("balancou", "balançou sem motivo"),
+  ("estrada", "balançou: estrada ruim"),
   ("curva", "curva difícil"),
   ("soltou", "soltou sozinho"),
   ("freada", "freada estranha"),
