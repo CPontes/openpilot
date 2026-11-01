@@ -143,6 +143,73 @@ class TestLaneOffset:
     lo.update(True, True, car_state(), model(-0.35, prob=0.1))
     assert lo.learned == 0.0
 
+  def test_short_list_of_lane_lines(self):
+    lo = LaneOffset()
+    two_lines = SimpleNamespace(laneLines=[None, None], laneLineProbs=[0.9, 0.9], meta=model(0.).meta, action=model(0.).action)
+    assert lo.update(True, True, car_state(), two_lines) == 0.0
+    assert not lo.valid
+    empty = model(0.)
+    empty.laneLines[2] = SimpleNamespace(y=[])
+    lo.update(True, True, car_state(), empty)
+    assert not lo.valid
+    fewer_probs = model(0.)
+    fewer_probs.laneLineProbs = [0.9, 0.9]
+    lo.update(True, True, car_state(), fewer_probs)
+    assert not lo.valid
+
+  def test_one_weak_line_is_enough_to_stop(self):
+    for probs in ([0., 0.1, 0.9, 0.], [0., 0.9, 0.1, 0.]):
+      lo = LaneOffset()
+      weak = model(0.)
+      weak.laneLineProbs = probs
+      lo.update(True, True, car_state(), weak)
+      assert not lo.valid
+
+  def test_needs_speed(self):
+    lo = LaneOffset()
+    lo.update(True, True, car_state(v_ego=2.9), model(0.))
+    assert not lo.valid
+    lo.update(True, True, car_state(v_ego=3.1), model(0.))
+    assert lo.valid
+
+  def test_gentle_curve_still_learns(self):
+    # 0.3 m/s^2 is below the limit: a hold there is a chosen position
+    lo = LaneOffset()
+    for _ in range(int((HOLD_TIME + 0.1) / DT_CTRL)):
+      lo.update(True, True, car_state(pressed=True), model(-0.35, curvature=0.3 / 15. ** 2))
+    let_go(lo, -0.35, curvature=0.3 / 15. ** 2)
+    assert abs(lo.learned + 0.35) < 1e-6
+
+  def _taught(self):
+    lo = LaneOffset()
+    hold(lo, -0.35, HOLD_TIME + 0.1)
+    return lo, lo.update(True, True, car_state(), model(-0.1))
+
+  def test_correction_fades_when_lanes_are_lost(self):
+    lo, correction = self._taught()
+    faded = lo.update(True, True, car_state(), model(-0.1, prob=0.1))
+    assert abs(faded) == abs(correction) * 0.98
+    for _ in range(300):
+      faded = lo.update(True, True, car_state(), model(-0.1, prob=0.1))
+    assert abs(faded) < abs(correction) * 0.01
+
+  def test_correction_fades_when_lateral_is_off(self):
+    lo, correction = self._taught()
+    assert abs(lo.update(True, False, car_state(), model(-0.1))) == abs(correction) * 0.98
+
+  def test_correction_fades_while_the_driver_steers(self):
+    lo, correction = self._taught()
+    assert abs(lo.update(True, True, car_state(pressed=True), model(-0.1))) == abs(correction) * 0.98
+
+  def test_correction_ends_after_going_back_to_center(self):
+    lo = LaneOffset()
+    hold(lo, -0.35, HOLD_TIME + 0.1)
+    hold(lo, 0.05, HOLD_TIME + 0.1)
+    assert lo.learned == 0.0 and lo.target != 0.0
+    for _ in range(100):
+      lo.update(True, True, car_state(), model(0.05))
+    assert lo.target == 0.0 and lo.update(True, True, car_state(), model(0.05)) == 0.0
+
 
 class Road:
   """Straight lane with the signs and the pull of the real car, measured on rlogs of the H6 GT:
@@ -222,3 +289,9 @@ class TestClosedLoop:
       lo.last_position, lo.last_position_t = None, 0.
       assert lo.update(True, True, car_state(), model(side * 0.5, lane_width=2.4)) == 0.0
       assert lo.integral == 0.0
+
+  def test_steers_back_when_past_the_limit(self):
+    for side in (1, -1):
+      lo = LaneOffset()
+      hold(lo, side * 0.3, HOLD_TIME + 0.1)
+      assert side * lo.update(True, True, car_state(), model(side * 0.5, lane_width=2.4)) < 0
