@@ -85,6 +85,11 @@ def test_always_on_lateral_is_offered_and_starts_off():
   assert is_on(Stored(AlwaysOnLateral=True), "AlwaysOnLateral") is True
 
 
+def test_bump_slowdown_is_offered_and_starts_off():
+  opt = get_option("BumpSlowdown")
+  assert opt.default is False and opt.restart_needed and opt.driving and not opt.blocked
+
+
 class Stored:
   def __init__(self, **values):
     self.values = values

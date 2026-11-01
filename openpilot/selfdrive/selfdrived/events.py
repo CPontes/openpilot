@@ -512,6 +512,14 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
     ET.PERMANENT: radar_ahead_alert,
   },
 
+  EventName.bumpSlowdown: {
+    ET.PERMANENT: Alert(
+      "Reduzindo para a lombada",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOWEST, VisualAlert.none, AudibleAlert.none, .2),
+  },
+
   EventName.autoResume: {
     ET.PERMANENT: Alert(
       "Saindo sozinho",

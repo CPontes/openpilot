@@ -17,6 +17,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"AthenadUploadQueue", {PERSISTENT, JSON}},
     {"AthenadRecentlyViewedRoutes", {PERSISTENT, STRING}},
     {"AutoResume", {PERSISTENT, BOOL, "0"}},
+    {"BumpSlowdown", {PERSISTENT, BOOL, "0"}},
     {"AutoLaneChange", {PERSISTENT, BOOL, "0"}},
     {"AutoLaneChangeDelay", {PERSISTENT, INT, "1"}},
     {"BootCount", {PERSISTENT, INT}},

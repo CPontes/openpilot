@@ -14,6 +14,12 @@ LEAD_DEPART_TIME = .5  # s
 AUTO_RESUME_MAX_STOP = 180.  # s, a 2 min red light plus the queue ahead. Longest engaged stop in the logs: 93 s, the ACC still waiting
 AUTO_RESUME_REQUEST = .5  # s, it has to outlast the messages between here and the car port
 
+BUMP_MIN_SPEED = 30.  # km/h, the ACC is never set lower. 12 routes
+BUMP_MAX_SPEED = 90.  # km/h, faster than this the point is probably wrong
+BUMP_MAX_DROP = 30.  # km/h, 6 presses: what the panda allows in a minute
+BUMP_MAX_TIME = 60.  # s
+BUMP_NO_RESPONSE = 2.5  # s, about 5 presses that didn't move the set speed
+
 
 class LeadDepartAlert:
   """Warns, once per stop, that the car ahead pulled away. It only warns: it never moves the car."""
@@ -61,6 +67,45 @@ def driver_attentive(dm) -> bool:
   vision = dm.visionPolicyState
   return bool(dm.activePolicy == log.DriverMonitoringState.MonitoringPolicy.vision and dm.alertLevel == log.DriverMonitoringState.AlertLevel.none and
               vision.faceDetected and not vision.isDistracted)
+
+
+class BumpSlowdown:
+  """Takes the ACC down to the speed set for a bump, a press at a time. It only goes down: the driver raises it again.
+
+  Anything unusual ends it for this bump, and the warning stays. Below BUMP_MIN_SPEED it never starts: the ACC can't go there.
+  """
+  def __init__(self, dt: float = DT_CTRL):
+    self.dt = dt
+    self.reset()
+
+  def reset(self) -> None:
+    self.target: float | None = None
+    self.set_prev: float | None = None
+    self.frames = 0
+    self.stuck_frames = 0
+
+  def start(self, target: float, speed: float) -> bool:
+    if self.target is not None or target < BUMP_MIN_SPEED or speed > BUMP_MAX_SPEED:
+      return False
+    self.target = float(target)
+    self.frames = round(BUMP_MAX_TIME / self.dt)
+    return True
+
+  def update(self, enabled: bool, set_speed: float, gas_pressed: bool, brake_pressed: bool) -> bool:
+    if self.target is None:
+      return False
+    self.frames -= 1
+    if self.set_prev is None:
+      self.target = max(self.target, set_speed - BUMP_MAX_DROP)
+    else:
+      self.stuck_frames = 0 if set_speed < self.set_prev else self.stuck_frames + 1
+    raised = self.set_prev is not None and set_speed > self.set_prev
+    stuck = self.stuck_frames * self.dt >= BUMP_NO_RESPONSE
+    if not enabled or gas_pressed or brake_pressed or raised or stuck or self.frames <= 0 or set_speed <= self.target:
+      self.reset()
+      return False
+    self.set_prev = set_speed
+    return True
 
 
 class AutoResume:

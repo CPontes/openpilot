@@ -1,7 +1,8 @@
 from pathlib import Path
 
 from openpilot.cereal import log
-from openpilot.selfdrive.selfdrived.traffic_alerts import AUTO_RESUME_MAX_STOP, AUTO_RESUME_REQUEST, LEAD_DEPART_DISTANCE, LEAD_DEPART_SPEED, \
+from openpilot.selfdrive.selfdrived.traffic_alerts import AUTO_RESUME_MAX_STOP, BUMP_MAX_DROP, BUMP_MAX_SPEED, BUMP_MAX_TIME, BUMP_MIN_SPEED, \
+  BUMP_NO_RESPONSE, BumpSlowdown, AUTO_RESUME_REQUEST, LEAD_DEPART_DISTANCE, LEAD_DEPART_SPEED, \
                                                          AutoResume, LeadDepartAlert, driver_attentive
 
 DT = .01
@@ -193,3 +194,65 @@ def test_the_phone_panel_never_counts_as_a_driving_process():
   assert 'NON_DRIVING_PROCESSES = {"hexaweb"}' in source
   assert "if not p.running and p.shouldBeRunning} - NON_DRIVING_PROCESSES" in source
 
+
+class Bump:
+  def __init__(self, target=30, speed=60.):
+    self.b = BumpSlowdown(dt=.01)
+    self.started = self.b.start(target, speed)
+
+  def run(self, set_speed, seconds=.01, enabled=True, gas=False, brake=False):
+    return sum(self.b.update(enabled, set_speed, gas, brake) for _ in range(round(seconds / .01)))
+
+
+def test_bump_asks_until_the_target():
+  bump = Bump()
+  assert bump.started and bump.run(60) == 1 and bump.run(55) == 1 and bump.run(35) == 1
+  assert bump.run(30) == 0
+  assert bump.run(60) == 0  # done for this bump
+
+
+def test_bump_never_below_what_the_acc_can_do():
+  assert not Bump(target=BUMP_MIN_SPEED - 1).started
+  assert Bump(target=BUMP_MIN_SPEED).started
+
+
+def test_bump_ignores_a_fast_car():
+  assert not Bump(speed=BUMP_MAX_SPEED + 1).started
+
+
+def test_bump_never_drops_more_than_the_panda_allows():
+  bump = Bump()
+  assert bump.run(90) == 1 and bump.b.target == 90 - BUMP_MAX_DROP
+
+
+def test_bump_ends_with_a_pedal_or_disengaged():
+  for stop in ({"gas": True}, {"brake": True}, {"enabled": False}):
+    bump = Bump()
+    assert bump.run(60) == 1 and bump.run(55, **stop) == 0
+    assert bump.run(55) == 0
+
+
+def test_bump_ends_when_the_driver_raises_the_speed():
+  bump = Bump()
+  assert bump.run(60) == 1 and bump.run(65) == 0 and bump.run(60) == 0
+
+
+def test_bump_gives_up_if_the_acc_does_not_answer():
+  bump = Bump()
+  assert 0 < bump.run(60, BUMP_NO_RESPONSE + 1) < round((BUMP_NO_RESPONSE + .1) / .01)
+  assert bump.run(60) == 0
+
+
+def test_bump_has_a_time_limit():
+  bump = Bump()
+  speeds = 0
+  for i in range(round((BUMP_MAX_TIME + 1) / .01)):
+    speeds += bump.b.update(True, 1000 - i * .01, False, False)
+  assert speeds < round(BUMP_MAX_TIME / .01) + 1 and bump.b.target is None
+
+
+def test_a_second_bump_does_not_restart_the_first():
+  bump = Bump()
+  frames = bump.b.frames
+  bump.run(60, 1.)
+  assert bump.b.start(40, 60.) is False and bump.b.target == 30 and bump.b.frames < frames

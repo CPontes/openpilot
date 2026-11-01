@@ -22,7 +22,7 @@ from openpilot.selfdrive.selfdrived.events import Events, ET
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
 from openpilot.selfdrive.selfdrived.always_on_lateral import LongitudinalPause
-from openpilot.selfdrive.selfdrived.traffic_alerts import AutoResume, LeadDepartAlert, driver_attentive
+from openpilot.selfdrive.selfdrived.traffic_alerts import AutoResume, BumpSlowdown, LeadDepartAlert, driver_attentive
 from openpilot.selfdrive.hexa import radars
 from opendbc.car.gwm.values import GwmSafetyFlags
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
@@ -117,6 +117,8 @@ class SelfdriveD:
     # the panda only lets the pull out with the same flag
     self.auto_resume = AutoResume() if self.CP.brand == 'gwm' and len(self.CP.safetyConfigs) > 0 and \
                                        bool(self.CP.safetyConfigs[-1].safetyParam & GwmSafetyFlags.AUTO_RESUME) else None
+    self.bump_slowdown = BumpSlowdown() if self.CP.brand == 'gwm' and len(self.CP.safetyConfigs) > 0 and \
+                         bool(self.CP.safetyConfigs[-1].safetyParam & GwmSafetyFlags.ACC_MINUS) else None
     self.radar_watch = None
     if self.params.get_bool("RadarAlert"):
       try:
@@ -233,6 +235,9 @@ class SelfdriveD:
     # Don't add any more events while in dashcam mode
     if self.CP.passive:
       return
+
+    if self.bump_slowdown is not None and self.bump_slowdown.update(self.enabled, CS.cruiseState.speedCluster * 3.6, CS.gasPressed, CS.brakePressed):
+      self.events.add(EventName.bumpSlowdown)
 
     if self.auto_resume is not None:
       lead = self.sm['radarState'].leadOne
@@ -615,6 +620,8 @@ class SelfdriveD:
     if hit is not None:
       radars.last_hit = hit
       self.events.add(EventName.radarAhead)
+      if self.bump_slowdown is not None and hit["kind"] == radars.BUMP and hit["limit"] is not None:
+        self.bump_slowdown.start(hit["limit"], gps.speed * 3.6)
 
   def params_thread(self, evt):
     while not evt.is_set():

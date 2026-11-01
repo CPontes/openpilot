@@ -116,6 +116,14 @@ OPTIONS: tuple[HexaOption, ...] = (
     restart_needed=True,
   ),
   HexaOption(
+    key="BumpSlowdown",
+    group="velocidade",
+    title="reduzir na lombada",
+    description="Antes de uma lombada marcada, o comma toca o − do ACC até a velocidade que você escolheu, de 30 km/h para cima. Abaixo disso, só avisa.\n" +
+                "Em teste: fique pronto para frear. Precisa do aviso de radar e lombada ligado. Depois da lombada, suba com o + da alavanca.",
+    restart_needed=True,
+  ),
+  HexaOption(
     key="LeadDepartAlert",
     group="avisos",
     title="aviso de carro da frente saiu",

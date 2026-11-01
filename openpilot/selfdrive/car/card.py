@@ -125,6 +125,9 @@ class Car:
       if self.params.get_bool("AutoResume"):
         # one pull of the stalk per stop, after the car ahead left
         self.CP.safetyConfigs[-1].safetyParam |= GwmSafetyFlags.AUTO_RESUME.value
+      if self.params.get_bool("BumpSlowdown"):
+        # the minus button of the ACC, at a speed bump. Never the plus
+        self.CP.safetyConfigs[-1].safetyParam |= GwmSafetyFlags.ACC_MINUS.value
 
     if self.CP.secOcRequired:
       # Copy user key if available
