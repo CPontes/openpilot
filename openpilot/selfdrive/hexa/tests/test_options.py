@@ -22,9 +22,17 @@ def test_every_option_is_off_by_default():
     assert o.default in (False, 0), o.key
 
 
+# test branch on top of the canal (h6gt): these features are not on this base, so their params are not
+# registered and the options stay hidden (options.supported)
+NOT_ON_THIS_BASE = {"AlwaysOnLateral", "LaneOffsetEnabled"}
+
+
 def test_every_option_is_a_registered_param():
   header = PARAMS_KEYS_H.read_text()
   for key in [o.key for o in OPTIONS] + ["HexaWebPin", "HexaWebTokens", "HexaWebAudit", "HexaMarks", "HexaMarkReasons", "HexaBookmarkRequest"]:
+    if key in NOT_ON_THIS_BASE:
+      assert not re.search(r'\{"' + re.escape(key) + r'",', header), f"{key} is registered: drop it from NOT_ON_THIS_BASE"
+      continue
     m = re.search(r'\{"' + re.escape(key) + r'", \{([^}]*)\}', header)
     assert m, f"{key} missing from params_keys.h"
     if get_option(key) is not None and get_option(key).kind == "bool":
