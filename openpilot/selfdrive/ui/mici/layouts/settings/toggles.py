@@ -25,6 +25,15 @@ class TogglesLayoutMici(NavScroller):
     ldw_toggle = BigParamControl("lane departure warnings", "IsLdwEnabled",
                                  description="Warn when you drift across a detected lane line.\n" +
                                              "Only above 31 mph (50 km/h), with no turn signal.")
+    lane_offset_toggle = BigParamControl("lane position by steering", "LaneOffsetEnabled",
+                                         description="Hold the wheel to move the car left or right in the lane.\n" +
+                                                     "After 1.5 s, let go and openpilot keeps that position.\n" +
+                                                     "Hold it back to the center to return. Resets on disengage.")
+    always_on_lateral_toggle = BigParamControl("steering stays on when braking", "AlwaysOnLateral",
+                                               toggle_callback=restart_needed_callback,
+                                               description="The brake pauses gas and braking only, openpilot keeps steering.\n" +
+                                                           "Pull the lever to resume gas and braking.\n" +
+                                                           "The cancel button turns everything off.")
     always_on_dm_toggle = BigParamControl("always-on driver monitor", "AlwaysOnDM", description="Monitor the driver even when openpilot is not engaged.")
     record_front = BigParamControl("record & upload cabin camera", "RecordFront",
                                    description_icon=gui_app.texture("icons_mici/settings/device/cameras.png", 64, 64),
@@ -42,6 +51,8 @@ class TogglesLayoutMici(NavScroller):
       self._initial_cruise_speed,
       is_metric_toggle,
       ldw_toggle,
+      lane_offset_toggle,
+      always_on_lateral_toggle,
       always_on_dm_toggle,
       record_front,
       record_mic,
@@ -52,6 +63,8 @@ class TogglesLayoutMici(NavScroller):
     self._refresh_toggles = (
       ("IsMetric", is_metric_toggle),
       ("IsLdwEnabled", ldw_toggle),
+      ("LaneOffsetEnabled", lane_offset_toggle),
+      ("AlwaysOnLateral", always_on_lateral_toggle),
       ("AlwaysOnDM", always_on_dm_toggle),
       ("RecordFront", record_front),
       ("RecordAudio", record_mic),
