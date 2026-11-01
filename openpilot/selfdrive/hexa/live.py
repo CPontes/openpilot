@@ -114,8 +114,9 @@ def snapshot(cs, sd, cc, out, lead, gps, gps_age: float, ds, car_fresh: bool, ev
     "driver": bool(cs.steeringPressed),
     "brake": bool(cs.brakePressed),
     "gas": bool(cs.gasPressed),
-    "acc": bool(cs.cruiseState.enabled),
-    "acc_set": round(cs.cruiseState.speed * 3.6) if cs.cruiseState.speed > 0 else None,
+    "acc": bool(cs.cruiseState.enabled),  # openpilot's own idea: stays on with the ACC paused by the brake in always-on steering
+    "acc_active": bool(cs.cruiseState.driving),  # the car's ACC is in control right now
+    "acc_set": round(cs.cruiseState.speedCluster * 3.6) if cs.cruiseState.speedCluster > 0 else None,
     "torque": round(100 * abs(out.actuatorsOutput.torqueOutputCan) / STEER_MAX),
     "lead": {"d": round(float(lead.dRel)), "v": round(lead.vLead * 3.6)} if lead.present else None,
     "blinker": "esquerda" if cs.leftBlinker else ("direita" if cs.rightBlinker else ""),

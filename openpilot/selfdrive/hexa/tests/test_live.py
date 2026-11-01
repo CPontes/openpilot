@@ -1,5 +1,6 @@
 from types import SimpleNamespace as NS
 
+from opendbc.car.structs import car
 from openpilot.cereal import log
 from openpilot.selfdrive.hexa import live
 
@@ -11,7 +12,7 @@ def device(started=True):
 
 def parts():
   cs = NS(vEgo=10., steeringAngleDeg=-12.4, steeringPressed=False, brakePressed=False, gasPressed=False, leftBlinker=True,
-          rightBlinker=False, leftBlindspot=False, rightBlindspot=True, cruiseState=NS(enabled=True, speed=16.7))
+          rightBlinker=False, leftBlindspot=False, rightBlindspot=True, cruiseState=NS(enabled=True, speed=-1, speedCluster=16.7, driving=True))
   sd = NS(enabled=True, alertText1="Take Control", alertText2="")
   return cs, sd, NS(latActive=True), NS(actuatorsOutput=NS(torqueOutputCan=-126)), NS(present=True, dRel=18.6, vLead=9.)
 
@@ -26,6 +27,28 @@ def test_driving():
   assert s["acc_set"] == 60 and s["lead"] == {"d": 19, "v": 32} and s["blinker"] == "esquerda"
   assert s["alert"] == "Take Control" and s["blindspot"] == {"left": False, "right": True}
   assert s["device"]["cpu"] == 15 and s["device"]["free"] == 58
+
+
+def test_acc_paused_is_not_acc_active():
+  cs, *rest = parts()
+  cs.cruiseState.driving = False
+  s = live.snapshot(cs, *rest, gps(), 1., device(), True)
+  assert s["acc"] and not s["acc_active"]
+
+
+def test_no_set_speed_shows_none():
+  cs, *rest = parts()
+  cs.cruiseState.speedCluster = 0.
+  assert live.snapshot(cs, *rest, gps(), 1., device(), True)["acc_set"] is None
+
+
+def test_acc_fields_exist_on_a_real_message():
+  msg = car.CarState.new_message()
+  msg.cruiseState.driving = True
+  msg.cruiseState.speedCluster = 20.
+  _, *rest = parts()
+  s = live.snapshot(msg, *rest, gps(), 1., device(), True)
+  assert s["acc_active"] and s["acc_set"] == 72
 
 
 def test_position_never_goes_to_the_phone():
