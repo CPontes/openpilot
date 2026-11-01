@@ -313,3 +313,23 @@ def test_replay_cache_is_bounded(replay_panel, tmp_path):
     write_rlog(d / "rlog.zst", seconds=1.0)
     assert replay_panel.json(f"/api/replay/data?id=0000000{i}--x--{i}", token=token)[0] == 200
   assert len(replay_panel.backend._replay_cache) == hexaweb.REPLAY_CACHE
+
+
+def test_replay_is_gzipped_when_the_phone_accepts_it(replay_panel):
+  import gzip
+  token = replay_panel.pair()
+  url = replay_panel.url + "/api/replay/data?id=00000007--abc--9"
+  plain = urllib.request.Request(url, headers={"Authorization": "Bearer " + token})
+  with urllib.request.urlopen(plain, timeout=5) as r:
+    assert r.headers.get("Content-Encoding") is None
+    body = r.read()
+  assert len(body) >= hexaweb.GZIP_MIN_BYTES
+  zipped = urllib.request.Request(url, headers={"Authorization": "Bearer " + token, "Accept-Encoding": "gzip, br"})
+  with urllib.request.urlopen(zipped, timeout=5) as r:
+    assert r.headers.get("Content-Encoding") == "gzip" and r.headers.get("Vary") == "Accept-Encoding"
+    assert int(r.headers["Content-Length"]) < len(body) // 3
+    assert gzip.decompress(r.read()) == body
+  # small answers stay plain
+  small = urllib.request.Request(replay_panel.url + "/api/replay/list", headers={"Authorization": "Bearer " + token, "Accept-Encoding": "gzip"})
+  with urllib.request.urlopen(small, timeout=5) as r:
+    assert r.headers.get("Content-Encoding") is None and json.loads(r.read())["segments"]

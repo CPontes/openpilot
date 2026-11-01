@@ -4,6 +4,7 @@
 Runs only while the "painel no celular" option (HexaWebEnabled) is on. Security rules live in
 openpilot/selfdrive/hexa/phone.py; this file only parses HTTP and calls PanelBackend.
 """
+import gzip
 import json
 import threading
 import time
@@ -27,7 +28,8 @@ STATIC_FILES = {
   "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
   "/replay": ("replay.html", "text/html; charset=utf-8"),
 }
-REPLAY_CACHE = 3  # segments kept in memory
+REPLAY_CACHE = 3
+GZIP_MIN_BYTES = 16 * 1024  # segments kept in memory
 SECURITY_HEADERS = {
   "Cache-Control": "no-store",
   "X-Content-Type-Options": "nosniff",
@@ -282,9 +284,16 @@ def make_handler(backend: PanelBackend):
       pass
 
     def _send(self, status: int, body: bytes, content_type: str) -> None:
+      # a replay is ~400 KB of JSON per minute and ~50 KB gzipped
+      gz = len(body) >= GZIP_MIN_BYTES and "gzip" in self.headers.get("Accept-Encoding", "")
+      if gz:
+        body = gzip.compress(body, compresslevel=5)
       self.send_response(status)
       self.send_header("Content-Type", content_type)
       self.send_header("Content-Length", str(len(body)))
+      self.send_header("Vary", "Accept-Encoding")
+      if gz:
+        self.send_header("Content-Encoding", "gzip")
       for k, v in SECURITY_HEADERS.items():
         self.send_header(k, v)
       self.end_headers()
