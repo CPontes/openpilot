@@ -31,6 +31,9 @@ OSC_MIN_P2P_DEG = 6.0
 DRIVER_TORQUE = 100  # raw units, 1 Nm
 DRIVER_REPEAT_S = 3.0  # the same driver event again within this time is the same push
 ALERT_REPEAT_S = 2.0
+TRIP_STEP_S = 2.0  # one point of the trip path
+GPS_MAX_AGE_S = 3.0
+DRIVER_MIN_S = 0.5  # on the wheel for at least this long counts as an intervention
 SKIP_ALERTS = ("Bookmark Saved",)  # already a mark event
 
 
@@ -252,3 +255,94 @@ def segment_files(log_root: str, limit: int = 200) -> list[dict]:
         break
   out.sort(key=lambda s: -s["mtime"])
   return [{"id": s["id"], "file": s["file"]} for s in out[:limit]]
+
+
+def trip_files(log_root: str, limit: int = 60) -> list[dict]:
+  """Recorded drives on the comma, newest first: [{"id": route, "mtime": s, "files": {segment: path}}]."""
+  root = Path(log_root)
+  if not root.is_dir():
+    return []
+  trips: dict[str, dict] = {}
+  for d in root.iterdir():
+    route, sep, seg = d.name.rpartition("--")
+    if not sep or not seg.isdigit() or not d.is_dir():
+      continue
+    for name in ("qlog.zst", "qlog", "qlog.bz2", "rlog.zst", "rlog", "rlog.bz2"):
+      f = d / name
+      if f.is_file():
+        trip = trips.setdefault(route, {"id": route, "mtime": 0., "files": {}})
+        trip["files"][int(seg)] = str(f)
+        trip["mtime"] = max(trip["mtime"], f.stat().st_mtime)
+        break
+  return sorted(trips.values(), key=lambda t: -t["mtime"])[:limit]
+
+
+def trip_segment(events: Iterable) -> dict:
+  """One minute of a drive for the trip page, from a qlog: much lighter than the replay.
+
+  Each path point has the GPS fix and also the step from the wheels and the steering, because the GPS can be missing.
+  """
+  points: list[dict] = []
+  out: list[dict] = []
+  t0 = last = None
+  next_point = 0.
+  en = lat = brake = False
+  curvature = 0.
+  step = dpsi = 0.
+  fix = None
+  fix_t = -1e9
+  total = {"s": 0., "km": 0., "moving_s": 0., "on_s": 0., "driver": 0, "off": 0, "marks": 0}
+  driver_since = None
+
+  for m in sorted(events, key=lambda m: m.logMonoTime):
+    w = m.which()
+    t = (m.logMonoTime - t0) / 1e9 if t0 is not None else 0.
+    if w == "userBookmark":
+      out.append({"t": _r(t), "kind": "mark", "text": "bandeira", "mono_ns": m.logMonoTime})
+      total["marks"] += 1
+    elif w == "selfdriveState":
+      enabled = m.selfdriveState.enabled
+      if en and not enabled and t0 is not None:
+        out.append({"t": _r(t), "kind": "off", "text": "desengatou no freio" if brake else "desengatou"})
+        total["off"] += 1
+      en = enabled
+    elif w == "carControl":
+      lat = m.carControl.latActive
+    elif w == "controlsState":
+      curvature = m.controlsState.curvature
+    elif w == "gpsLocationExternal":
+      g = m.gpsLocationExternal
+      if g.hasFix:
+        fix, fix_t = (round(g.latitude, 6), round(g.longitude, 6)), t
+    elif w == "carState":
+      cs = m.carState
+      if t0 is None:
+        t0 = m.logMonoTime
+        t = 0.
+      dt = min(t - last, .5) if last is not None else 0.
+      last = t
+      brake = cs.brakePressed
+      total["s"] += dt
+      total["km"] += cs.vEgo * dt / 1e3
+      step += cs.vEgo * dt
+      dpsi -= curvature * cs.vEgo * dt  # curvature is positive to the right, the page turns counterclockwise
+      if cs.vEgo > .5:
+        total["moving_s"] += dt
+        total["on_s"] += dt if lat else 0.
+      if en and cs.steeringPressed:
+        driver_since = t if driver_since is None else driver_since
+        if t - driver_since >= DRIVER_MIN_S:
+          out.append({"t": _r(driver_since), "kind": "driver", "text": "você no volante"})
+          total["driver"] += 1
+          driver_since = float("inf")
+      elif not cs.steeringPressed:
+        driver_since = None
+      if t >= next_point:
+        fresh = fix is not None and t - fix_t <= GPS_MAX_AGE_S
+        points.append({"t": _r(t), "v": _r(cs.vEgo * 3.6), "on": bool(lat), "step": _r(step), "dpsi": _r(dpsi, 4),
+                       "lat": fix[0] if fresh else None, "lon": fix[1] if fresh else None})
+        step = dpsi = 0.
+        next_point += TRIP_STEP_S
+
+  total["s"], total["km"], total["moving_s"], total["on_s"] = (_r(total[k], 3) for k in ("s", "km", "moving_s", "on_s"))
+  return {"points": points, "events": out, "summary": total}

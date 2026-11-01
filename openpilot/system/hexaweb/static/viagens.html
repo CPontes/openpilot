@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101418">
+<title>Viagens</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #ffffff; --text: #14181c; --muted: #5b6470; --line: #e2e5ea;
+    --accent: #1f7a4d; --warn: #9a5b00; --danger: #b3261e; --off: #9aa3ad; --mark: #2b5fd9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #101418; --card: #1a2027; --text: #eef1f4; --muted: #9aa4af; --line: #2a323b;
+            --accent: #3fb27a; --warn: #e0a640; --danger: #ef6b62; --off: #5f6975; --mark: #7ea2ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 16px 16px 48px; }
+  h1 { font-size: 22px; margin: 8px 0 2px; }
+  a { color: inherit; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-bottom: 12px; }
+  select { width: 100%; font: inherit; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
+           background: var(--bg); color: var(--text); }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat b { display: block; font-size: 20px; }
+  .stat span { color: var(--muted); font-size: 13px; }
+  canvas { display: block; width: 100%; height: 340px; border-radius: 10px; background: var(--bg); touch-action: none; }
+  input[type=range] { width: 100%; margin: 12px 0 4px; }
+  .where { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; color: var(--muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .legend i { display: inline-block; width: 18px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  .warn { color: var(--warn); font-size: 14px; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  li { padding: 10px 0; border-top: 1px solid var(--line); font-size: 15px; cursor: pointer; display: flex; gap: 12px; }
+  li:first-child { border-top: 0; }
+  li .time { color: var(--muted); min-width: 52px; font-variant-numeric: tabular-nums; }
+  button { font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 12px 16px; cursor: pointer;
+           background: var(--accent); color: #fff; width: 100%; margin-top: 10px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <p class="sub"><a href="/">← painel</a></p>
+  <h1>Viagens</h1>
+  <p class="sub" id="msg">Carregando…</p>
+  <div id="view" class="hidden">
+    <div class="card"><select id="trip" aria-label="Viagem"></select></div>
+    <div class="card stats">
+      <div class="stat"><b id="sKm">—</b><span>km</span></div>
+      <div class="stat"><b id="sMin">—</b><span>minutos</span></div>
+      <div class="stat"><b id="sOn">—</b><span>openpilot dirigindo</span></div>
+      <div class="stat"><b id="sDriver">—</b><span>você no volante</span></div>
+      <div class="stat"><b id="sOff">—</b><span>desengates</span></div>
+      <div class="stat"><b id="sMarks">—</b><span>marcas</span></div>
+    </div>
+    <div class="card">
+      <canvas id="map" role="img" aria-label="Caminho da viagem"></canvas>
+      <input id="pos" type="range" min="0" max="0" value="0" aria-label="Percorrer o caminho">
+      <div class="where"><span id="whereT">—</span><span id="whereV"></span></div>
+      <div class="warn hidden" id="noGps">Sem GPS nesta viagem: caminho aproximado, feito pelas rodas e pelo volante.</div>
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>openpilot</span>
+        <span><i style="background:var(--off)"></i>você</span>
+        <span><i style="background:var(--mark)"></i>marca</span>
+        <span><i style="background:var(--danger)"></i>desengate</span>
+      </div>
+      <button id="openReplay">Ver este momento no replay</button>
+    </div>
+    <div class="card"><ul id="events"></ul></div>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let token = null;
+try { token = localStorage.getItem("hexaToken"); } catch (e) {}
+let points = [], events = [], drawn = [], loading = 0;
+
+async function get(path) {
+  const r = await fetch(path, { headers: token ? { Authorization: "Bearer " + token } : {} });
+  let body = {};
+  try { body = await r.json(); } catch (e) {}
+  return { status: r.status, body };
+}
+
+function fmt(s) { return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`; }
+function color(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+async function loadTrips() {
+  const r = await get("/api/trips");
+  if (r.status === 401) { $("msg").textContent = "Pareie este celular no painel primeiro."; return; }
+  if (r.status !== 200) { $("msg").textContent = r.body.error || "Não foi possível listar as viagens."; return; }
+  if (!r.body.trips.length) { $("msg").textContent = "Nenhuma viagem gravada."; return; }
+  const sel = $("trip"); sel.replaceChildren();
+  for (const t of r.body.trips) {
+    const o = document.createElement("option"); o.value = t.id;
+    o.dataset.segments = JSON.stringify(t.segments);
+    o.textContent = `${new Date(t.mtime * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${t.minutes} min`;
+    sel.append(o);
+  }
+  $("view").classList.remove("hidden");
+  loadTrip();
+}
+
+async function loadTrip() {
+  const load = ++loading;
+  const sel = $("trip"), route = sel.value;
+  const segments = JSON.parse(sel.selectedOptions[0].dataset.segments);
+  points = []; events = []; render();
+  let sum = { km: 0, s: 0, moving_s: 0, on_s: 0, driver: 0, off: 0, marks: 0 };
+  for (const [i, n] of segments.entries()) {
+    $("msg").textContent = `Lendo minuto ${i + 1} de ${segments.length}…`;
+    const r = await get(`/api/trip/segment?route=${encodeURIComponent(route)}&n=${n}`);
+    if (load !== loading) return;  // another trip was picked
+    if (r.status !== 200) { $("msg").textContent = r.body.error || "Não foi possível ler a viagem."; return; }
+    const d = r.body, offset = n * 60;
+    for (const p of d.points) points.push({ ...p, t: p.t + offset, n });
+    for (const e of d.events) events.push({ ...e, t: e.t + offset, n });
+    for (const k of Object.keys(sum)) sum[k] += d.summary[k] || 0;
+    summary(sum); render();
+  }
+  $("msg").textContent = "Arraste a barra para percorrer o caminho.";
+}
+
+function summary(s) {
+  $("sKm").textContent = s.km.toFixed(1);
+  $("sMin").textContent = Math.round(s.s / 60);
+  $("sOn").textContent = s.moving_s ? Math.round(100 * s.on_s / s.moving_s) + "%" : "—";
+  $("sDriver").textContent = s.driver;
+  $("sOff").textContent = s.off;
+  $("sMarks").textContent = s.marks;
+}
+
+function layout() {
+  // GPS when most of the trip has it; otherwise the path from the wheels and the steering
+  const fixes = points.filter(p => p.lat !== null);
+  const useGps = fixes.length > 0.6 * points.length;
+  $("noGps").classList.toggle("hidden", useGps || !points.length);
+  let xy;
+  if (useGps) {
+    const k = Math.cos(fixes[0].lat * Math.PI / 180);
+    let last = fixes[0];
+    xy = points.map(p => { if (p.lat !== null) last = p; return [last.lon * k * 111320, last.lat * 111320]; });
+  } else {
+    let x = 0, y = 0, psi = Math.PI / 2;
+    xy = points.map(p => { psi += p.dpsi; x += p.step * Math.cos(psi); y += p.step * Math.sin(psi); return [x, y]; });
+  }
+  const c = $("map"), w = c.clientWidth, h = c.clientHeight, pad = 18;
+  const xs = xy.map(p => p[0]), ys = xy.map(p => p[1]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const scale = Math.min((w - 2 * pad) / Math.max(x1 - x0, 1), (h - 2 * pad) / Math.max(y1 - y0, 1));
+  const ox = (w - (x1 - x0) * scale) / 2, oy = (h - (y1 - y0) * scale) / 2;
+  return xy.map(([x, y]) => [ox + (x - x0) * scale, h - oy - (y - y0) * scale]);
+}
+
+function nearest(t) {
+  let best = 0;
+  for (let i = 0; i < points.length; i++) if (Math.abs(points[i].t - t) < Math.abs(points[best].t - t)) best = i;
+  return best;
+}
+
+function render() {
+  const c = $("map"), ratio = window.devicePixelRatio || 1;
+  c.width = c.clientWidth * ratio; c.height = c.clientHeight * ratio;
+  const g = c.getContext("2d");
+  g.scale(ratio, ratio);
+  g.clearRect(0, 0, c.clientWidth, c.clientHeight);
+  $("pos").max = Math.max(points.length - 1, 0);
+  if (points.length < 2) return;
+  drawn = layout();
+  g.lineWidth = 4; g.lineCap = "round";
+  const on = color("--accent"), off = color("--off");
+  for (let i = 1; i < drawn.length; i++) {
+    g.strokeStyle = points[i].on ? on : off;
+    g.beginPath(); g.moveTo(...drawn[i - 1]); g.lineTo(...drawn[i]); g.stroke();
+  }
+  for (const e of events) {
+    if (e.kind === "driver") continue;
+    const [x, y] = drawn[nearest(e.t)];
+    g.fillStyle = e.kind === "mark" ? color("--mark") : color("--danger");
+    g.beginPath(); g.arc(x, y, 5, 0, 7); g.fill();
+  }
+  const i = Math.min($("pos").value * 1, points.length - 1), p = points[i];
+  g.fillStyle = color("--text");
+  g.beginPath(); g.arc(...drawn[i], 7, 0, 7); g.fill();
+  $("whereT").textContent = fmt(p.t);
+  $("whereV").textContent = `${Math.round(p.v)} km/h · ${p.on ? "openpilot dirigindo" : "você dirigindo"}`;
+  list();
+}
+
+let listed = -1;
+function list() {
+  if (listed === events.length) return;
+  listed = events.length;
+  const ul = $("events"); ul.replaceChildren();
+  for (const e of [...events].sort((a, b) => a.t - b.t)) {
+    if (e.kind === "driver") continue;
+    const li = document.createElement("li");
+    const tm = document.createElement("span"); tm.className = "time"; tm.textContent = fmt(e.t);
+    const tx = document.createElement("span"); tx.textContent = e.text;
+    li.append(tm, tx);
+    li.addEventListener("click", () => { $("pos").value = nearest(e.t); render(); window.scrollTo({ top: 0, behavior: "smooth" }); });
+    ul.append(li);
+  }
+  if (!ul.children.length) { const li = document.createElement("li"); li.textContent = "Sem marcas nem desengates."; ul.append(li); }
+}
+
+$("pos").addEventListener("input", render);
+$("map").addEventListener("pointerdown", (ev) => {
+  if (!drawn.length) return;
+  const r = $("map").getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
+  let best = 0, dist = Infinity;
+  drawn.forEach(([a, b], i) => { const d = (a - x) ** 2 + (b - y) ** 2; if (d < dist) { dist = d; best = i; } });
+  $("pos").value = best; render();
+});
+$("trip").addEventListener("change", () => { listed = -1; $("pos").value = 0; loadTrip(); });
+$("openReplay").addEventListener("click", () => {
+  const p = points[$("pos").value * 1];
+  if (p) location.href = `/replay?id=${encodeURIComponent($("trip").value + "--" + p.n)}&t=${Math.max(0, p.t - p.n * 60 - 2)}`;
+});
+window.addEventListener("resize", render);
+loadTrips();
+</script>
+</body>
+</html>

@@ -120,3 +120,25 @@ def test_segment_files(tmp_path, rlog):
   segs = tl.segment_files(str(tmp_path))
   assert segs == [{"id": "00000001--abc--3", "file": str(rlog)}]
   assert tl.segment_files(str(tmp_path / "nope")) == []
+
+
+def test_trip_segment_sums_the_minute(tmp_path):
+  path = tmp_path / "qlog.zst"
+  write_rlog(path, seconds=8.0, bookmark_at=3.0)
+  d = tl.trip_segment(tl.read_rlog(path))
+  s = d["summary"]
+  assert abs(s["km"] - .08) < .002  # 8 s at 10 m/s
+  assert abs(s["on_s"] / s["moving_s"] - 7.5 / 8) < .02
+  assert s["marks"] == 1 and s["off"] == 0
+  assert len(d["points"]) == 4 and all(p["lat"] is None for p in d["points"])
+  assert abs(sum(p["step"] for p in d["points"]) - 74) < 21  # the last point's step stays for the next one
+
+
+def test_trip_files_groups_by_route(tmp_path):
+  for name, f in (("00000001--aaaa--0", "qlog.zst"), ("00000001--aaaa--2", "rlog.zst"), ("00000002--bbbb--0", "qlog.zst")):
+    (tmp_path / name).mkdir()
+    (tmp_path / name / f).write_bytes(b"x")
+  (tmp_path / "boot").mkdir()
+  trips = {t["id"]: t for t in tl.trip_files(str(tmp_path))}
+  assert set(trips) == {"00000001--aaaa", "00000002--bbbb"}
+  assert sorted(trips["00000001--aaaa"]["files"]) == [0, 2]

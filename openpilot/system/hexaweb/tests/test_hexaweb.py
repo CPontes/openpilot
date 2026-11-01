@@ -363,3 +363,103 @@ def test_serve_survives_a_busy_port(monkeypatch):
   with pytest.raises(KeyboardInterrupt):
     hexaweb.serve("backend", retry=0)
   assert len(calls) == 3
+
+
+def updater(panel, **values):
+  panel.store.d.update({"UpdaterAvailableBranches": "h6gt,h6gt-lat-04,master,release3", "UpdaterTargetBranch": "h6gt",
+                        "UpdaterCurrentDescription": "0.11.3 / h6gt / 2fd5622 / Nov 01", "UpdaterState": "idle", **values})
+  panel.signals = []
+  panel.backend.signal_updater = panel.signals.append
+  return panel.pair()
+
+
+def test_update_state_offers_only_our_branches(panel):
+  token = updater(panel, UpdaterNewDescription="0.11.3 / h6gt-lat-04 / 3653abc / Nov 01", UpdateAvailable=True)
+  status, u = panel.json("/api/update", token=token)
+  assert status == 200 and u["branches"] == ["h6gt", "h6gt-lat-04"] and u["allowed"] is True
+  assert u["current"]["commit"] == "2fd5622" and u["new"]["branch"] == "h6gt-lat-04" and u["ready"] is True
+
+
+def test_update_steps_with_the_car_off(panel):
+  token = updater(panel, UpdateAvailable=True)
+  assert panel.json("/api/update", {"action": "check"}, token=token)[0] == 200
+  assert panel.json("/api/update", {"action": "download"}, token=token)[0] == 200
+  assert panel.signals == ["SIGUSR1", "SIGHUP"]
+  assert panel.json("/api/update", {"action": "branch", "branch": "h6gt-lat-04"}, token=token)[0] == 200
+  assert panel.store.get("UpdaterTargetBranch") == "h6gt-lat-04" and panel.signals[-1] == "SIGUSR1"
+  assert panel.json("/api/update", {"action": "install"}, token=token)[0] == 200
+  assert panel.store.get("DoReboot") is True
+  assert panel.store.get(phone.AUDIT_PARAM)[-1]["event"] == "update"
+
+
+def test_update_refused_with_the_car_on(panel):
+  token = updater(panel, UpdateAvailable=True)
+  for vs in (VehicleState(onroad=True), VehicleState(onroad=True, parked=True, standstill=True)):
+    panel.vs = vs
+    for body in ({"action": "check"}, {"action": "download"}, {"action": "install"}, {"action": "branch", "branch": "h6gt"}):
+      assert panel.json("/api/update", body, token=token)[0] == 409
+  assert panel.signals == [] and panel.store.get("DoReboot") is None
+  assert panel.json("/api/update", token=token)[1]["allowed"] is False
+
+
+def test_update_needs_pairing(panel):
+  updater(panel, UpdateAvailable=True)
+  assert panel.json("/api/update")[0] == 401
+  assert panel.json("/api/update", {"action": "install"})[0] == 401
+  assert panel.store.get("DoReboot") is None
+
+
+def test_update_only_to_a_listed_branch_and_nothing_else(panel):
+  token = updater(panel, UpdateAvailable=False)
+  assert panel.json("/api/update", {"action": "branch", "branch": "master"}, token=token)[0] == 400
+  assert panel.json("/api/update", {"action": "branch", "branch": "evil; reboot"}, token=token)[0] == 400
+  assert panel.json("/api/update", {"action": "uninstall"}, token=token)[0] == 400
+  assert panel.json("/api/update", {"action": "install"}, token=token)[0] == 409
+  assert panel.store.get("UpdaterTargetBranch") == "h6gt" and panel.store.get("DoReboot") is None
+
+
+def trip_logs(panel, tmp_path):
+  from openpilot.selfdrive.hexa.tests.test_timeline import write_rlog
+  for n in (0, 1):
+    d = tmp_path / f"0000000f--8784034901--{n}"
+    d.mkdir()
+    write_rlog(d / "qlog.zst", bookmark_at=3.0)
+  panel.backend.log_root = str(tmp_path)
+
+
+def test_trips_are_listed_and_read_by_minute(panel, tmp_path):
+  trip_logs(panel, tmp_path)
+  token = panel.pair()
+  status, t = panel.json("/api/trips", token=token)
+  assert status == 200 and t["trips"][0]["id"] == "0000000f--8784034901" and t["trips"][0]["segments"] == [0, 1]
+  status, d = panel.json("/api/trip/segment?route=0000000f--8784034901&n=1", token=token)
+  assert status == 200 and d["points"] and d["summary"]["km"] > 0 and d["summary"]["marks"] == 1
+
+
+def test_trips_only_with_the_car_off(panel, tmp_path):
+  trip_logs(panel, tmp_path)
+  token = panel.pair()
+  panel.vs = VehicleState(onroad=True, parked=True, standstill=True)
+  assert panel.json("/api/trips", token=token)[0] == 409
+  assert panel.json("/api/trip/segment?route=0000000f--8784034901&n=0", token=token)[0] == 409
+
+
+def test_trip_takes_only_ids_from_the_list(panel, tmp_path):
+  trip_logs(panel, tmp_path)
+  token = panel.pair()
+  for q in ("route=../../etc&n=0", "route=0000000f--8784034901&n=9", "route=0000000f--8784034901&n=../0"):
+    assert panel.json("/api/trip/segment?" + q, token=token)[0] == 404
+  assert panel.json("/api/trips")[0] == 401
+
+
+def test_trip_mark_shows_the_reason(panel, tmp_path):
+  trip_logs(panel, tmp_path)
+  token = panel.pair()
+  mono = next(e for e in panel.backend.trip_data("0000000f--8784034901", "0")[1]["events"] if e["kind"] == "mark")
+  assert mono["text"] == "bandeira" and "mono_ns" not in mono
+  panel.backend._trip_cache.clear()
+  segment = hexaweb.timeline.trip_segment(hexaweb.timeline.read_rlog(tmp_path / "0000000f--8784034901--0" / "qlog.zst"))
+  ns = next(e for e in segment["events"] if e["kind"] == "mark")["mono_ns"]
+  panel.store.put(marks.MARKS_PARAM, [{"id": "a", "mono_ns": ns, "label": "curva difícil", "note": "rotatória"}])
+  ev = panel.json("/api/trip/segment?route=0000000f--8784034901&n=0", token=token)[1]["events"]
+  assert next(e for e in ev if e["kind"] == "mark")["text"] == "curva difícil: rotatória"
