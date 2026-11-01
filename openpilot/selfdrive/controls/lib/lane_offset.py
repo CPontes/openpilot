@@ -17,6 +17,8 @@ from openpilot.common.realtime import DT_CTRL
 LaneChangeState = log.LaneChangeState
 
 HOLD_TIME = 1.5             # s, driver must hold the wheel this long before a new position is learned
+RELEASE_TIME = 0.3          # s, shorter gaps in steeringPressed don't end a hold
+MAX_LEARN_LAT_ACCEL = 0.4   # m/s^2, a hold in a curve is steering, not a chosen position
 STABLE_WINDOW = 1.0         # s, lateral position must be stable over the end of the hold
 STABLE_TOLERANCE = 0.15     # m, max lateral movement within STABLE_WINDOW
 CENTER_SNAP = 0.10          # m, learned offsets smaller than this snap to center
@@ -45,6 +47,7 @@ class LaneOffset:
     self.right_y = 0.0
     self.valid = False
     self.hold_time = 0.0
+    self.release_time = 0.0
     self.history: list[float] = []
     self.correction = 0.0    # 1/m
     self.rate = 0.0          # m/s, lateral speed relative to the lane
@@ -59,6 +62,7 @@ class LaneOffset:
     self.target = 0.0
     self.integral = 0.0
     self.hold_time = 0.0
+    self.release_time = 0.0
     self.history = []
     self.correction = 0.0
 
@@ -101,15 +105,19 @@ class LaneOffset:
       self.last_position = None
       self.rate = 0.0
     blinker = CS.leftBlinker or CS.rightBlinker
+    curving = abs(model_v2.action.desiredCurvature) * CS.vEgo ** 2 > MAX_LEARN_LAT_ACCEL
+    self.release_time = 0.0 if CS.steeringPressed else self.release_time + DT_CTRL
+    holding = CS.steeringPressed or (self.hold_time > 0.0 and self.release_time < RELEASE_TIME)
 
     # learn: driver holds the wheel, then lets go with the car steady in the lane
-    if CS.steeringPressed and self.valid and not blinker:
-      self.hold_time += DT_CTRL
+    if holding and self.valid and not blinker and not curving:
+      if CS.steeringPressed:
+        self.hold_time += DT_CTRL
       self.history.append(self.position)
       self.history = self.history[-int(STABLE_WINDOW / DT_CTRL):]
       self.integral = 0.0
     else:
-      if self.hold_time >= HOLD_TIME and self.valid and not blinker and len(self.history):
+      if self.hold_time >= HOLD_TIME and self.valid and not blinker and not curving and len(self.history):
         if max(self.history) - min(self.history) < STABLE_TOLERANCE:
           learned = self.position if abs(self.position) >= CENTER_SNAP else 0.0
           self.learned = self._limit(learned)
