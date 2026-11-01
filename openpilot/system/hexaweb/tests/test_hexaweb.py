@@ -333,3 +333,17 @@ def test_replay_is_gzipped_when_the_phone_accepts_it(replay_panel):
   small = urllib.request.Request(replay_panel.url + "/api/replay/list", headers={"Authorization": "Bearer " + token, "Accept-Encoding": "gzip"})
   with urllib.request.urlopen(small, timeout=5) as r:
     assert r.headers.get("Content-Encoding") is None and json.loads(r.read())["segments"]
+
+
+def test_options_missing_from_this_build_are_neither_shown_nor_writable(panel):
+  def check_key(key):
+    if key == "AlwaysOnLateral":
+      raise KeyError(key)
+    return key
+  panel.store.check_key = check_key
+  token = panel.pair()
+  status, s = panel.json("/api/state", token=token)
+  keys = {o["key"] for g in s["groups"] for o in g["options"]}
+  assert status == 200 and "AlwaysOnLateral" not in keys and "LaneOffsetEnabled" in keys
+  assert panel.json("/api/option", {"key": "AlwaysOnLateral", "value": True}, token=token)[0] == 404
+  assert panel.store.get("AlwaysOnLateral") is None
