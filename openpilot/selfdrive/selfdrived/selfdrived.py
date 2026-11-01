@@ -21,6 +21,8 @@ from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 from openpilot.selfdrive.selfdrived.events import Events, ET
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
+from openpilot.selfdrive.selfdrived.always_on_lateral import LongitudinalPause
+from opendbc.car.gwm.values import GwmSafetyFlags
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
 
 from openpilot.common.version import get_build_metadata
@@ -103,6 +105,11 @@ class SelfdriveD:
     self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
 
     car_recognized = self.CP.brand != 'mock'
+
+    # always-on lateral (GWM): the brake pauses longitudinal instead of disengaging, the lever resumes it
+    self.always_on_lateral = self.CP.brand == 'gwm' and len(self.CP.safetyConfigs) > 0 and \
+                             bool(self.CP.safetyConfigs[-1].safetyParam & GwmSafetyFlags.ALWAYS_ON_LATERAL)
+    self.long_pause = LongitudinalPause()
 
     # cleanup old params
     if not self.CP.alphaLongitudinalAvailable:
@@ -246,10 +253,16 @@ class SelfdriveD:
           # body always wants to enable
           self.events.add(EventName.pcmEnable)
 
+      brake_disengage = (CS.brakePressed and (not self.CS_prev.brakePressed or not CS.standstill)) or \
+                        (CS.regenBraking and (not self.CS_prev.regenBraking or not CS.standstill))
+      if self.always_on_lateral:
+        # pause longitudinal until the next lever pull, keep steering
+        if self.long_pause.update(self.enabled, brake_disengage, CS):
+          self.events.add(EventName.gasPressedOverride)
+        brake_disengage = False
+
       # Disable on rising edge of accelerator or brake. Also disable on brake when speed > 0
-      if (CS.gasPressed and not self.CS_prev.gasPressed and self.disengage_on_accelerator) or \
-        (CS.brakePressed and (not self.CS_prev.brakePressed or not CS.standstill)) or \
-        (CS.regenBraking and (not self.CS_prev.regenBraking or not CS.standstill)):
+      if (CS.gasPressed and not self.CS_prev.gasPressed and self.disengage_on_accelerator) or brake_disengage:
         self.events.add(EventName.pedalPressed)
 
     # Create events for temperature, disk space, and memory
