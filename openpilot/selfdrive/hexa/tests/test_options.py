@@ -24,7 +24,7 @@ def test_every_option_is_off_by_default():
 
 def test_every_option_is_a_registered_param():
   header = PARAMS_KEYS_H.read_text()
-  for key in [o.key for o in OPTIONS] + ["HexaWebPin", "HexaWebTokens", "HexaWebAudit"]:
+  for key in [o.key for o in OPTIONS] + ["HexaWebPin", "HexaWebTokens", "HexaWebAudit", "HexaMarks", "HexaMarkReasons", "HexaBookmarkRequest"]:
     m = re.search(r'\{"' + re.escape(key) + r'", \{([^}]*)\}', header)
     assert m, f"{key} missing from params_keys.h"
     if get_option(key) is not None and get_option(key).kind == "bool":
