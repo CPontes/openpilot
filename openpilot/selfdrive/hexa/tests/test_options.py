@@ -59,3 +59,17 @@ def test_coerce_enum():
   for bad in (-1, 3, True, "1", 1.0, None):
     with pytest.raises(ValueError):
       o.coerce(bad)
+
+
+def test_option_without_its_param_in_this_build_is_hidden():
+  from openpilot.selfdrive.hexa.options import supported
+
+  class BuildParams:
+    def check_key(self, key):
+      if key == "LaneOffsetEnabled":
+        raise KeyError(key)  # Params raises UnknownKeyName for keys the build doesn't have
+      return key
+
+  shown = [o.key for o in OPTIONS if supported(o, BuildParams())]
+  assert "LaneOffsetEnabled" not in shown and "AlwaysOnLateral" in shown and "HexaWebEnabled" in shown
+  assert all(supported(o, object()) for o in OPTIONS)  # stores without check_key know every key

@@ -80,3 +80,16 @@ def get_option(key: str) -> HexaOption | None:
 
 def options_in_group(group: str) -> list[HexaOption]:
   return [o for o in OPTIONS if o.group == group]
+
+
+def supported(opt: HexaOption, params) -> bool:
+  """Shown only when this build has the option's param: a base without the feature has no key, and
+  reading an unknown key raises. Stores without check_key (tests) know every key."""
+  check = getattr(params, "check_key", None)
+  if check is None:
+    return True
+  try:
+    check(opt.key)
+  except Exception:
+    return False
+  return True

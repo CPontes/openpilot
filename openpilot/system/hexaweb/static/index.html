@@ -81,10 +81,10 @@
   <section id="pair" class="hidden">
     <div class="card">
       <div class="title">Parear este celular</div>
-      <div class="desc">No comma: Configurações → hexa → parear celular. Digite o código que aparecer.</div>
+      <div class="desc" id="pairDesc">No comma: Configurações → hexa → parear celular. Digite o código que aparecer.</div>
       <label class="field" for="pin">Código</label>
       <input id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code">
-      <label class="field" for="name">Nome deste celular</label>
+      <label class="field" for="name">Nome deste celular (opcional)</label>
       <input id="name" type="text" maxlength="40" placeholder="ex.: celular do Conrado">
       <button class="primary" id="pairBtn">Parear</button>
       <div class="err" id="pairErr" role="alert"></div>
@@ -99,6 +99,11 @@
       </div>
       <span class="status" id="vehicleBadge"></span>
     </div>
+    <a class="card row" href="/replay" style="text-decoration:none;color:inherit">
+      <div class="text"><div class="title">Assistir viagens gravadas</div>
+        <div class="desc">Replay com a linha do tempo marcada: bandeiras, força no limite, balanço, alertas. Abre com o carro desligado.</div></div>
+      <span class="status ok">abrir</span>
+    </a>
     <h2>Marcar</h2>
     <div id="pendingBox"></div>
     <div class="card">
@@ -317,10 +322,27 @@ async function refresh() {
   }
 }
 
+function defaultName() {
+  const ua = navigator.userAgent;
+  return /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : "celular";
+}
+
+// QR on the comma opens /#parear: go straight to the code, and send it as soon as the 6 digits are in
+$("pin").addEventListener("input", () => {
+  const v = $("pin").value.replace(/\D/g, "").slice(0, 6);
+  $("pin").value = v;
+  if (v.length === 6) $("pairBtn").click();
+});
+if (location.hash === "#parear" && !token) {
+  $("pairDesc").textContent = "Digite o código de 6 números que está na tela do comma.";
+  $("name").value = defaultName();
+  setTimeout(() => $("pin").focus(), 50);
+}
+
 $("pairBtn").addEventListener("click", async () => {
   $("pairErr").textContent = "";
-  const r = await api("/api/pair", { pin: $("pin").value, name: $("name").value });
-  if (r.status === 200) { saveToken(r.data.token); $("pin").value = ""; refresh(); }
+  const r = await api("/api/pair", { pin: $("pin").value, name: $("name").value || defaultName() });
+  if (r.status === 200) { saveToken(r.data.token); $("pin").value = ""; history.replaceState(null, "", "/"); refresh(); }
   else $("pairErr").textContent = r.data.error || "Não foi possível parear.";
 });
 

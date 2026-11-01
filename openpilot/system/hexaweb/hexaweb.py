@@ -4,16 +4,20 @@
 Runs only while the "painel no celular" option (HexaWebEnabled) is on. Security rules live in
 openpilot/selfdrive/hexa/phone.py; this file only parses HTTP and calls PanelBackend.
 """
+import gzip
 import json
 import threading
 import time
+from collections import OrderedDict
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs
 
 from openpilot.selfdrive.hexa import marks as hexa_marks
 from openpilot.selfdrive.hexa import phone
-from openpilot.selfdrive.hexa.options import GROUPS, OPTIONS, get_option
+from openpilot.selfdrive.hexa import timeline
+from openpilot.selfdrive.hexa.options import GROUPS, OPTIONS, get_option, supported
 from openpilot.selfdrive.hexa.phone import VehicleState
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -22,7 +26,10 @@ STATIC_FILES = {
   "/": ("index.html", "text/html; charset=utf-8"),
   "/index.html": ("index.html", "text/html; charset=utf-8"),
   "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
+  "/replay": ("replay.html", "text/html; charset=utf-8"),
 }
+REPLAY_CACHE = 3
+GZIP_MIN_BYTES = 16 * 1024  # segments kept in memory
 SECURITY_HEADERS = {
   "Cache-Control": "no-store",
   "X-Content-Type-Options": "nosniff",
@@ -35,7 +42,7 @@ SECURITY_HEADERS = {
 class PanelBackend:
   def __init__(self, store, vehicle_state: Callable[[], VehicleState],
                clock: Callable[[], float] = phone.wall_time, mono: Callable[[], float] = time.monotonic,
-               log_event: Callable[[dict], None] | None = None):
+               log_event: Callable[[dict], None] | None = None, log_root: str | None = None):
     self.store = store  # Params, or anything with get/put/get_bool/put_bool/remove
     self._vehicle_state = vehicle_state
     self.clock = clock  # wall clock: token, audit and mark dates
@@ -45,6 +52,9 @@ class PanelBackend:
     self._vs_lock = threading.Lock()  # requests run in threads; SubMaster is not thread safe
     self.pin_failures = 0
     self._last_mark: dict[str, float] = {}  # token id -> monotonic time of the last phone mark
+    self.log_root = log_root
+    self._replay_cache: OrderedDict[str, dict] = OrderedDict()
+    self._replay_lock = threading.Lock()
 
   def vehicle_state(self) -> VehicleState:
     with self._vs_lock:
@@ -100,7 +110,7 @@ class PanelBackend:
       for gkey, gtitle in GROUPS:
         items = []
         for opt in OPTIONS:
-          if opt.group != gkey:
+          if opt.group != gkey or not supported(opt, self.store):
             continue
           writable, reason = phone.can_write(opt, vs)
           items.append({
@@ -126,7 +136,7 @@ class PanelBackend:
 
   def set_option(self, who: dict, key: str, value) -> tuple[int, dict]:
     opt = get_option(key)
-    if opt is None:
+    if opt is None or not supported(opt, self.store):
       return 404, {"error": "Opção desconhecida."}
     try:
       value = opt.coerce(value)
@@ -230,6 +240,34 @@ class PanelBackend:
       self._audit({"event": "reason_removed", "who": who.get("name", ""), "key": key})
     return 200, {"ok": True}
 
+  # *** replay ***
+
+  def replay_list(self) -> tuple[int, dict]:
+    if not self.log_root:
+      return 404, {"error": "Sem pasta de logs."}
+    segs = timeline.segment_files(self.log_root)
+    return 200, {"segments": [{"id": s["id"], "label": s["id"]} for s in segs]}
+
+  def replay_data(self, seg_id: str) -> tuple[int, dict]:
+    """Reading a log takes CPU: only with the car off, never while driving."""
+    if self.vehicle_state().onroad:
+      return 409, {"error": "O replay só abre com o carro desligado."}
+    if not self.log_root:
+      return 404, {"error": "Sem pasta de logs."}
+    files = {s["id"]: s["file"] for s in timeline.segment_files(self.log_root, limit=10_000)}
+    if seg_id not in files:  # only ids from the list: no paths from the outside
+      return 404, {"error": "Trecho não encontrado."}
+    with self._replay_lock:
+      if seg_id not in self._replay_cache:
+        try:
+          self._replay_cache[seg_id] = timeline.build(timeline.read_rlog(files[seg_id]))
+        except Exception as e:
+          return 500, {"error": f"Não foi possível ler o trecho: {type(e).__name__}"}
+        while len(self._replay_cache) > REPLAY_CACHE:
+          self._replay_cache.popitem(last=False)
+      self._replay_cache.move_to_end(seg_id)
+      return 200, self._replay_cache[seg_id]
+
   def logout(self, who: dict) -> tuple[int, dict]:
     with self.lock:
       self.store.put(phone.TOKENS_PARAM, phone.revoke_token(self._tokens(), who.get("id", "")))
@@ -246,16 +284,23 @@ def make_handler(backend: PanelBackend):
       pass
 
     def _send(self, status: int, body: bytes, content_type: str) -> None:
+      # a replay is ~400 KB of JSON per minute and ~50 KB gzipped
+      gz = len(body) >= GZIP_MIN_BYTES and "gzip" in self.headers.get("Accept-Encoding", "")
+      if gz:
+        body = gzip.compress(body, compresslevel=5)
       self.send_response(status)
       self.send_header("Content-Type", content_type)
       self.send_header("Content-Length", str(len(body)))
+      self.send_header("Vary", "Accept-Encoding")
+      if gz:
+        self.send_header("Content-Encoding", "gzip")
       for k, v in SECURITY_HEADERS.items():
         self.send_header(k, v)
       self.end_headers()
       self.wfile.write(body)
 
     def _json(self, status: int, obj: dict) -> None:
-      self._send(status, json.dumps(obj, ensure_ascii=False).encode(), "application/json; charset=utf-8")
+      self._send(status, json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode(), "application/json; charset=utf-8")
 
     def _allowed(self) -> bool:
       if not phone.is_local_address(self.client_address[0]):
@@ -291,7 +336,7 @@ def make_handler(backend: PanelBackend):
     def do_GET(self):
       if not self._allowed():
         return
-      path = self.path.split("?", 1)[0]
+      path, _, query = self.path.partition("?")
       if path in STATIC_FILES:
         fn, ctype = STATIC_FILES[path]
         self._send(200, (STATIC_DIR / fn).read_bytes(), ctype)
@@ -307,6 +352,12 @@ def make_handler(backend: PanelBackend):
         who = self._who()
         if who is not None:
           self._json(200, backend.export_marks())
+      elif path == "/api/replay/list":
+        if self._who() is not None:
+          self._json(*backend.replay_list())
+      elif path == "/api/replay/data":
+        if self._who() is not None:
+          self._json(*backend.replay_data(parse_qs(query).get("id", [""])[0]))
       else:
         self._json(404, {"error": "Não encontrado."})
 
@@ -370,7 +421,9 @@ def main():
     return VehicleState(onroad=True, parked=cs.gearShifter == "park", standstill=cs.standstill,
                         engaged=sm["selfdriveState"].enabled)
 
-  backend = PanelBackend(params, vehicle_state, log_event=lambda fields: cloudlog.event("hexa_mark", **fields))
+  from openpilot.common.hardware.hw import Paths
+  backend = PanelBackend(params, vehicle_state, log_event=lambda fields: cloudlog.event("hexa_mark", **fields),
+                         log_root=Paths.log_root())
 
   def watch_bookmarks():
     # every bookmark in the log becomes a mark: with the reason from the phone, or "sem motivo" to classify later
