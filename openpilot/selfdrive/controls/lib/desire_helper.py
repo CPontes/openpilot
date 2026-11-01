@@ -18,7 +18,9 @@ AUTO_LANE_CHANGE_DELAYS = (1., 2., 3.)  # s, the AutoLaneChangeDelay choices
 def auto_lane_change_delay(params) -> float | None:
   if not params.get_bool("AutoLaneChange"):
     return None
-  return AUTO_LANE_CHANGE_DELAYS[params.get("AutoLaneChangeDelay")]
+  choice = params.get("AutoLaneChangeDelay")
+  # modeld reads this at startup: a bad value must not stop it from running
+  return AUTO_LANE_CHANGE_DELAYS[choice if choice in range(len(AUTO_LANE_CHANGE_DELAYS)) else 1]
 
 
 class DesireHelper:

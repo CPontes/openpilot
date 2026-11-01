@@ -150,3 +150,19 @@ class Params:
 def test_delay_from_the_options():
   assert auto_lane_change_delay(Params(False, 1)) is None
   assert [auto_lane_change_delay(Params(True, i)) for i in range(3)] == list(AUTO_LANE_CHANGE_DELAYS) == [1., 2., 3.]
+
+
+def test_bad_delay_never_stops_modeld():
+  from openpilot.selfdrive.controls.lib.desire_helper import auto_lane_change_delay
+
+  class Store:
+    def __init__(self, delay):
+      self.delay = delay
+
+    def get_bool(self, key):
+      return True
+
+    def get(self, key):
+      return self.delay
+
+  assert [auto_lane_change_delay(Store(d)) for d in (0, 1, 2, 7, None)] == [1., 2., 3., 2., 2.]
