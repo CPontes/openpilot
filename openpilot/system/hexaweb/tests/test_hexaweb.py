@@ -265,3 +265,51 @@ def test_export_marks(panel):
   status, body = panel.json("/api/marks/export", token=token)
   assert status == 200 and body["exported_at"] == int(panel.now)
   assert len(body["marks"]) == 1 and body["marks"][0]["mono_ns"] == 42_000_000_000
+
+
+# *** replay ***
+
+@pytest.fixture
+def replay_panel(panel, tmp_path):
+  from openpilot.selfdrive.hexa.tests.test_timeline import write_rlog
+  seg = tmp_path / "00000007--abc--9"
+  seg.mkdir()
+  write_rlog(seg / "rlog.zst", seconds=4.0, bookmark_at=2.0)
+  panel.backend.log_root = str(tmp_path)
+  return panel
+
+
+def test_replay_page_and_list(replay_panel):
+  status, _, body = replay_panel.request("/replay")
+  assert status == 200 and b"<title>Hexa \xc2\xb7 Replay</title>" in body
+  assert replay_panel.json("/api/replay/list")[0] == 401
+  token = replay_panel.pair()
+  status, body = replay_panel.json("/api/replay/list", token=token)
+  assert status == 200 and body["segments"] == [{"id": "00000007--abc--9", "label": "00000007--abc--9"}]
+
+
+def test_replay_only_with_the_car_off(replay_panel):
+  token = replay_panel.pair()
+  replay_panel.vs = VehicleState(onroad=True, parked=True, standstill=True, engaged=False)
+  status, body = replay_panel.json("/api/replay/data?id=00000007--abc--9", token=token)
+  assert status == 409 and "desligado" in body["error"]
+  replay_panel.vs = VehicleState(onroad=False)
+  status, body = replay_panel.json("/api/replay/data?id=00000007--abc--9", token=token)
+  assert status == 200 and len(body["frames"]) >= 39 and any(e["kind"] == "mark" for e in body["events"])
+
+
+def test_replay_ids_come_only_from_the_list(replay_panel):
+  token = replay_panel.pair()
+  for bad in ("nope", "../../etc/passwd", "00000007--abc--9/../x", ""):
+    assert replay_panel.json("/api/replay/data?id=" + bad, token=token)[0] == 404, bad
+
+
+def test_replay_cache_is_bounded(replay_panel, tmp_path):
+  from openpilot.selfdrive.hexa.tests.test_timeline import write_rlog
+  token = replay_panel.pair()
+  for i in range(hexaweb.REPLAY_CACHE + 2):
+    d = tmp_path / f"0000000{i}--x--{i}"
+    d.mkdir(exist_ok=True)
+    write_rlog(d / "rlog.zst", seconds=1.0)
+    assert replay_panel.json(f"/api/replay/data?id=0000000{i}--x--{i}", token=token)[0] == 200
+  assert len(replay_panel.backend._replay_cache) == hexaweb.REPLAY_CACHE

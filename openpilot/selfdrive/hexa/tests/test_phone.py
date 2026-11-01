@@ -82,3 +82,8 @@ def test_audit_is_capped():
 def test_panel_url():
   assert phone.panel_url("192.168.0.10") == f"http://192.168.0.10:{phone.PORT}"
   assert phone.local_ip()  # never empty: falls back to the hotspot address
+
+
+def test_pair_url_has_no_secret():
+  url = phone.pair_url("192.168.0.10")
+  assert url == f"http://192.168.0.10:{phone.PORT}/#parear"
