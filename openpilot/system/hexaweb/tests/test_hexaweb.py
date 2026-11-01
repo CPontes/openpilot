@@ -5,7 +5,7 @@ import urllib.request
 
 import pytest
 
-from openpilot.selfdrive.hexa import phone
+from openpilot.selfdrive.hexa import marks, phone
 from openpilot.selfdrive.hexa.phone import VehicleState
 from openpilot.system.hexaweb import hexaweb
 
@@ -35,7 +35,9 @@ class Panel:
     self.now = 1000.
     self.vs = VehicleState(onroad=False)
     self.store = FakeStore(GitBranch="h6gt-next", GitCommit="abcdef1234")
-    self.backend = hexaweb.PanelBackend(self.store, lambda: self.vs, clock=lambda: self.now, mono=lambda: self.now)
+    self.logged: list[dict] = []
+    self.backend = hexaweb.PanelBackend(self.store, lambda: self.vs, clock=lambda: self.now, mono=lambda: self.now,
+                                        log_event=self.logged.append)
     self.server = hexaweb.make_server(self.backend, "127.0.0.1", 0)
     self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
     threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -186,3 +188,80 @@ def test_only_local_network(panel, monkeypatch):
   monkeypatch.setattr(phone, "is_local_address", lambda ip: False)
   assert panel.request("/")[0] == 403
   assert panel.json("/api/pair", {"pin": "123456"})[0] == 403
+
+
+# *** marks ***
+
+def test_marks_need_pairing(panel):
+  assert panel.json("/api/marks")[0] == 401
+  assert panel.json("/api/mark", {"reason": "curva"})[0] == 401
+
+
+def test_phone_mark_while_driving(panel):
+  token = panel.pair("passageiro")
+  panel.vs = VehicleState(onroad=True, parked=False, standstill=False, engaged=True)  # marks never change driving
+  status, body = panel.json("/api/mark", {"reason": "balancou", "note": " no  trânsito "}, token=token)
+  assert status == 200
+  m = body["mark"]
+  assert (m["reason"], m["label"], m["note"], m["source"], m["who"]) == ("balancou", "balançou", "no trânsito", "celular", "passageiro")
+  assert "_req_mono_ns" not in m
+  assert panel.store.get(marks.BOOKMARK_REQUEST_PARAM) is True  # the comma raises its own bookmark
+  assert panel.logged[-1]["reason"] == "balancou" and panel.logged[-1]["mono_ns"] is None
+
+
+def test_mark_rate_limit_and_unknown_reason(panel):
+  token = panel.pair()
+  assert panel.json("/api/mark", {"reason": "nope"}, token=token)[0] == 400
+  assert panel.json("/api/mark", {"reason": "curva"}, token=token)[0] == 200
+  assert panel.json("/api/mark", {"reason": "curva"}, token=token)[0] == 429
+  panel.now += marks.MIN_MARK_INTERVAL
+  assert panel.json("/api/mark", {"reason": "curva"}, token=token)[0] == 200
+
+
+def test_bookmark_gets_the_phone_reason_with_the_exact_log_time(panel):
+  token = panel.pair()
+  assert panel.json("/api/mark", {"reason": "freada"}, token=token)[0] == 200
+  mono_ns = int(panel.now * 1e9) + 300_000_000  # the comma's bookmark, 0.3 s later
+  panel.backend.on_bookmark(mono_ns)
+  _, s = panel.json("/api/marks", token=token)
+  assert s["pending"] == 0 and len(s["marks"]) == 1
+  assert s["marks"][0]["mono_ns"] == mono_ns and s["marks"][0]["reason"] == "freada"
+  assert panel.logged[-1]["mono_ns"] == mono_ns
+
+
+def test_comma_flag_is_classified_later(panel):
+  token = panel.pair("dono")
+  flag = panel.backend.on_bookmark(123_000_000_000)  # pressed on the comma while driving
+  _, s = panel.json("/api/marks", token=token)
+  assert s["pending"] == 1 and s["marks"][0]["reason"] is None
+  status, body = panel.json("/api/mark/classify", {"id": flag["id"], "reason": "soltou", "note": "saída da curva"}, token=token)
+  assert status == 200 and body["mark"]["label"] == "soltou sozinho" and body["mark"]["who"] == "dono"
+  _, s = panel.json("/api/marks", token=token)
+  assert s["pending"] == 0
+  assert panel.logged[-1] == {**panel.logged[-1], "mono_ns": 123_000_000_000, "reason": "soltou"}
+  assert panel.json("/api/mark/classify", {"id": "nope", "reason": "soltou"}, token=token)[0] == 404
+  assert panel.json("/api/mark/classify", {"id": flag["id"], "reason": "nope"}, token=token)[0] == 400
+
+
+def test_custom_reasons(panel):
+  token = panel.pair()
+  status, body = panel.json("/api/reasons", {"label": "Buraco"}, token=token)
+  assert status == 200 and body["reason"]["key"] == "c-buraco"
+  assert panel.json("/api/reasons", {"label": "buraco"}, token=token)[0] == 400  # duplicate
+  _, s = panel.json("/api/marks", token=token)
+  assert s["reasons"][-1] == {"key": "c-buraco", "label": "Buraco", "custom": True}
+  assert panel.json("/api/mark", {"reason": "c-buraco"}, token=token)[0] == 200
+  assert panel.json("/api/reasons/remove", {"key": "balancou"}, token=token)[0] == 404  # defaults stay
+  assert panel.json("/api/reasons/remove", {"key": "c-buraco"}, token=token)[0] == 200
+  _, s = panel.json("/api/marks", token=token)
+  assert all(r["key"] != "c-buraco" for r in s["reasons"])
+  assert s["marks"][0]["label"] == "Buraco"  # old marks keep their label
+
+
+def test_export_marks(panel):
+  token = panel.pair()
+  assert panel.json("/api/marks/export")[0] == 401
+  panel.backend.on_bookmark(42_000_000_000)
+  status, body = panel.json("/api/marks/export", token=token)
+  assert status == 200 and body["exported_at"] == int(panel.now)
+  assert len(body["marks"]) == 1 and body["marks"][0]["mono_ns"] == 42_000_000_000

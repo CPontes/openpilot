@@ -11,6 +11,7 @@ from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from openpilot.selfdrive.hexa import marks as hexa_marks
 from openpilot.selfdrive.hexa import phone
 from openpilot.selfdrive.hexa.options import GROUPS, OPTIONS, get_option
 from openpilot.selfdrive.hexa.phone import VehicleState
@@ -33,14 +34,17 @@ SECURITY_HEADERS = {
 
 class PanelBackend:
   def __init__(self, store, vehicle_state: Callable[[], VehicleState],
-               clock: Callable[[], float] = phone.wall_time, mono: Callable[[], float] = time.monotonic):
+               clock: Callable[[], float] = phone.wall_time, mono: Callable[[], float] = time.monotonic,
+               log_event: Callable[[dict], None] | None = None):
     self.store = store  # Params, or anything with get/put/get_bool/put_bool/remove
     self._vehicle_state = vehicle_state
-    self.clock = clock  # wall clock: token and audit dates
-    self.mono = mono  # monotonic clock: pairing code expiry
+    self.clock = clock  # wall clock: token, audit and mark dates
+    self.mono = mono  # monotonic clock, same as logMonoTime: pairing code expiry, bookmark matching
+    self.log_event = log_event or (lambda fields: None)  # writes a 'hexa_mark' event to the log
     self.lock = threading.Lock()
     self._vs_lock = threading.Lock()  # requests run in threads; SubMaster is not thread safe
     self.pin_failures = 0
+    self._last_mark: dict[str, float] = {}  # token id -> monotonic time of the last phone mark
 
   def vehicle_state(self) -> VehicleState:
     with self._vs_lock:
@@ -143,6 +147,89 @@ class PanelBackend:
       msg = "Vale na próxima partida do carro." if opt.restart_needed else "Vale no próximo engate."
       return 200, {"ok": True, "message": msg}
 
+  # *** marks ***
+
+  def _marks(self) -> list[dict]:
+    return self.store.get(hexa_marks.MARKS_PARAM) or []
+
+  def _custom_reasons(self) -> list[dict]:
+    return self.store.get(hexa_marks.REASONS_PARAM) or []
+
+  def marks_state(self) -> dict:
+    with self.lock:
+      marks = self._marks()
+      return {
+        "reasons": hexa_marks.reasons(self._custom_reasons()),
+        "marks": [hexa_marks.public(m) for m in reversed(marks[-30:])],
+        "pending": sum(1 for m in marks if not m.get("reason")),
+      }
+
+  def export_marks(self) -> dict:
+    with self.lock:
+      return {"exported_at": int(self.clock()), "marks": [hexa_marks.public(m) for m in self._marks()]}
+
+  def mark(self, who: dict, reason: str, note: str = "") -> tuple[int, dict]:
+    """Phone mark: always allowed (it doesn't change how the car drives), at most one per MIN_MARK_INTERVAL."""
+    now_mono = self.mono()
+    with self.lock:
+      label = hexa_marks.reason_label(self._custom_reasons(), reason)
+      if label is None:
+        return 400, {"error": "Motivo desconhecido."}
+      last = self._last_mark.get(who.get("id", ""))
+      if last is not None and now_mono - last < hexa_marks.MIN_MARK_INTERVAL:
+        return 429, {"error": "Espere um instante entre marcas."}
+      self._last_mark[who.get("id", "")] = now_mono
+      mark = hexa_marks.new_mark("celular", who=who.get("name", ""), reason=reason, label=label,
+                                 note=hexa_marks.clean_note(note), now=self.clock())
+      mark["_req_mono_ns"] = int(now_mono * 1e9)
+      self.store.put(hexa_marks.MARKS_PARAM, hexa_marks.append(self._marks(), mark))
+      self.store.put_bool(hexa_marks.BOOKMARK_REQUEST_PARAM, True)  # the comma raises its own bookmark
+    self.log_event(hexa_marks.log_fields(mark))
+    return 200, {"ok": True, "mark": hexa_marks.public(mark)}
+
+  def classify(self, who: dict, mark_id: str, reason: str, note: str = "") -> tuple[int, dict]:
+    with self.lock:
+      label = hexa_marks.reason_label(self._custom_reasons(), reason)
+      if label is None:
+        return 400, {"error": "Motivo desconhecido."}
+      try:
+        marks, mark = hexa_marks.set_reason(self._marks(), mark_id, reason, label, note)
+      except KeyError:
+        return 404, {"error": "Marca não encontrada."}
+      mark = dict(mark, who=mark.get("who") or who.get("name", ""))
+      marks = [mark if m.get("id") == mark_id else m for m in marks]
+      self.store.put(hexa_marks.MARKS_PARAM, marks)
+    self.log_event(hexa_marks.log_fields(mark))
+    return 200, {"ok": True, "mark": hexa_marks.public(mark)}
+
+  def on_bookmark(self, mono_ns: int) -> dict:
+    """A bookmark showed up in the log (comma flag, or the one a phone mark asked for)."""
+    with self.lock:
+      marks, mark, created = hexa_marks.attach_bookmark(self._marks(), mono_ns)
+      self.store.put(hexa_marks.MARKS_PARAM, marks)
+    if not created:
+      self.log_event(hexa_marks.log_fields(mark))  # now with the bookmark's exact log time
+    return mark
+
+  def add_reason(self, who: dict, label: str) -> tuple[int, dict]:
+    with self.lock:
+      try:
+        custom, reason = hexa_marks.add_reason(self._custom_reasons(), label)
+      except ValueError as e:
+        return 400, {"error": str(e)}
+      self.store.put(hexa_marks.REASONS_PARAM, custom)
+      self._audit({"event": "reason_added", "who": who.get("name", ""), "key": reason["key"], "new": reason["label"]})
+    return 200, {"ok": True, "reason": reason}
+
+  def remove_reason(self, who: dict, key: str) -> tuple[int, dict]:
+    with self.lock:
+      custom = self._custom_reasons()
+      if not any(c.get("key") == key for c in custom):
+        return 404, {"error": "Só dá para remover os motivos criados por você."}
+      self.store.put(hexa_marks.REASONS_PARAM, hexa_marks.remove_reason(custom, key))
+      self._audit({"event": "reason_removed", "who": who.get("name", ""), "key": key})
+    return 200, {"ok": True}
+
   def logout(self, who: dict) -> tuple[int, dict]:
     with self.lock:
       self.store.put(phone.TOKENS_PARAM, phone.revoke_token(self._tokens(), who.get("id", "")))
@@ -212,6 +299,14 @@ def make_handler(backend: PanelBackend):
         who = self._who()
         if who is not None:
           self._json(200, backend.state(who))
+      elif path == "/api/marks":
+        who = self._who()
+        if who is not None:
+          self._json(200, backend.marks_state())
+      elif path == "/api/marks/export":
+        who = self._who()
+        if who is not None:
+          self._json(200, backend.export_marks())
       else:
         self._json(404, {"error": "Não encontrado."})
 
@@ -224,7 +319,14 @@ def make_handler(backend: PanelBackend):
         if body is not None:
           self._json(*backend.pair(str(body.get("pin", "")), str(body.get("name", ""))))
         return
-      if path not in ("/api/option", "/api/logout"):
+      routes = {
+        "/api/option": lambda who, b: backend.set_option(who, str(b.get("key", "")), b.get("value")),
+        "/api/mark": lambda who, b: backend.mark(who, str(b.get("reason", "")), b.get("note", "")),
+        "/api/mark/classify": lambda who, b: backend.classify(who, str(b.get("id", "")), str(b.get("reason", "")), b.get("note", "")),
+        "/api/reasons": lambda who, b: backend.add_reason(who, str(b.get("label", ""))),
+        "/api/reasons/remove": lambda who, b: backend.remove_reason(who, str(b.get("key", ""))),
+      }
+      if path not in routes and path != "/api/logout":
         self._json(404, {"error": "Não encontrado."})
         return
       who = self._who()
@@ -235,7 +337,7 @@ def make_handler(backend: PanelBackend):
         return
       body = self._body()
       if body is not None:
-        self._json(*backend.set_option(who, str(body.get("key", "")), body.get("value")))
+        self._json(*routes[path](who, body))
 
   return Handler
 
@@ -268,7 +370,18 @@ def main():
     return VehicleState(onroad=True, parked=cs.gearShifter == "park", standstill=cs.standstill,
                         engaged=sm["selfdriveState"].enabled)
 
-  server = make_server(PanelBackend(params, vehicle_state))
+  backend = PanelBackend(params, vehicle_state, log_event=lambda fields: cloudlog.event("hexa_mark", **fields))
+
+  def watch_bookmarks():
+    # every bookmark in the log becomes a mark: with the reason from the phone, or "sem motivo" to classify later
+    bookmarks = messaging.SubMaster(["userBookmark"])
+    while True:
+      bookmarks.update(100)
+      if bookmarks.updated["userBookmark"]:
+        backend.on_bookmark(bookmarks.logMonoTime["userBookmark"])
+
+  threading.Thread(target=watch_bookmarks, daemon=True).start()
+  server = make_server(backend)
   cloudlog.info(f"hexaweb: serving on port {phone.PORT}")
   server.serve_forever()
 
