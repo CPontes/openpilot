@@ -1,7 +1,8 @@
 """Updating the comma from the phone: what the panel may ask of the updater.
 
 Same steps as the Software page on the comma: check, download, install. All of them need the car off, because
-installing reboots the comma. Only the fork's own branches are offered, and uninstalling is never here.
+installing reboots the comma. Only the car's branch is offered, and uninstalling is never here. Going back to a
+version is done by the canal, see docs/STATUS.md.
 """
 import subprocess
 
@@ -9,7 +10,7 @@ from openpilot.selfdrive.hexa.phone import VehicleState
 
 UPDATER_PROC = "openpilot.system.updated.updated"
 SIGNALS = {"check": "SIGUSR1", "download": "SIGHUP"}  # the same the Software page sends
-BRANCH_PREFIX = "h6gt"
+OFFERED_BRANCHES = ("h6gt",)  # the car uses one branch. A comma on another one still lists it, to leave it
 
 
 def signal_updater(sig: str) -> None:
@@ -23,7 +24,7 @@ def can_update(state: VehicleState) -> tuple[bool, str]:
 
 
 def branches(available: str | None) -> list[str]:
-  return [b for b in (available or "").split(",") if b.startswith(BRANCH_PREFIX)]
+  return [b for b in (available or "").split(",") if b in OFFERED_BRANCHES]
 
 
 def describe(desc: str | None) -> dict:

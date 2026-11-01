@@ -48,6 +48,7 @@ AlertLevel = log.DriverMonitoringState.AlertLevel
 MonitoringPolicy = log.DriverMonitoringState.MonitoringPolicy
 
 IGNORED_SAFETY_MODES = (SafetyModel.silent, SafetyModel.noOutput)
+NON_DRIVING_PROCESSES = {"hexaweb"}  # nothing restarts a dead process: the phone panel going down must never stop openpilot
 
 
 class SelfdriveD:
@@ -387,7 +388,7 @@ class SelfdriveD:
     if self.big_model_active and big_failed:
       self.events.add(EventName.bigModelFailed)
 
-    not_running = {p.name for p in self.sm['managerState'].processes if not p.running and p.shouldBeRunning}
+    not_running = {p.name for p in self.sm['managerState'].processes if not p.running and p.shouldBeRunning} - NON_DRIVING_PROCESSES
     if self.sm.recv_frame['managerState'] and len(not_running):
       if not_running != self.not_running_prev:
         cloudlog.event("process_not_running", not_running=not_running, error=True)

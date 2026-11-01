@@ -31,6 +31,7 @@ BLITZ_HOURS = 12.  # a checkpoint moves: it leaves by itself
 PIN_SECONDS = 300.  # how long a tap holds the place while the note is filled in
 DIRECTION_MIN_SPEED = 2.  # m/s, the GPS bearing wanders below this and freezes when stopped
 NEAR_LIST = 6
+NEAR_BEHIND = 300.  # m, a point just passed can still be checked. Farther back it only hides the ones ahead
 MAX_DOWNLOAD = 8 * 1024 * 1024
 MIN_RADARS = 1000  # fewer than this is a bad answer, not a smaller country
 COMPASS = dict(zip(("N", "NE", "E", "SE", "S", "SW", "W", "NW"), range(0, 360, 45), strict=True))
@@ -194,6 +195,27 @@ def taken(rows: np.ndarray, lat: float, lon: float, direction: float | None) -> 
   return bool((close & (np.isnan(rows[:, 3]) | (angle_diff(rows[:, 3], direction) < DIRECTION_TOLERANCE))).any())
 
 
+def clean_edits(raw) -> list[dict]:
+  """What comes back from a saved copy: known fields only, in range. Anything else stays out."""
+  out = []
+  for e in raw if isinstance(raw, list) else []:
+    try:
+      lat, lon, kind, limit, direction = float(e["lat"]), float(e["lon"]), e.get("kind"), e.get("limit"), e.get("direction")
+      expires = e.get("expires")
+      if not (-90. <= lat <= 90. and -180. <= lon <= 180. and kind in ("edit", *KINDS)):
+        continue
+      if limit is not None and not 20 <= int(limit) <= 130:
+        continue
+      if direction is not None and not 0. <= float(direction) <= 360.:
+        continue
+      out.append({"key": key(lat, lon), "lat": lat, "lon": lon, "kind": kind, "limit": None if limit is None else int(limit),
+                  "direction": None if direction is None else float(direction), "confirmed": bool(e.get("confirmed")), "removed": bool(e.get("removed")),
+                  "who": str(e.get("who", ""))[:40], "t": int(e.get("t") or 0), "expires": None if expires is None else float(expires)})
+    except (AttributeError, KeyError, OverflowError, TypeError, ValueError):
+      continue
+  return out[-MAX_EDITS:]
+
+
 def relative(direction: float, bearing: float) -> str:
   if math.isnan(direction):
     return "?"
@@ -207,14 +229,14 @@ def nearby(rows: np.ndarray, edits: list[dict] | None, lat: float, lon: float, b
   east, north = _meters(rows, lat, lon)
   dist = np.hypot(east, north)
   mine = {e["key"]: e for e in edits or []}
+  off_bearing = angle_diff(np.degrees(np.arctan2(east, north)), bearing)
+  ahead = off_bearing < 90
+  shown = np.flatnonzero((dist <= reach) & (ahead | (dist <= NEAR_BEHIND)))
   out = []
-  for i in np.argsort(dist)[:NEAR_LIST]:
-    if dist[i] > reach:
-      break
+  for i in shown[np.lexsort((dist[shown], ~ahead[shown]))][:NEAR_LIST]:
     k = key(rows[i, 0], rows[i, 1])
     e = mine.get(k) or next((x for x in mine.values() if abs(x["lat"] - rows[i, 0]) < 3e-4 and abs(x["lon"] - rows[i, 1]) < 3e-4), None)
-    off = float(angle_diff(math.degrees(math.atan2(east[i], north[i])), bearing))
-    out.append({"key": k, "kind": "blitz" if rows[i, 4] == BLITZ else "radar", "distance": round(float(dist[i])), "ahead": off < 90,
+    out.append({"key": k, "kind": "blitz" if rows[i, 4] == BLITZ else "radar", "distance": round(float(dist[i])), "ahead": bool(ahead[i]),
                 "limit": None if math.isnan(rows[i, 2]) else round(float(rows[i, 2])), "side": relative(rows[i, 3], bearing),
                 "confirmed": bool(e and e.get("confirmed")), "mine": bool(e and e.get("kind") in KINDS)})
   return out

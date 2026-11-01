@@ -135,7 +135,7 @@ async function loadSeg(id, start = 0) {
   if (r.status !== 200) { showMsg(r.body.error || "Não foi possível abrir o trecho."); return; }
   data = r.body; t = start; idx = 0; playing = false; $("playBtn").textContent = "▶ tocar";
   const s = data.summary, c = s.counts || {};
-  $("summary").textContent = `${fmt(data.duration)} · openpilot dirigindo ${s.lat_pct}% · máx ${Math.round(s.v_max)} km/h · ` +
+  $("summary").textContent = `${fmt(data.duration)} · openpilot ativo ${s.lat_pct}% do trecho, parado incluído · máx ${Math.round(s.v_max)} km/h · ` +
     Object.keys(KINDS).filter(k => c[k]).map(k => `${c[k]} ${KINDS[k][0]}`).join(" · ");
   showMsg("");
   buildFilters(); renderEvents(); drawTimelineBase(); render();

@@ -64,7 +64,7 @@ OPTIONS: tuple[HexaOption, ...] = (
     description="O freio pausa só o acelerador e o freio do ACC; a direção continua.\n" +
                 "Puxe a alavanca para voltar o ACC. O cancelar desliga tudo.",
     restart_needed=True,
-    blocked="the cancel is the only way out with this on, and it was never seen working (docs/STATUS.md)",
+    blocked="the cancel is the only way out with this on: 1 of the 5 tries asked for so far (STATE-01)",
   ),
   HexaOption(
     key="LaneOffsetEnabled",
@@ -141,6 +141,12 @@ _BY_KEY = {o.key: o for o in OPTIONS}
 
 def get_option(key: str) -> HexaOption | None:
   return _BY_KEY.get(key)
+
+
+def is_on(params, key: str) -> bool:
+  """A blocked option stays off even if it was turned on before it was blocked: the screen can't turn it off anymore."""
+  opt = get_option(key)
+  return opt is not None and not opt.blocked and bool(params.get_bool(key))
 
 
 def options_in_group(group: str) -> list[HexaOption]:

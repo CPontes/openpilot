@@ -1,5 +1,6 @@
 from types import SimpleNamespace as NS
 
+from openpilot.cereal import log
 from openpilot.selfdrive.hexa import live
 
 
@@ -41,3 +42,73 @@ def test_old_gps_is_no_gps():
 def test_nothing_about_the_car_when_it_is_off_or_stale():
   for s in (live.snapshot(*parts(), gps(), 1., device(started=False), True), live.snapshot(*parts(), gps(), 1., device(), False)):
     assert s["driving"] is False and "v" not in s and s["device"]["temp"] == 61
+
+
+# real messages from here on: a wrong field would raise only on the car
+
+
+def event(name, **flags):
+  return log.OnroadEvent.new_message(name=name, **flags).as_reader()
+
+
+def message(name, **values):
+  return getattr(log.Event.new_message(**{name: values}).as_reader(), name)
+
+
+def test_every_text_is_about_a_real_event():
+  assert set(live.EVENT_TEXT) <= set(log.OnroadEvent.EventName.schema.enumerants)
+
+
+def test_why_not_puts_the_driver_first_in_portuguese():
+  why = live.why_not([event("doorOpen", noEntry=True), event("pcmDisable", userDisable=True), event("userBookmark", warning=True)])
+  assert why == ["o ACC desligou", "porta aberta"]
+
+
+def test_an_event_with_no_text_shows_its_name():
+  assert live.why_not([event("radarFault", noEntry=True)]) == ["radarFault"]
+
+
+def test_why_not_repeats_nothing_and_stays_short():
+  names = ["commIssue", "commIssueAvgFreq", "doorOpen", "parkBrake", "wrongGear", "overheat", "lowMemory"]
+  why = live.why_not([event(n, noEntry=True) for n in names])
+  assert len(why) == 4 and why.count("falha de comunicação") == 1
+
+
+def test_lane_from_a_real_model_message():
+  model = message("drivingModelData", laneLineMeta={"leftY": -1.61, "rightY": 1.72, "leftProb": .9, "rightProb": .2}, action={"desiredCurvature": .0123})
+  assert live.lane(model) == {"left": -1.61, "right": 1.72, "left_ok": True, "right_ok": False, "curve": .0123}
+
+
+def test_resume_checks_from_real_messages():
+  dm = log.DriverMonitoringState.new_message(activePolicy="vision", alertLevel="none")
+  dm.visionPolicyState.faceDetected = True
+  cs = NS(standstill=True, gasPressed=False, brakePressed=False)
+  c = live.resume_checks(cs, NS(enabled=True), NS(present=True), dm.as_reader())
+  assert c == {"stopped": True, "engaged": True, "pedals": True, "looking": True, "lead": True}
+  dm.visionPolicyState.isDistracted = True
+  assert live.resume_checks(cs, NS(enabled=True), NS(present=False), dm.as_reader())["looking"] is False
+
+
+def test_snapshot_carries_the_new_parts_only_when_given():
+  plain = live.snapshot(*parts(), gps(), 1., device(), True)
+  assert plain["lane"] is None and plain["resume"] is None and plain["why"] == []
+
+
+def test_processes_down_from_a_real_message():
+  manager = message("managerState", processes=[{"name": "loggerd", "running": True, "shouldBeRunning": True},
+                                               {"name": "hexaweb", "running": False, "shouldBeRunning": True},
+                                               {"name": "bridge", "running": False, "shouldBeRunning": False}])
+  assert live.processes_down(manager) == ["hexaweb"]
+
+
+def test_learned_from_real_messages():
+  out = live.learned(message("lateralTorqueParameters", latAccelFactorFiltered=1.9, frictionCoefficientFiltered=.184, calPerc=100, useParams=True),
+                     message("vehicleParameters", angleOffsetAverageDeg=-.9, steerRatio=17.78, stiffnessFactor=.987),
+                     message("lateralDelay", lateralDelay=.5, calPerc=80))
+  assert out == {"torque": {"factor": 1.9, "friction": .184, "percent": 100, "active": True}, "wheel": {"offset": -.9, "ratio": 17.8, "stiffness": .99},
+                 "delay": {"s": .5, "percent": 80}}
+
+
+def test_learned_shows_only_what_arrived():
+  assert live.learned(None, None, None) == {}
+

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from openpilot.selfdrive.hexa.options import GROUP_KEYS, OPTIONS, HexaOption, get_option, options_in_group, supported
+from openpilot.selfdrive.hexa.options import GROUP_KEYS, OPTIONS, HexaOption, get_option, is_on, options_in_group, supported
 
 PARAMS_KEYS_H = Path(__file__).parents[3] / "common" / "params_keys.h"
 
@@ -79,3 +79,23 @@ def test_option_without_its_param_in_this_build_is_hidden():
 
 def test_always_on_lateral_stays_hidden_until_the_cancel_is_proven():
   assert not supported(get_option("AlwaysOnLateral"), object())
+
+
+class Stored:
+  def __init__(self, **values):
+    self.values = values
+
+  def get_bool(self, key):
+    return self.values.get(key, False)
+
+
+def test_a_blocked_option_stays_off_even_if_it_was_on():
+  assert get_option("AlwaysOnLateral").blocked
+  assert is_on(Stored(AlwaysOnLateral=True), "AlwaysOnLateral") is False
+
+
+def test_a_normal_option_reads_its_param():
+  assert is_on(Stored(AutoResume=True), "AutoResume") is True
+  assert is_on(Stored(), "AutoResume") is False
+  assert is_on(Stored(Unknown=True), "Unknown") is False
+

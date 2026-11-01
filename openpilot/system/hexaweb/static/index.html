@@ -7,6 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Hexa">
 <link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-180.png">
 <title>Hexa</title>
 <style>
   :root {
@@ -33,6 +34,7 @@
   .status { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; }
   .status.ok { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
   .status.ro { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+  .status.off { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
   input[type=text], input[inputmode=numeric], select {
     width: 100%; font: inherit; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
     background: var(--bg); color: var(--text); }
@@ -40,9 +42,11 @@
   label.field { display: block; font-size: 14px; color: var(--muted); margin: 12px 0 6px; }
   button { font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 12px 16px; cursor: pointer; }
   button.primary { background: var(--accent); color: #fff; width: 100%; margin-top: 16px; }
-  button.link { background: none; color: var(--danger); padding: 8px 0; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.link { background: none; color: var(--danger); padding: 11px 0; min-height: 44px; }
   .switch { position: relative; width: 52px; height: 32px; flex: none; }
-  .switch input { opacity: 0; width: 100%; height: 100%; margin: 0; position: absolute; cursor: pointer; }
+  .switch input { opacity: 0; width: calc(100% + 8px); height: calc(100% + 16px); margin: 0; position: absolute; left: -4px; top: -8px;
+                  cursor: pointer; z-index: 1; }
   .switch span { position: absolute; inset: 0; background: var(--off); border-radius: 999px; transition: .15s; pointer-events: none; }
   .switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px;
                         background: #fff; border-radius: 50%; transition: .15s; }
@@ -57,10 +61,12 @@
   ul.audit { list-style: none; padding: 0; margin: 0; font-size: 14px; }
   ul.audit li { padding: 6px 0; border-top: 1px solid var(--line); color: var(--muted); }
   ul.audit li:first-child { border-top: 0; }
+  ul.audit li.line { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0; }
+  ul.audit li.line span { min-width: 0; }
   .hidden { display: none; }
   nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; display: flex; background: var(--card); border-top: 1px solid var(--line);
              padding-bottom: env(safe-area-inset-bottom); z-index: 5; }
-  nav.tabs button { flex: 1; min-width: 0; background: none; color: var(--muted); padding: 13px 0; font-size: 13px; border-radius: 0; }
+  nav.tabs button { flex: 1; min-width: 0; min-height: 48px; background: none; color: var(--muted); padding: 13px 0; font-size: 13px; border-radius: 0; }
   nav.tabs button.perto::after { content: " •"; color: var(--accent); }
   nav.tabs button[aria-current="page"] { color: var(--accent); box-shadow: inset 0 2px 0 var(--accent); }
   .big { font-size: 56px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
@@ -69,7 +75,13 @@
   .tile { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 0; }
   .tile b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
   .tile span { color: var(--muted); font-size: 13px; }
-  .alert { color: var(--warn); font-weight: 600; margin-top: 8px; }
+  .alert { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); font-weight: 700; font-size: 18px;
+           border-radius: 10px; padding: 10px 12px; margin-top: 10px; }
+  .why { color: var(--danger); font-size: 14px; font-weight: 600; margin-top: 8px; white-space: pre-line; }
+  body.offline [data-tab] { opacity: .55; }
+  canvas#road { display: block; width: 100%; height: 230px; border-radius: 10px; background: var(--bg); }
+  .check { padding: 4px 0; font-size: 15px; }
+  .check.no { color: var(--danger); font-weight: 600; }
   .reasons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
   .reasons button { background: var(--bg); color: var(--text); border: 1px solid var(--line); min-height: 52px;
                     text-align: left; padding: 10px 12px; }
@@ -78,14 +90,14 @@
   .pending { border-color: var(--warn); }
   textarea { width: 100%; font: inherit; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
              background: var(--bg); color: var(--text); resize: vertical; }
-  button.edit { background: none; color: var(--accent); padding: 0 0 0 8px; }
+  button.edit { background: none; color: var(--accent); padding: 0 0 0 12px; min-height: 44px; min-width: 44px; flex: none; }
   .pending .when { font-weight: 600; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-  .chips button { background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 8px 10px; font-weight: 500; }
+  .chips button { background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 8px 12px; font-weight: 500; min-height: 44px; }
   .small { font-size: 13px; color: var(--muted); }
   .rowlinks { display: flex; gap: 16px; margin-top: 10px; }
-  .rowlinks button { background: none; color: var(--accent); padding: 4px 0; font-weight: 600; }
-  details summary { cursor: pointer; color: var(--accent); font-weight: 600; margin-top: 10px; }
+  .rowlinks button { background: none; color: var(--accent); padding: 10px 0; min-height: 44px; font-weight: 600; }
+  details summary { cursor: pointer; color: var(--accent); font-weight: 600; margin-top: 6px; padding: 10px 0; min-height: 44px; }
 </style>
 </head>
 <body>
@@ -149,6 +161,17 @@
         <span class="status" id="liveWho"></span>
       </div>
       <div class="alert hidden" id="liveAlert"></div>
+      <div class="why hidden" id="liveWhy"></div>
+      <div class="small hidden" id="liveOff"></div>
+      <button class="primary" id="liveMark">Marcar este momento</button>
+    </div>
+    <div class="card hidden" id="resumeCard">
+      <div class="title" id="resumeTitle">Sair sozinho</div>
+      <div id="resumeList"></div>
+    </div>
+    <div class="card hidden" id="roadCard">
+      <canvas id="road" aria-label="Posição do carro na faixa"></canvas>
+      <div class="small" id="roadText"></div>
     </div>
     <div class="tiles" id="liveTiles"></div>
     <h2>Comma</h2>
@@ -175,7 +198,12 @@
         <div class="reasons"><button id="addRadar">Radar aqui</button><button id="addBlitz">Blitz aqui</button></div>
       </div>
       <h2>Meus pontos</h2>
-      <div class="card"><ul class="audit" id="mineRadars"></ul></div>
+      <div class="card">
+        <ul class="audit" id="mineRadars"></ul>
+        <div class="desc">Um reset do comma apaga seus pontos. A cópia vai para um arquivo seu, com as posições.</div>
+        <div class="rowlinks"><button id="radarExport">Guardar uma cópia</button><button id="radarImport">Restaurar</button></div>
+        <input class="hidden" id="radarFile" type="file" accept="application/json,.json">
+      </div>
     <h2>Radares</h2>
     <div class="card">
       <div class="title" id="radarCount">—</div>
@@ -186,13 +214,13 @@
     </div>
     <div data-tab="viagens" class="hidden">
     <a class="card row" href="/viagens" style="text-decoration:none;color:inherit">
-      <div class="text"><div class="title">Ver como foi a viagem</div>
-        <div class="desc">Resumo e caminho, com as marcas. Arraste para percorrer o trajeto. Abre com o carro desligado.</div></div>
+      <div class="text"><div class="title">Minhas viagens</div>
+        <div class="desc">Escolha a viagem, veja o resumo e o caminho com as marcas, arraste até um ponto e assista àquele momento no replay. Abre com o carro desligado.</div></div>
       <span class="status ok">abrir</span>
     </a>
     <a class="card row" href="/replay" style="text-decoration:none;color:inherit">
-      <div class="text"><div class="title">Assistir viagens gravadas</div>
-        <div class="desc">Replay com a linha do tempo marcada: bandeiras, força no limite, balanço, alertas. Abre com o carro desligado.</div></div>
+      <div class="text"><div class="title">Replay por minuto</div>
+        <div class="desc">Direto na linha do tempo marcada: bandeiras, força no limite, balanço, alertas.</div></div>
       <span class="status ok">abrir</span>
     </a>
     </div>
@@ -204,19 +232,34 @@
     <div class="card">
       <div class="title" id="updNow">—</div>
       <div class="desc" id="updDesc"></div>
-      <label class="field" for="updBranch">Versão</label>
-      <select id="updBranch"></select>
-      <div class="rowlinks">
-        <button id="updCheck">Verificar</button>
-        <button id="updDownload">Baixar</button>
-        <button id="updInstall">Instalar</button>
+      <div id="updBranchBox" class="hidden">
+        <label class="field" for="updBranch">Versão</label>
+        <select id="updBranch"></select>
       </div>
+      <button class="primary" id="updMain">Verificar atualização</button>
       <div class="note" id="updNote"></div>
     </div>
+    <h2>Saúde do comma</h2>
+    <div class="card">
+      <div class="title" id="healthTitle">—</div>
+      <div class="desc" id="healthDesc"></div>
+    </div>
+    <div class="tiles" id="healthTiles"></div>
+    <h2>O que o carro aprendeu</h2>
+    <div class="desc hidden" id="learnedEmpty">Aparece depois de ligar o carro.</div>
+    <div class="tiles" id="learnedTiles"></div>
     <h2>Aparelho</h2>
     <div class="card">
-      <div class="desc" id="sysDesc">Reinicia só com o carro desligado. Instala a versão que já estiver baixada.</div>
+      <div class="desc" id="sysDesc">Reinicia só com o carro desligado.</div>
       <div class="rowlinks"><button id="rebootBtn">Reiniciar o comma</button></div>
+    </div>
+    <h2>Celulares pareados</h2>
+    <div class="card"><ul class="audit" id="phoneList"></ul></div>
+    <h2>Este celular</h2>
+    <div class="card">
+      <div class="title" id="thisAddress">—</div>
+      <div class="desc">Se o comma mudar de rede, este endereço muda: leia o QR de novo no comma, em Configurações → hexa → parear celular.
+No iPhone: Compartilhar → Adicionar à Tela de Início. Pode ser preciso parear de novo por lá.</div>
     </div>
     <h2>Últimas mudanças</h2>
     <div class="card"><ul class="audit" id="audit"></ul></div>
@@ -238,10 +281,12 @@
 const $ = (id) => document.getElementById(id);
 let token = null;
 try { token = localStorage.getItem("hexaToken"); } catch (e) {}
-let timer = null;
 let titles = {};
 let marksState = { reasons: [], marks: [], pending: 0 };
 let carStopped = false;
+let carOn = false;
+const POLL_MS = 3000, POLL_MAX_MS = 30000;
+let pollTimer = null, online = true, lastOk = 0, failures = 0, ticks = 0;
 const EDITOR_MS = 20000;  // moving, a box nobody touched leaves by itself and nothing is marked
 let editorTimer = null;
 let editing = null;  // the mark being written: the editor stays out of what the refresh redraws
@@ -260,11 +305,36 @@ async function api(path, body) {
   const opts = { method: body === undefined ? "GET" : "POST", headers: {} };
   if (token) opts.headers["Authorization"] = "Bearer " + token;
   if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
-  const r = await fetch(path, opts);
+  let r;
+  try {
+    r = await fetch(path, opts);
+  } catch (e) {
+    setOnline(false);
+    return { status: 0, data: { error: "Sem conexão com o comma: nada foi salvo." } };
+  }
+  setOnline(true);
   let data = {};
   try { data = await r.json(); } catch (e) {}
   if (r.status === 401) { saveToken(null); show("pair"); }
   return { status: r.status, data };
+}
+
+// Nothing old passes as current, and nothing can be touched that wouldn't reach the comma
+function setOnline(on) {
+  if (on) lastOk = Date.now();
+  if (on !== online) {
+    online = on;
+    document.body.classList.toggle("offline", !on);
+    document.querySelectorAll("[data-tab]").forEach(el => { el.inert = !on; });
+  }
+  if (!on) {
+    document.querySelector('[data-go="radares"]').classList.remove("perto");
+    const when = lastOk ? new Date(lastOk).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—";
+    $("vehicleText").textContent = "Sem conexão com o comma";
+    $("vehicleDesc").textContent = `Dados de ${when}. Tentando de novo…\nConfira se o celular está na rede do comma. Se o endereço mudou, leia o QR no comma.`;
+    $("vehicleBadge").textContent = "sem conexão";
+    $("vehicleBadge").className = "status off";
+  }
 }
 
 let tab = "marcar", liveTimer = null;
@@ -276,9 +346,26 @@ function showTab(name) {
   document.querySelectorAll("[data-tab]").forEach(el => el.classList.toggle("hidden", el.dataset.tab !== name));
   document.querySelectorAll("[data-go]").forEach(b => b.dataset.go === name ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
   clearInterval(liveTimer); liveTimer = null;
-  if (name === "agora") { refreshLive(); liveTimer = setInterval(refreshLive, 1000); }
+  if (name === "agora") { refreshLive(); liveTimer = setInterval(() => { if (online && !document.hidden) refreshLive(); }, 1000); }
   if (name === "radares") { refreshRadars(); refreshNear(); }
+  if (name === "marcar") refreshMarks();
+  if (name === "sistema") refreshSystem();
   window.scrollTo(0, 0);
+}
+
+function refreshSystem() { refreshUpdate(); refreshHealth(); refreshPhones(); }
+
+function refreshTab() {
+  ticks += 1;
+  if (tab === "marcar") refreshMarks();
+  if (tab === "sistema") refreshSystem();
+  if (tab === "radares" || (carOn && ticks % 3 === 0)) refreshNear();  // the dot on the tab, while driving
+}
+
+function schedule() {
+  clearTimeout(pollTimer);
+  if (document.hidden || !token) return;
+  pollTimer = setTimeout(refresh, online ? POLL_MS : Math.min(POLL_MS * 2 ** failures, POLL_MAX_MS));
 }
 
 function tile(label, value) {
@@ -294,6 +381,10 @@ async function refreshLive() {
   const r = await api("/api/live");
   if (r.status !== 200) return;
   const l = r.data, d = l.device || {};
+  renderOff(l);
+  renderResume(l.driving ? l.resume : null);
+  $("roadCard").classList.toggle("hidden", !(l.driving && l.lane));
+  if (l.driving && l.lane) drawRoad(l);
   const who = !l.driving ? "carro desligado" : l.steering ? (l.driver ? "você e openpilot" : "openpilot dirigindo") : "você dirigindo";
   $("liveV").textContent = l.driving ? l.v : "—";
   $("liveWho").textContent = who;
@@ -304,7 +395,7 @@ async function refreshLive() {
   const tiles = !l.driving ? [tile("GPS", l.gps && l.gps.ok ? "com sinal" : "sem sinal")] : [
     tile("ACC", l.acc ? (l.acc_set ? `${l.acc_set} km/h` : "ligado") : "desligado"),
     tile("carro à frente", l.lead ? `${l.lead.d} m` : "nenhum"),
-    tile("volante", `${l.wheel}°`),
+    tile("volante", wheelText(l.wheel)),
     tile("força do openpilot", `${l.torque}%`),
     tile("seta", l.blinker || "desligada"),
     tile("ponto cego", bs.left && bs.right ? "dos dois lados" : bs.left ? "esquerda" : bs.right ? "direita" : "livre"),
@@ -316,17 +407,78 @@ async function refreshLive() {
                                   tile("memória", d.memory !== undefined ? `${d.memory}%` : "—"), tile("rede", NETWORK[d.network] || d.network || "—"));
 }
 
+function num(v, digits) { return v.toLocaleString("pt-BR", { maximumFractionDigits: digits }); }
+
+function wheelText(w) { return w === 0 ? "0°" : w > 0 ? `◀ ${w}°` : `${-w}° ▶`; }  // positive is to the left
+
+function whenText(t) { return new Date(t * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }); }
+
+function renderOff(l) {
+  const why = l.driving && !l.engaged ? (l.why || []) : [];
+  $("liveWhy").textContent = why.length ? "Por que não engata: " + why.join(", ") : "";
+  $("liveWhy").classList.toggle("hidden", !why.length);
+  const off = l.last_off;
+  $("liveOff").textContent = off ? `Último desengate às ${whenText(off.t)}${off.why.length ? ": " + off.why.join(", ") : ""}` : "";
+  $("liveOff").classList.toggle("hidden", !off);
+}
+
+const RESUME = [["engaged", "openpilot engajado"], ["pedals", "sem pedal"], ["looking", "olhando para a frente"], ["lead", "carro à frente"]];
+
+function renderResume(c) {
+  const show = !!(c && c.stopped);
+  $("resumeCard").classList.toggle("hidden", !show);
+  if (!show) return;
+  const missing = RESUME.filter(([k]) => !c[k]);
+  $("resumeTitle").textContent = missing.length ? "Sair sozinho: assim não sai" : "Sair sozinho: pronto, esperando o carro da frente sair";
+  $("resumeList").replaceChildren(...RESUME.map(([k, label]) => {
+    const d = document.createElement("div"); d.className = "check" + (c[k] ? "" : " no");
+    d.textContent = `${c[k] ? "✓" : "✗"} ${label}`;
+    return d;
+  }));
+}
+
+const ROAD_M = 40, ROAD_WIDTH_M = 8;
+
+function drawRoad(l) {
+  const c = $("road"), ratio = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== Math.round(w * ratio) || c.height !== Math.round(h * ratio)) { c.width = Math.round(w * ratio); c.height = Math.round(h * ratio); }
+  const g = c.getContext("2d"), css = getComputedStyle(document.documentElement);
+  const color = (name) => css.getPropertyValue(name).trim();
+  g.setTransform(ratio, 0, 0, ratio, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const px = w / ROAD_WIDTH_M, ahead = (d) => h - 34 - d * (h - 54) / ROAD_M;
+  const side = (lat, d) => w / 2 + (lat + l.lane.curve * d * d / 2) * px;  // right and to the right of the car are positive
+  const line = (lat, ok) => {
+    g.beginPath();
+    for (let d = 0; d <= ROAD_M; d += 5) { const x = side(lat, d), y = ahead(d); if (d) g.lineTo(x, y); else g.moveTo(x, y); }
+    g.setLineDash(ok ? [] : [8, 8]);
+    g.lineWidth = 3;
+    g.strokeStyle = ok ? color("--text") : color("--muted");
+    g.stroke();
+  };
+  line(l.lane.left, l.lane.left_ok);
+  line(l.lane.right, l.lane.right_ok);
+  g.setLineDash([]);
+  g.fillStyle = l.steering ? color("--accent") : color("--warn");
+  g.fillRect(w / 2 - .95 * px, ahead(0), 1.9 * px, 26);
+  if (l.lead) {
+    const d = Math.min(l.lead.d, ROAD_M);
+    g.fillStyle = color("--muted");
+    g.fillRect(side(0, d) - .95 * px, ahead(d) - 10, 1.9 * px, 10);
+  }
+  const left = Math.abs(l.lane.left), right = Math.abs(l.lane.right);
+  $("roadText").textContent = `Linhas: ${num(left, 1)} m à esquerda · ${num(right, 1)} m à direita${l.lead ? ` · carro a ${l.lead.d} m` : ""}`;
+}
+
 function show(which) {
   $("pair").classList.toggle("hidden", which !== "pair");
   $("panel").classList.toggle("hidden", which !== "panel");
   $("tabs").classList.toggle("hidden", which !== "panel");
   if (which === "panel") showTab(tab);
-  clearInterval(timer);
-  if (which === "panel") timer = setInterval(refresh, 3000);
 }
 
 const UPDATE_ACTIONS = { radars: "atualizou a lista de radares", check: "verificou", download: "baixou", install: "instalou", branch: "escolheu", reboot: "reiniciou" };
-const EVENTS = { paired: "pareou", logout: "desconectou", pin_locked: "código bloqueado por tentativas erradas",
+const EVENTS = { paired: "pareou", logout: "desconectou", phone_revoked: "desconectou outro celular", pin_locked: "código bloqueado por tentativas erradas",
                  reason_added: "adicionou motivo", reason_removed: "removeu motivo" };
 function auditText(a) {
   const when = new Date(a.t * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -338,7 +490,7 @@ function auditText(a) {
   }
   if (a.event === "denied") return `${when} · ${who}${name}: recusado (${a.reason})`;
   if (a.event === "update") return `${when} · ${who}atualização: ${UPDATE_ACTIONS[a.key] || a.key}${a.new ? " " + a.new : ""}`;
-  if (a.event === "radar") return `${when} · ${who}radar: ${{ edit: "conferiu", removed: "tirou", add: "adicionou", delete: "apagou" }[a.key] || a.key}`;
+  if (a.event === "radar") return `${when} · ${who}radar: ${{ edit: "conferiu", removed: "tirou", add: "adicionou", delete: "apagou", import: "restaurou pontos" }[a.key] || a.key}`;
   if (a.event === "reason_added") return `${when} · ${who}adicionou o motivo "${a.new}"`;
   return `${when} · ${who}${EVENTS[a.event] || a.event}`;
 }
@@ -350,6 +502,7 @@ function render(s) {
   const v = s.vehicle;
   const parked = !v.onroad || (v.parked && v.standstill && !v.engaged);
   carStopped = !v.onroad || v.standstill;
+  carOn = v.onroad;
   $("vehicleText").textContent = !v.onroad ? "Carro desligado" : (parked ? "Carro parado em P" : "Carro ligado ou andando");
   $("vehicleDesc").textContent = parked ? "Pode mudar as opções." : "Opções de direção e velocidade só em P ou com o carro desligado.";
   $("vehicleBadge").textContent = parked ? "pode mudar" : "só leitura";
@@ -379,7 +532,7 @@ function optionCard(o) {
     const sw = document.createElement("label"); sw.className = "switch";
     const input = document.createElement("input"); input.type = "checkbox"; input.checked = o.value; input.disabled = !o.writable;
     input.setAttribute("aria-label", o.title);
-    input.addEventListener("change", () => setOption(o.key, input.checked, input));
+    input.addEventListener("change", () => setOption(o.key, input.checked, input, () => { input.checked = o.value; }));
     const span = document.createElement("span");
     sw.append(input, span); row.appendChild(sw);
     card.appendChild(row);
@@ -387,16 +540,18 @@ function optionCard(o) {
     card.appendChild(row);
     const sel = document.createElement("select"); sel.disabled = !o.writable; sel.setAttribute("aria-label", o.title);
     o.choices.forEach((c, i) => { const op = document.createElement("option"); op.value = i; op.textContent = c; op.selected = i === o.value; sel.appendChild(op); });
-    sel.addEventListener("change", () => setOption(o.key, Number(sel.value), sel));
+    sel.addEventListener("change", () => setOption(o.key, Number(sel.value), sel, () => { sel.value = o.value; }));
     card.appendChild(sel);
   }
   return card;
 }
 
-async function setOption(key, value, el) {
+async function setOption(key, value, el, undo) {
   el.disabled = true;
   const r = await api("/api/option", { key, value });
   toast(r.status === 200 ? (r.data.message || "Salvo.") : (r.data.error || "Não foi possível salvar."));
+  if (r.status !== 200) undo();  // the screen never shows what the comma doesn't have
+  el.disabled = false;
   refresh();
 }
 
@@ -445,7 +600,7 @@ function renderMarks(m) {
   const done = m.marks.filter(x => x.reason).slice(0, 8);
   if (!done.length) { const li = document.createElement("li"); li.textContent = "Nenhuma marca ainda."; ul.appendChild(li); }
   for (const x of done) {
-    const li = document.createElement("li");
+    const li = document.createElement("li"); li.className = "line";
     const text = document.createElement("span");
     text.textContent = `${hhmmss(x.t)} · ${x.label}${x.note ? " — " + x.note : ""}${x.source === "comma" ? " (bandeira)" : ""}`;
     const b = document.createElement("button"); b.className = "edit"; b.textContent = "editar";
@@ -487,6 +642,8 @@ async function saveEdit() {
   refreshMarks();
 }
 
+let updStep = "check";
+
 function versionText(v) { return v.branch ? `${v.branch} (${v.commit}), ${v.date}` : "—"; }
 
 async function refreshUpdate() {
@@ -495,7 +652,7 @@ async function refreshUpdate() {
   const u = r.data;
   $("updNow").textContent = "Instalada: " + versionText(u.current);
   const busy = u.state && u.state !== "idle";
-  let desc = u.ready ? "Pronta para instalar: " + versionText(u.new) : "Nenhuma versão nova pronta.";
+  let desc = u.ready ? "Nova, pronta para instalar: " + versionText(u.new) : "Nenhuma versão nova pronta.";
   if (u.fetch_available) desc = "Tem versão nova para baixar.";
   if (busy) desc = "Atualizador: " + u.state;
   if (u.failed) desc += ` Falhou ${u.failed} vez(es): confira a internet do comma.`;
@@ -507,9 +664,10 @@ async function refreshUpdate() {
     for (const b of u.branches) { const o = document.createElement("option"); o.value = o.textContent = b; o.selected = b === u.target; sel.append(o); }
   }
   sel.disabled = !u.allowed || busy;
-  $("updCheck").disabled = !u.allowed || busy;
-  $("updDownload").disabled = !u.allowed || busy || !u.fetch_available;
-  $("updInstall").disabled = !u.allowed || busy || !u.ready;
+  $("updBranchBox").classList.toggle("hidden", u.branches.length < 2);
+  updStep = busy ? null : u.ready ? "install" : u.fetch_available ? "download" : "check";
+  $("updMain").textContent = busy ? "Atualizando…" : { install: "Instalar e reiniciar", download: "Baixar atualização", check: "Verificar atualização" }[updStep];
+  $("updMain").disabled = !u.allowed || busy;
   $("updNote").textContent = u.allowed ? "" : u.reason;
   $("rebootBtn").disabled = !u.allowed;
 }
@@ -520,7 +678,7 @@ const NEAR_BADGE_M = 1000;
 let point = null;
 
 function pointLine(p) {
-  const li = document.createElement("li");
+  const li = document.createElement("li"); li.className = "line";
   const t = document.createElement("span");
   const limit = p.limit ? `${p.limit} km/h` : "limite desconhecido";
   t.textContent = `${POINT[p.kind]} a ${p.distance} m ${p.ahead ? "à frente" : "atrás"} · ${limit} · ${SIDES[p.side]}${p.confirmed ? " · confirmado" : ""}`;
@@ -540,7 +698,7 @@ async function refreshNear() {
   document.querySelector('[data-go="radares"]').classList.toggle("perto", d.near.some(p => p.ahead && p.distance < NEAR_BADGE_M));
   const mine = $("mineRadars");
   mine.replaceChildren(...d.mine.map(m => {
-    const li = document.createElement("li");
+    const li = document.createElement("li"); li.className = "line";
     const t = document.createElement("span");
     const when = new Date(m.t * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
     t.textContent = `${m.removed ? "Tirado da lista" : POINT[m.kind]} · ${m.limit ? m.limit + " km/h · " : ""}${when}`;
@@ -610,23 +768,80 @@ async function updateAction(action, branch) {
   refreshUpdate();
 }
 
+async function refreshHealth() {
+  const r = await api("/api/health");
+  if (r.status !== 200) return;
+  const h = r.data, d = h.device || {}, n = h.learned || {};
+  const down = h.down || [];
+  $("healthTitle").textContent = h.down === null || h.down === undefined ? "Processos: sem leitura ainda" : down.length ? "Parado: " + down.join(", ") : "Tudo rodando";
+  const off = h.last_off;
+  $("healthDesc").textContent = off ? `Último desengate às ${whenText(off.t)}${off.why.length ? ": " + off.why.join(", ") : ""}` : "";
+  $("healthTiles").replaceChildren(tile("temperatura", d.temp !== undefined ? `${d.temp} °C` : "—"), tile("disco livre", d.free !== undefined ? `${d.free}%` : "—"),
+                                   tile("memória", d.memory !== undefined ? `${d.memory}%` : "—"), tile("processador", d.cpu !== undefined ? `${d.cpu}%` : "—"));
+  const tiles = [];
+  if (n.torque) tiles.push(tile("força da direção", `${num(n.torque.factor, 2)} m/s²`), tile("atrito", num(n.torque.friction, 3)), tile("aprendizado da direção", `${n.torque.percent}%${n.torque.active ? "" : " (ainda não usado)"}`));
+  if (n.wheel) tiles.push(tile("volante reto em", wheelText(n.wheel.offset)), tile("relação de direção", num(n.wheel.ratio, 1)));
+  if (n.delay) tiles.push(tile("atraso da direção", `${num(n.delay.s, 2)} s (${n.delay.percent}%)`));
+  $("learnedTiles").replaceChildren(...tiles);
+  $("learnedEmpty").classList.toggle("hidden", tiles.length > 0);
+}
+
+async function refreshPhones() {
+  const r = await api("/api/phones");
+  if (r.status !== 200) return;
+  $("phoneList").replaceChildren(...r.data.phones.map(p => {
+    const li = document.createElement("li"); li.className = "line";
+    const t = document.createElement("span");
+    t.textContent = `${p.name}${p.you ? " (este)" : ""}${p.created ? " · desde " + new Date(p.created * 1000).toLocaleDateString("pt-BR") : ""}`;
+    li.append(t);
+    if (!p.you) {
+      const b = document.createElement("button"); b.className = "edit"; b.textContent = "desconectar";
+      b.addEventListener("click", async () => {
+        if (!confirm(`Desconectar ${p.name}? Para voltar, será preciso parear de novo.`)) return;
+        const res = await api("/api/phones/revoke", { id: p.id });
+        toast(res.status === 200 ? "Celular desconectado." : (res.data.error || "Não foi possível."));
+        refreshPhones();
+      });
+      li.append(b);
+    }
+    return li;
+  }));
+  $("thisAddress").textContent = location.host;
+}
+
+function saveFile(name, data) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: "application/json" }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
 async function refreshMarks() {
   const r = await api("/api/marks");
   if (r.status === 200) renderMarks(r.data);
 }
 
 async function refresh() {
-  refreshUpdate();
+  clearTimeout(pollTimer);
   if (!token) { show("pair"); return; }
-  if (!document.hidden) refreshNear().catch(() => {});
-  try {
-    const r = await api("/api/state");
-    if (r.status === 200) { render(r.data); if ($("panel").classList.contains("hidden")) show("panel"); refreshMarks(); }
-  } catch (e) {
-    $("vehicleText").textContent = "Sem conexão com o comma";
-    $("vehicleDesc").textContent = "Confira se o celular está na mesma rede.";
+  const r = await api("/api/state");
+  if (r.status === 200) {
+    failures = 0;
+    render(r.data);
+    if ($("panel").classList.contains("hidden")) show("panel");
+    refreshTab();
+  } else if (r.status === 0) {
+    failures += 1;
+    if ($("panel").classList.contains("hidden")) show("panel");
   }
+  schedule();
 }
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) clearTimeout(pollTimer);
+  else { failures = 0; refresh(); }
+});
 
 function defaultName() {
   const ua = navigator.userAgent;
@@ -655,12 +870,36 @@ $("pairBtn").addEventListener("click", async () => {
 $("exportBtn").addEventListener("click", async () => {
   const r = await api("/api/marks/export");
   if (r.status !== 200) { toast(r.data.error || "Não foi possível exportar."); return; }
-  const blob = new Blob([JSON.stringify(r.data, null, 1)], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `marcas-${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  saveFile(`marcas-${new Date().toISOString().slice(0, 10)}.json`, r.data);
+});
+
+$("radarExport").addEventListener("click", async () => {
+  const r = await api("/api/radars/export");
+  if (r.status !== 200) { toast(r.data.error || "Não foi possível."); return; }
+  if (!r.data.edits.length) { toast("Nenhum ponto seu ainda."); return; }
+  saveFile(`radares-${new Date().toISOString().slice(0, 10)}.json`, r.data);
+});
+
+$("radarImport").addEventListener("click", () => $("radarFile").click());
+$("radarFile").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  let edits = null;
+  try { edits = JSON.parse(await file.text()).edits; } catch (err) {}
+  if (!Array.isArray(edits)) { toast("Esse arquivo não é uma cópia dos pontos."); return; }
+  const r = await api("/api/radars/import", { edits });
+  toast(r.status === 200 ? r.data.message : (r.data.error || "Não foi possível restaurar."));
+  refreshNear();
+});
+
+// the same box and the same Salvar as the other marks: only the moment is taken at the tap
+$("liveMark").addEventListener("click", async () => {
+  const tapped = Date.now();
+  if (!marksState.reasons.length) await refreshMarks();
+  if (!marksState.reasons.length) { toast("Sem conexão com o comma."); return; }
+  showTab("marcar");
+  openEditor({ tapped }, marksState.reasons[0].key);
 });
 
 $("addReasonBtn").addEventListener("click", async () => {
@@ -673,6 +912,7 @@ $("addReasonBtn").addEventListener("click", async () => {
 $("logoutBtn").addEventListener("click", async () => {
   if (!confirm("Desconectar este celular? Para voltar, será preciso parear de novo.")) return;
   await api("/api/logout", {});
+  clearTimeout(pollTimer);
   saveToken(null); show("pair");
 });
 
@@ -695,10 +935,10 @@ $("editSave").addEventListener("click", saveEdit);
 $("editNote").addEventListener("focus", () => clearTimeout(editorTimer));
 $("editReason").addEventListener("focus", () => clearTimeout(editorTimer));
 $("editCancel").addEventListener("click", closeEditor);
-$("updCheck").addEventListener("click", () => updateAction("check"));
-$("updDownload").addEventListener("click", () => updateAction("download"));
-$("updInstall").addEventListener("click", () => {
-  if (confirm("Instalar agora? O comma reinicia e compila: pode levar alguns minutos.")) updateAction("install");
+$("updMain").addEventListener("click", () => {
+  if (updStep === "install") {
+    if (confirm("Instalar agora? O comma reinicia e compila: pode levar alguns minutos.")) updateAction("install");
+  } else if (updStep) updateAction(updStep);
 });
 $("updBranch").addEventListener("change", (e) => updateAction("branch", e.target.value));
 </script>

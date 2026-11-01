@@ -243,7 +243,24 @@ def test_nearby_says_distance_and_side_never_a_position():
   r = radars.merge(rows((300, 0, 60, 0.), (-200, 0, 40, 180.), (9000, 0, 60, NAN)), [], 0.)
   lat, lon = at()
   near = radars.nearby(r, [], lat, lon, 0.)
-  assert [p["distance"] for p in near] == [200, 300]
-  assert near[0]["ahead"] is False and near[0]["side"] == "contrario" and near[1]["ahead"] is True and near[1]["side"] == "mesmo"
+  assert [p["distance"] for p in near] == [300, 200]
+  assert near[0]["ahead"] is True and near[0]["side"] == "mesmo" and near[1]["ahead"] is False and near[1]["side"] == "contrario"
   assert "lat" not in near[0] and "lon" not in near[0]
+
+
+def test_points_ahead_come_first_and_far_behind_ones_go():
+  behind = [(-d, 0, 60, NAN) for d in (100, 200, 290, 400, 500, 600)]
+  r = radars.merge(rows(*behind, (1500, 0, 60, NAN)), [], 0.)
+  near = radars.nearby(r, [], *at(), 0.)
+  assert near[0]["ahead"] is True and near[0]["distance"] == 1500
+  assert [p["distance"] for p in near[1:]] == [100, 200, 290]
+
+
+def test_a_saved_copy_keeps_only_what_is_valid():
+  good = {**edit(10), "kind": "radar", "limit": 60, "direction": 90., "confirmed": True, "who": "x" * 80, "t": 5, "evil": 1}
+  clean = radars.clean_edits([good, {**edit(), "kind": "outro"}, {**edit(), "limit": 500}, {"lat": 99., "lon": 0., "kind": "edit"},
+                              {**edit(), "direction": 900.}, {"lat": "x", "lon": 0}, "nada", {**edit(), "lat": NAN}])
+  assert len(clean) == 1 and clean[0]["kind"] == "radar" and clean[0]["limit"] == 60 and "evil" not in clean[0] and len(clean[0]["who"]) == 40
+  assert clean[0]["key"] == radars.key(good["lat"], good["lon"])
+  assert radars.clean_edits("nada") == [] and radars.clean_edits(None) == []
 

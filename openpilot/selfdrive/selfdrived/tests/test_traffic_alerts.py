@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from openpilot.cereal import log
 from openpilot.selfdrive.selfdrived.traffic_alerts import AUTO_RESUME_MAX_STOP, AUTO_RESUME_REQUEST, LEAD_DEPART_DISTANCE, LEAD_DEPART_SPEED, \
                                                          AutoResume, LeadDepartAlert, driver_attentive
@@ -183,4 +185,11 @@ def test_attentive_needs_the_camera_seeing_the_driver():
   assert not driver_attentive(monitoring(distracted=True))
   assert not driver_attentive(monitoring(alert="one"))
   assert not driver_attentive(monitoring(policy="wheeltouch"))
+
+
+def test_the_phone_panel_never_counts_as_a_driving_process():
+  # selfdrived doesn't import on every machine, and this line decides if a dead panel disengages the car
+  source = (Path(__file__).parents[1] / "selfdrived.py").read_text()
+  assert 'NON_DRIVING_PROCESSES = {"hexaweb"}' in source
+  assert "if not p.running and p.shouldBeRunning} - NON_DRIVING_PROCESSES" in source
 

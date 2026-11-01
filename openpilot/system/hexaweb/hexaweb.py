@@ -27,12 +27,16 @@ from openpilot.selfdrive.hexa.phone import VehicleState
 
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_BODY = 4096
+MAX_IMPORT_BODY = 256 * 1024  # a saved copy of the radar points
 STATIC_FILES = {
   "/": ("index.html", "text/html; charset=utf-8"),
   "/index.html": ("index.html", "text/html; charset=utf-8"),
   "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
   "/replay": ("replay.html", "text/html; charset=utf-8"),
   "/viagens": ("viagens.html", "text/html; charset=utf-8"),
+  "/icon-180.png": ("icon-180.png", "image/png"),
+  "/icon-192.png": ("icon-192.png", "image/png"),
+  "/icon-512.png": ("icon-512.png", "image/png"),
 }
 REPLAY_CACHE = 3
 TRIP_CACHE = 120  # minutes of trips kept in memory
@@ -54,7 +58,8 @@ class PanelBackend:
                log_event: Callable[[dict], None] | None = None, log_root: str | None = None,
                signal_updater: Callable[[str], None] = updates.signal_updater,
                live_state: Callable[[], dict] | None = None, radar_path: Path | None = None,
-               gps_fix: Callable[[], tuple[float, float, float, float] | None] | None = None):
+               gps_fix: Callable[[], tuple[float, float, float, float] | None] | None = None,
+               health_state: Callable[[], dict] | None = None):
     self.store = store  # Params, or anything with get/put/get_bool/put_bool/remove
     self._vehicle_state = vehicle_state
     self.clock = clock  # wall clock: token, audit and mark dates
@@ -76,6 +81,9 @@ class PanelBackend:
     self._gps_fix = gps_fix or (lambda: None)
     self._radar_pins: dict[str, tuple] = {}
     self._live_state = live_state or dict
+    self._health_state = health_state or dict
+    self._was_engaged = False
+    self._last_off: dict | None = None
 
   def vehicle_state(self) -> VehicleState:
     with self._vs_lock:
@@ -101,9 +109,24 @@ class PanelBackend:
   def live(self) -> dict:
     with self._vs_lock:
       try:
-        return self._live_state()
+        data = self._live_state()
       except Exception:
-        return {}
+        data = {}
+    return {**data, "last_off": self._last_off}
+
+  def health(self) -> dict:
+    with self._vs_lock:
+      try:
+        data = self._health_state()
+      except Exception:
+        data = {}
+    return {**data, "last_off": self._last_off}
+
+  def on_drive_state(self, engaged: bool, events) -> None:
+    """Notes why openpilot dropped out, even with no phone looking."""
+    if self._was_engaged and not engaged:
+      self._last_off = {"t": int(self.clock()), "why": hexa_live.why_not(events)}
+    self._was_engaged = engaged
 
   # *** API ***
 
@@ -392,6 +415,25 @@ class PanelBackend:
       return {"gps": False, "near": [], "mine": mine}
     return {"gps": True, "near": radars.nearby(rows, edits, fix[0], fix[1], fix[2]), "mine": mine}
 
+  def radars_export(self) -> dict:
+    """The owner's points in a file of their own: a reset of the comma erases them. Only on request, and it has positions."""
+    with self.lock:
+      return {"exported_at": int(self.clock()), "edits": radars.active(self._edits(), self.clock())}
+
+  def radars_import(self, who: dict, raw) -> tuple[int, dict]:
+    if self.vehicle_state().onroad:
+      return 409, {"error": "Desligue o carro para restaurar."}
+    incoming = radars.clean_edits(raw)
+    if not incoming:
+      return 400, {"error": "Nenhum ponto válido nesse arquivo."}
+    with self.lock:
+      edits = self._edits()
+      for entry in incoming:
+        edits = radars.apply_edit(edits, entry, self.clock())
+      self.store.put(radars.EDITS_PARAM, edits)
+      self._audit({"event": "radar", "who": who.get("name", ""), "key": "import", "new": len(incoming)})
+    return 200, {"ok": True, "message": f"{len(incoming)} pontos restaurados. Valem na próxima partida do carro."}
+
   def radars_pin(self) -> tuple[int, dict]:
     """Holds where the car is at the tap: at 60 km/h, ten seconds later it is 170 m ahead of the point."""
     fix = self._gps()
@@ -522,6 +564,23 @@ class PanelBackend:
       self._audit({"event": "update", "who": who.get("name", ""), "key": action, "new": branch})
       return 200, {"ok": True}
 
+  def phones(self, who: dict) -> dict:
+    with self.lock:
+      return {"phones": [{"id": t.get("id", ""), "name": t.get("name", ""), "created": t.get("created"), "you": t.get("id") == who.get("id")}
+                         for t in self._tokens()]}
+
+  def revoke_phone(self, who: dict, token_id: str) -> tuple[int, dict]:
+    if token_id == who.get("id"):
+      return 400, {"error": "Para este celular, use Desconectar."}
+    with self.lock:
+      tokens = self._tokens()
+      gone = next((t for t in tokens if t.get("id") == token_id), None)
+      if gone is None:
+        return 404, {"error": "Celular não encontrado."}
+      self.store.put(phone.TOKENS_PARAM, phone.revoke_token(tokens, token_id))
+      self._audit({"event": "phone_revoked", "who": who.get("name", ""), "new": gone.get("name", "")})
+    return 200, {"ok": True}
+
   def logout(self, who: dict) -> tuple[int, dict]:
     with self.lock:
       self.store.put(phone.TOKENS_PARAM, phone.revoke_token(self._tokens(), who.get("id", "")))
@@ -570,12 +629,12 @@ def make_handler(backend: PanelBackend):
         self._json(401, {"error": "Celular não pareado."})
       return who
 
-    def _body(self) -> dict | None:
+    def _body(self, limit: int = MAX_BODY) -> dict | None:
       try:
         length = int(self.headers.get("Content-Length", "0"))
       except ValueError:
         length = -1
-      if not 0 <= length <= MAX_BODY:
+      if not 0 <= length <= limit:
         self._json(413, {"error": "Pedido grande demais."})
         return None
       try:
@@ -628,9 +687,19 @@ def make_handler(backend: PanelBackend):
       elif path == "/api/radars/near":
         if self._who() is not None:
           self._json(200, backend.radars_near())
+      elif path == "/api/radars/export":
+        if self._who() is not None:
+          self._json(200, backend.radars_export())
       elif path == "/api/live":
         if self._who() is not None:
           self._json(200, backend.live())
+      elif path == "/api/health":
+        if self._who() is not None:
+          self._json(200, backend.health())
+      elif path == "/api/phones":
+        who = self._who()
+        if who is not None:
+          self._json(200, backend.phones(who))
       else:
         self._json(404, {"error": "Não encontrado."})
 
@@ -655,7 +724,9 @@ def make_handler(backend: PanelBackend):
         "/api/radars/pin": lambda who, b: backend.radars_pin(),
         "/api/radars/add": lambda who, b: backend.radars_add(who, b),
         "/api/radars/delete": lambda who, b: backend.radars_delete(who, str(b.get("key", ""))),
+        "/api/radars/import": lambda who, b: backend.radars_import(who, b.get("edits")),
         "/api/update": lambda who, b: backend.update_action(who, str(b.get("action", "")), str(b.get("branch", ""))),
+        "/api/phones/revoke": lambda who, b: backend.revoke_phone(who, str(b.get("id", ""))),
       }
       if path not in routes and path != "/api/logout":
         self._json(404, {"error": "Não encontrado."})
@@ -666,7 +737,7 @@ def make_handler(backend: PanelBackend):
       if path == "/api/logout":
         self._json(*backend.logout(who))
         return
-      body = self._body()
+      body = self._body(MAX_IMPORT_BODY if path == "/api/radars/import" else MAX_BODY)
       if body is not None:
         self._json(*routes[path](who, body))
 
@@ -698,7 +769,9 @@ def main():
   from openpilot.common.swaglog import cloudlog
 
   params = Params()
-  sm = messaging.SubMaster(["deviceState", "carState", "selfdriveState", "carControl", "carOutput", "radarState", "gpsLocationExternal"])
+  sm = messaging.SubMaster(["deviceState", "carState", "selfdriveState", "carControl", "carOutput", "radarState", "gpsLocationExternal",
+                            "onroadEvents", "drivingModelData", "driverMonitoringState", "managerState", "lateralTorqueParameters",
+                            "vehicleParameters", "lateralDelay"])
 
   def vehicle_state() -> VehicleState:
     sm.update(0)
@@ -719,7 +792,18 @@ def main():
     now = time.monotonic()
     return hexa_live.snapshot(sm["carState"], sm["selfdriveState"], sm["carControl"], sm["carOutput"], sm["radarState"].leadOne,
                               sm["gpsLocationExternal"], now - sm.recv_time["gpsLocationExternal"], sm["deviceState"],
-                              now - sm.recv_time["carState"] < 2.)
+                              now - sm.recv_time["carState"] < 2., events=sm["onroadEvents"], model=sm["drivingModelData"],
+                              monitoring=sm["driverMonitoringState"] if params.get_bool("AutoResume") else None)
+
+  def health_state() -> dict:
+    sm.update(0)
+
+    def seen(name: str):
+      return sm[name] if sm.recv_frame[name] > 0 else None
+
+    manager = seen("managerState")
+    return {"device": hexa_live.device_state(sm["deviceState"]), "down": hexa_live.processes_down(manager) if manager is not None else None,
+            "learned": hexa_live.learned(seen("lateralTorqueParameters"), seen("vehicleParameters"), seen("lateralDelay"))}
 
   def gps_fix() -> tuple[float, float, float, float] | None:
     sm.update(0)
@@ -730,15 +814,17 @@ def main():
 
   from openpilot.common.hardware.hw import Paths
   backend = PanelBackend(params, vehicle_state, log_event=lambda fields: cloudlog.event("hexa_mark", **fields),
-                         log_root=Paths.log_root(), live_state=live_state, radar_path=radars.updated_path(), gps_fix=gps_fix)
+                         log_root=Paths.log_root(), live_state=live_state, radar_path=radars.updated_path(), gps_fix=gps_fix,
+                         health_state=health_state)
 
   def watch_bookmarks():
     # every bookmark in the log becomes a mark: with the reason from the phone, or "sem motivo" to classify later
-    bookmarks = messaging.SubMaster(["userBookmark"])
+    watched = messaging.SubMaster(["userBookmark", "selfdriveState", "onroadEvents"], poll="userBookmark")
     while True:
-      bookmarks.update(100)
-      if bookmarks.updated["userBookmark"]:
-        backend.on_bookmark(bookmarks.logMonoTime["userBookmark"])
+      watched.update(100)
+      if watched.updated["userBookmark"]:
+        backend.on_bookmark(watched.logMonoTime["userBookmark"])
+      backend.on_drive_state(watched["selfdriveState"].enabled, watched["onroadEvents"])
 
   threading.Thread(target=watch_bookmarks, daemon=True).start()
   serve(backend)

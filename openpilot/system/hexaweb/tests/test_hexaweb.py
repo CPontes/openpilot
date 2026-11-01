@@ -1,6 +1,7 @@
 import json
 import re
 import threading
+from types import SimpleNamespace
 import urllib.error
 import urllib.request
 
@@ -374,10 +375,10 @@ def updater(panel, **values):
   return panel.pair()
 
 
-def test_update_state_offers_only_our_branches(panel):
+def test_update_state_offers_only_the_cars_branch(panel):
   token = updater(panel, UpdaterNewDescription="0.11.3 / h6gt-lat-04 / 3653abc / Nov 01", UpdateAvailable=True)
   status, u = panel.json("/api/update", token=token)
-  assert status == 200 and u["branches"] == ["h6gt", "h6gt-lat-04"] and u["allowed"] is True
+  assert status == 200 and u["branches"] == ["h6gt"] and u["allowed"] is True
   assert u["current"]["commit"] == "2fd5622" and u["new"]["branch"] == "h6gt-lat-04" and u["ready"] is True
 
 
@@ -386,8 +387,10 @@ def test_update_steps_with_the_car_off(panel):
   assert panel.json("/api/update", {"action": "check"}, token=token)[0] == 200
   assert panel.json("/api/update", {"action": "download"}, token=token)[0] == 200
   assert panel.signals == ["SIGUSR1", "SIGHUP"]
-  assert panel.json("/api/update", {"action": "branch", "branch": "h6gt-lat-04"}, token=token)[0] == 200
-  assert panel.store.get("UpdaterTargetBranch") == "h6gt-lat-04" and panel.signals[-1] == "SIGUSR1"
+  panel.store.d["UpdaterTargetBranch"] = "h6gt-next"  # a comma on another branch can come back
+  assert panel.json("/api/update", token=token)[1]["branches"] == ["h6gt-next", "h6gt"]
+  assert panel.json("/api/update", {"action": "branch", "branch": "h6gt"}, token=token)[0] == 200
+  assert panel.store.get("UpdaterTargetBranch") == "h6gt" and panel.signals[-1] == "SIGUSR1"
   assert panel.json("/api/update", {"action": "install"}, token=token)[0] == 200
   assert panel.store.get("DoReboot") is True
   assert panel.store.get(phone.AUDIT_PARAM)[-1]["event"] == "update"
@@ -413,6 +416,7 @@ def test_update_needs_pairing(panel):
 def test_update_only_to_a_listed_branch_and_nothing_else(panel):
   token = updater(panel, UpdateAvailable=False)
   assert panel.json("/api/update", {"action": "branch", "branch": "master"}, token=token)[0] == 400
+  assert panel.json("/api/update", {"action": "branch", "branch": "h6gt-lat-04"}, token=token)[0] == 400
   assert panel.json("/api/update", {"action": "branch", "branch": "evil; reboot"}, token=token)[0] == 400
   assert panel.json("/api/update", {"action": "uninstall"}, token=token)[0] == 400
   assert panel.json("/api/update", {"action": "install"}, token=token)[0] == 409
@@ -492,14 +496,14 @@ def test_live_needs_pairing_and_shows_what_the_backend_gives(panel):
   panel.backend._live_state = lambda: {"driving": True, "v": 42}
   token = panel.pair()
   assert panel.json("/api/live")[0] == 401
-  assert panel.json("/api/live", token=token) == (200, {"driving": True, "v": 42})
+  assert panel.json("/api/live", token=token) == (200, {"driving": True, "v": 42, "last_off": None})
 
 
 def test_live_failure_only_empties_the_page(panel):
   def fail():
     raise RuntimeError("no data")
   panel.backend._live_state = fail
-  assert panel.json("/api/live", token=panel.pair()) == (200, {})
+  assert panel.json("/api/live", token=panel.pair()) == (200, {"last_off": None})
 
 
 def test_reboot_only_with_the_car_off(panel):
@@ -674,3 +678,92 @@ def test_delete_own_point(panel, tmp_path):
   assert panel.json("/api/radars/delete", {"key": "nada"}, token=token)[0] == 404
   assert panel.json("/api/radars/delete", {"key": k}, token=token)[0] == 200
   assert panel.store.get(r.EDITS_PARAM) == []
+
+
+def test_openpilot_dropping_out_is_noted(panel):
+  token = panel.pair()
+  panel.backend.on_drive_state(False, [])
+  assert panel.json("/api/live", token=token)[1]["last_off"] is None
+  panel.backend.on_drive_state(True, [])
+  panel.now = 2000.
+  flags = {"userDisable": True, "noEntry": False, "softDisable": False, "immediateDisable": False}
+  panel.backend.on_drive_state(False, [SimpleNamespace(name="pcmDisable", **flags)])
+  assert panel.json("/api/live", token=token)[1]["last_off"] == {"t": 2000, "why": ["o ACC desligou"]}
+  assert panel.json("/api/health", token=token)[1]["last_off"] == {"t": 2000, "why": ["o ACC desligou"]}
+
+
+def test_health_needs_pairing_and_survives_a_failure(panel):
+  panel.backend._health_state = lambda: {"down": ["loggerd"]}
+  token = panel.pair()
+  assert panel.json("/api/health")[0] == 401
+  assert panel.json("/api/health", token=token)[1]["down"] == ["loggerd"]
+
+  def fail():
+    raise RuntimeError("no data")
+  panel.backend._health_state = fail
+  assert panel.json("/api/health", token=token) == (200, {"last_off": None})
+
+
+def test_phones_show_no_secret_and_mark_this_one(panel):
+  mine, other = panel.pair("meu"), panel.pair("outro")
+  assert panel.json("/api/phones")[0] == 401
+  status, d = panel.json("/api/phones", token=mine)
+  assert status == 200 and [(p["name"], p["you"]) for p in d["phones"]] == [("meu", True), ("outro", False)]
+  assert "hash" not in json.dumps(d) and other not in json.dumps(d)
+
+
+def test_disconnect_another_phone(panel):
+  mine, other = panel.pair("meu"), panel.pair("outro")
+  phones = panel.json("/api/phones", token=mine)[1]["phones"]
+  assert panel.json("/api/phones/revoke", {"id": phones[1]["id"]}) [0] == 401
+  assert panel.json("/api/phones/revoke", {"id": "nada"}, token=mine)[0] == 404
+  assert panel.json("/api/phones/revoke", {"id": phones[0]["id"]}, token=mine)[0] == 400  # this one has its own button
+  assert panel.json("/api/phones/revoke", {"id": phones[1]["id"]}, token=mine)[0] == 200
+  assert panel.json("/api/state", token=other)[0] == 401
+  assert panel.json("/api/state", token=mine)[0] == 200
+  assert panel.store.get(phone.AUDIT_PARAM)[-1]["event"] == "phone_revoked"
+
+
+def test_radar_points_go_out_and_come_back(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path)
+  add_point(panel, token, limit=50)
+  assert panel.json("/api/radars/export")[0] == 401
+  saved = panel.json("/api/radars/export", token=token)[1]["edits"]
+  assert len(saved) == 1 and saved[0]["lat"] == panel.lat - .002
+  panel.store.put(r.EDITS_PARAM, [])
+  status, d = panel.json("/api/radars/import", {"edits": saved}, token=token)
+  assert status == 200 and "1 pontos" in d["message"]
+  back = panel.store.get(r.EDITS_PARAM)
+  assert [(e["key"], e["lat"], e["limit"], e["kind"]) for e in back] == [(e["key"], e["lat"], e["limit"], e["kind"]) for e in saved]
+
+
+def test_import_refuses_junk_and_a_running_car(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path)
+  assert panel.json("/api/radars/import", {"edits": []})[0] == 401
+  assert panel.json("/api/radars/import", {"edits": [{"lat": 999}]}, token=token)[0] == 400
+  assert panel.json("/api/radars/import", {"edits": "nada"}, token=token)[0] == 400
+  panel.vs = VehicleState(onroad=True)
+  assert panel.json("/api/radars/import", {"edits": [{"lat": 1., "lon": 2., "kind": "radar"}]}, token=token)[0] == 409
+
+
+def test_a_large_copy_fits_but_only_there(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path)
+  edits = [{"lat": -20. - i / 1000, "lon": -40., "kind": "radar", "limit": 60, "direction": 10., "who": "x" * 20, "t": 1000} for i in range(500)]
+  assert panel.json("/api/radars/import", {"edits": edits}, token=token)[0] == 200
+  assert len(panel.store.get(r.EDITS_PARAM)) == 500
+  assert panel.json("/api/option", {"key": "AutoResume", "pad": "x" * 8000}, token=token)[0] == 413
+
+
+def test_icons_are_served_and_named_in_the_manifest(panel):
+  manifest = json.loads(panel.request("/manifest.webmanifest")[2])
+  for icon in manifest["icons"]:
+    status, headers, data = panel.request(icon["src"])
+    assert status == 200 and headers["Content-Type"] == "image/png" and data[:4] == b"\x89PNG"
+  assert panel.request("/icon-180.png")[0] == 200
+  assert 'rel="apple-touch-icon" href="/icon-180.png"' in panel.request("/")[2].decode()
+
+
+def test_every_element_the_page_asks_for_exists(panel):
+  page = panel.request("/")[2].decode()
+  assert set(re.findall(r'\$\("([A-Za-z]+)"\)', page)) <= set(re.findall(r'id="([A-Za-z]+)"', page))
+

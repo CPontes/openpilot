@@ -523,7 +523,7 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
 
   EventName.leadDeparted: {
     ET.PERMANENT: Alert(
-      "Lead Car Moved",
+      "Carro da frente saiu",
       "",
       AlertStatus.normal, AlertSize.small,
       Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 3.),
