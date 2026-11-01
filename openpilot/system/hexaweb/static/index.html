@@ -74,6 +74,7 @@
                     text-align: left; padding: 10px 12px; }
   .reasons button:active { background: color-mix(in srgb, var(--accent) 22%, var(--bg)); }
   .reasons button.mine { border-style: dashed; }
+  .reasons button.armed { background: var(--accent); color: #fff; border-color: var(--accent); }
   .pending { border-color: var(--warn); }
   textarea { width: 100%; font: inherit; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
              background: var(--bg); color: var(--text); resize: vertical; }
@@ -125,7 +126,7 @@
     </div>
     <div id="pendingBox"></div>
     <div class="card">
-      <div class="desc">Um toque marca o momento com o motivo e aciona a bandeira do comma.
+      <div class="desc">Toque no motivo e toque de novo para confirmar. A marca aciona a bandeira do comma.
         Em "outro", escreva ou dite pelo teclado do celular assim que parar.</div>
       <div class="reasons" id="reasons"></div>
       <details>
@@ -211,6 +212,9 @@ let timer = null;
 let titles = {};
 let marksState = { reasons: [], marks: [], pending: 0 };
 let carStopped = false;
+let armed = null;  // a first tap only gets the reason ready: a bump on the phone must not leave a mark
+let armedTimer = null;
+const ARM_MS = 3000;
 let editing = null;  // the mark being written: the editor stays out of what the refresh redraws
 
 function saveToken(t) {
@@ -373,9 +377,10 @@ function renderMarks(m) {
   marksState = m;
   const grid = $("reasons"); grid.replaceChildren();
   for (const r of m.reasons) {
-    const b = document.createElement("button"); b.textContent = r.label;
+    const b = document.createElement("button"); b.textContent = armed === r.key ? "Tocar de novo: " + r.label : r.label;
     if (r.custom) b.className = "mine";
-    b.addEventListener("click", () => (r.key === "outro" ? markOther(b) : doMark(r.key, b)));
+    if (armed === r.key) b.classList.add("armed");
+    b.addEventListener("click", () => tapReason(r.key, b));
     grid.appendChild(b);
   }
   const mine = m.reasons.filter(r => r.custom);
@@ -424,6 +429,25 @@ function renderMarks(m) {
     li.append(text, b);
     ul.appendChild(li);
   }
+}
+
+function disarm() {
+  clearTimeout(armedTimer);
+  armed = null;
+  renderMarks(marksState);
+}
+
+function tapReason(key, btn) {
+  if (armed !== key) {
+    clearTimeout(armedTimer);
+    armed = key;
+    if (navigator.vibrate) navigator.vibrate(20);
+    armedTimer = setTimeout(disarm, ARM_MS);
+    renderMarks(marksState);
+    return;
+  }
+  disarm();
+  key === "outro" ? markOther(btn) : doMark(key, btn);
 }
 
 async function doMark(reason, btn) {
