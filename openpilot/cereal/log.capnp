@@ -136,6 +136,7 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     radarAhead @106;
     autoResume @107;
     bumpSlowdown @108;
+    accLost @109;
 
     lowBatteryDEPRECATED @40;
     soundsUnavailableDEPRECATED @47;

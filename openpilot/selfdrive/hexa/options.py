@@ -142,6 +142,16 @@ OPTIONS: tuple[HexaOption, ...] = (
     restart_needed=True,
   ),
   HexaOption(
+    key="AccLostAlert",
+    group="avisos",
+    title="aviso de acc saiu sozinho",
+    description="Com o openpilot na direção, um som avisa quando o ACC da Haval sai sem freio, acelerador ou alavanca.\n" +
+                "Só avisa: a partir daí, a velocidade é sua.",
+    driving=False,
+    restart_needed=True,
+    testing=True,
+  ),
+  HexaOption(
     key="HexaWebEnabled",
     group="celular",
     title="painel no celular",

@@ -1,7 +1,8 @@
 from pathlib import Path
 
 from openpilot.cereal import log
-from openpilot.selfdrive.selfdrived.traffic_alerts import AUTO_RESUME_MAX_STOP, BUMP_MAX_DROP, BUMP_MAX_SPEED, BUMP_MAX_TIME, BUMP_MIN_SPEED, \
+from openpilot.selfdrive.selfdrived.traffic_alerts import ACC_LOST_DRIVEN, ACC_LOST_MIN_SPEED, ACC_LOST_PEDAL_HOLD, ACC_LOST_TIME, AccLostAlert, \
+                                                         AUTO_RESUME_MAX_STOP, BUMP_MAX_DROP, BUMP_MAX_SPEED, BUMP_MAX_TIME, BUMP_MIN_SPEED, \
   BUMP_NO_RESPONSE, BumpSlowdown, AUTO_RESUME_REQUEST, LEAD_DEPART_DISTANCE, LEAD_DEPART_SPEED, \
                                                          AutoResume, LeadDepartAlert, driver_attentive
 
@@ -256,3 +257,71 @@ def test_a_second_bump_does_not_restart_the_first():
   frames = bump.b.frames
   bump.run(60, 1.)
   assert bump.b.start(40, 60.) is False and bump.b.target == 30 and bump.b.frames < frames
+
+
+class Acc:
+  def __init__(self):
+    self.alert = AccLostAlert(DT)
+
+  def run(self, seconds, enabled=True, acc=True, v=15., gas=False, brake=False):
+    return sum(self.alert.update(enabled, acc, v, gas, brake) for _ in range(round(seconds / DT)))
+
+  def driving(self):
+    self.run(ACC_LOST_DRIVEN + 1.)
+    return self
+
+
+def test_acc_lost_warns_once():
+  acc = Acc().driving()
+  assert acc.run(ACC_LOST_TIME - .05, acc=False) == 0
+  assert acc.run(.1, acc=False) == 1
+  assert acc.run(10., acc=False) == 0
+
+
+def test_a_blip_of_the_acc_says_nothing():
+  acc = Acc().driving()
+  assert acc.run(ACC_LOST_TIME - .05, acc=False) == 0
+  assert acc.run(1.) == 0
+  assert acc.run(ACC_LOST_TIME - .05, acc=False) == 0
+
+
+def test_warns_again_only_after_the_acc_came_back():
+  acc = Acc().driving()
+  assert acc.run(2., acc=False) == 1
+  assert acc.run(ACC_LOST_DRIVEN - .1) + acc.run(2., acc=False) == 0
+  assert acc.run(ACC_LOST_DRIVEN + .1) + acc.run(2., acc=False) == 1
+
+
+def test_a_pedal_is_the_driver_taking_the_speed():
+  for pedal in ({"gas": True}, {"brake": True}):
+    assert Acc().driving().run(5., acc=False, **pedal) == 0
+
+
+def test_the_pedal_counts_for_a_while_after_it_is_released():
+  acc = Acc().driving()
+  acc.run(.1, gas=True)
+  acc.run(ACC_LOST_PEDAL_HOLD - .5)
+  assert acc.run(5., acc=False) == 0
+
+  acc = Acc().driving()
+  acc.run(.1, brake=True)
+  acc.run(ACC_LOST_PEDAL_HOLD + ACC_LOST_DRIVEN)
+  assert acc.run(5., acc=False) == 1
+
+
+def test_slow_traffic_and_stops_say_nothing():
+  assert Acc().driving().run(5., acc=False, v=ACC_LOST_MIN_SPEED - .1) == 0
+  assert Acc().driving().run(5., acc=False, v=0.) == 0
+
+
+def test_nothing_with_openpilot_off():
+  assert Acc().driving().run(5., acc=False, enabled=False) == 0
+  acc = Acc()
+  acc.run(10., enabled=False)
+  assert acc.run(5., acc=False) == 0
+
+
+def test_the_acc_has_to_have_been_driving():
+  acc = Acc()
+  acc.run(ACC_LOST_DRIVEN - .1)
+  assert acc.run(5., acc=False) == 0

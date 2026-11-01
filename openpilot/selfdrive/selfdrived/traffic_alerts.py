@@ -20,6 +20,11 @@ BUMP_MAX_DROP = 30.  # km/h, 6 presses: what the panda allows in a minute
 BUMP_MAX_TIME = 60.  # s
 BUMP_NO_RESPONSE = 2.5  # s, about 5 presses that didn't move the set speed
 
+ACC_LOST_DRIVEN = 3.  # s, the ACC holding the speed before this counts as losing it
+ACC_LOST_TIME = .5  # s, a short blip of the ACC state is not a drop
+ACC_LOST_PEDAL_HOLD = 2.  # s, the ACC stepping aside for a pedal is the driver's doing
+ACC_LOST_MIN_SPEED = 8.  # m/s, in slow traffic the ACC stops and waits on its own
+
 
 class LeadDepartAlert:
   """Warns, once per stop, that the car ahead pulled away. It only warns: it never moves the car."""
@@ -137,5 +142,39 @@ class AutoResume:
       return True
     if departed and attentive and self.stopped_frames * self.dt <= AUTO_RESUME_MAX_STOP:
       self.request_frames = round(AUTO_RESUME_REQUEST / self.dt) - 1
+      return True
+    return False
+
+
+class AccLostAlert:
+  """Warns, once per drop, that the Haval ACC left while openpilot steers: nobody asked and the car starts to slow down.
+
+  It only warns. Cancel disengages openpilot, so what's left to rule out is a pedal.
+  """
+  def __init__(self, dt: float = DT_CTRL):
+    self.dt = dt
+    self.pedal_frames = 0
+    self.reset()
+
+  def reset(self) -> None:
+    self.driving_frames = 0
+    self.lost_frames = 0
+
+  def update(self, enabled: bool, acc_driving: bool, v_ego: float, gas_pressed: bool, brake_pressed: bool) -> bool:
+    self.pedal_frames = round(ACC_LOST_PEDAL_HOLD / self.dt) if gas_pressed or brake_pressed else max(self.pedal_frames - 1, 0)
+    if not enabled:
+      self.reset()
+      return False
+    if acc_driving:
+      self.driving_frames += 1
+      self.lost_frames = 0
+      return False
+    if self.driving_frames * self.dt < ACC_LOST_DRIVEN or self.pedal_frames > 0 or v_ego < ACC_LOST_MIN_SPEED:
+      self.reset()
+      return False
+
+    self.lost_frames += 1
+    if self.lost_frames * self.dt >= ACC_LOST_TIME - 1e-6:
+      self.reset()
       return True
     return False

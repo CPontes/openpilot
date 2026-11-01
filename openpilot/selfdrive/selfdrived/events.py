@@ -528,6 +528,15 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
       Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 3.),
   },
 
+  # above a radar or bump alert: nobody asked and the car starts to slow down
+  EventName.accLost: {
+    ET.PERMANENT: Alert(
+      "ACC desligou",
+      "A velocidade é sua",
+      AlertStatus.userPrompt, AlertSize.mid,
+      Priority.MID, VisualAlert.none, AudibleAlert.prompt, 4.),
+  },
+
   EventName.leadDeparted: {
     ET.PERMANENT: Alert(
       "Carro da frente saiu",
