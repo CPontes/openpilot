@@ -289,7 +289,7 @@ def radar_ahead_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMast
   hit = radars.last_hit
   limit = hit.get("limit")
   return Alert(
-    f"Radar a {round(hit.get('distance', 0.) / 10) * 10:.0f} m",
+    f"{'Blitz' if hit.get('kind') == radars.BLITZ else 'Radar'} a {round(hit.get('distance', 0.) / 10) * 10:.0f} m",
     f"Limite {limit:.0f} km/h" if limit else "",
     AlertStatus.normal, AlertSize.mid if limit else AlertSize.small,
     Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 4.)

@@ -6,6 +6,8 @@ openpilot/selfdrive/hexa/phone.py; this file only parses HTTP and calls PanelBac
 """
 import gzip
 import json
+import math
+import secrets
 import threading
 import time
 from collections import OrderedDict
@@ -51,7 +53,8 @@ class PanelBackend:
                clock: Callable[[], float] = phone.wall_time, mono: Callable[[], float] = time.monotonic,
                log_event: Callable[[dict], None] | None = None, log_root: str | None = None,
                signal_updater: Callable[[str], None] = updates.signal_updater,
-               live_state: Callable[[], dict] | None = None, radar_path: Path | None = None):
+               live_state: Callable[[], dict] | None = None, radar_path: Path | None = None,
+               gps_fix: Callable[[], tuple[float, float, float, float] | None] | None = None):
     self.store = store  # Params, or anything with get/put/get_bool/put_bool/remove
     self._vehicle_state = vehicle_state
     self.clock = clock  # wall clock: token, audit and mark dates
@@ -69,6 +72,9 @@ class PanelBackend:
     self.signal_updater = signal_updater
     self.radar_path = radar_path
     self._radar_job = {"busy": False, "error": ""}
+    self._radar_rows: tuple[tuple, object] = ((), None)
+    self._gps_fix = gps_fix or (lambda: None)
+    self._radar_pins: dict[str, tuple] = {}
     self._live_state = live_state or dict
 
   def vehicle_state(self) -> VehicleState:
@@ -357,6 +363,112 @@ class PanelBackend:
     allowed, reason = updates.can_update(self.vehicle_state())
     return {"count": count, "date": int(path.stat().st_mtime) if updated else None, "allowed": allowed, "reason": reason, **self._radar_job}
 
+  def _gps(self) -> tuple[float, float, float, float] | None:
+    with self._vs_lock:
+      try:
+        return self._gps_fix()
+      except Exception:
+        return None
+
+  def _edits(self) -> list[dict]:
+    return self.store.get(radars.EDITS_PARAM) or []
+
+  def _rows(self):
+    """The list with the edits, built again only when one of them changes."""
+    edits = self._edits()
+    path = self.radar_path if self.radar_path is not None and self.radar_path.is_file() else radars.BUNDLED
+    stamp = (str(path), path.stat().st_mtime, str(edits), int(self.clock() // 60))  # a minute, for a blitz to expire
+    if self._radar_rows[0] != stamp:
+      self._radar_rows = (stamp, radars.merge(radars.load(path), edits, self.clock()))
+    return self._radar_rows[1], edits
+
+  def radars_near(self) -> dict:
+    fix = self._gps()
+    with self.lock:
+      rows, edits = self._rows()
+      mine = [{"key": e["key"], "kind": e["kind"], "limit": e.get("limit"), "t": e.get("t"), "removed": bool(e.get("removed"))}
+              for e in reversed(radars.active(edits, self.clock()))][:40]
+    if fix is None:
+      return {"gps": False, "near": [], "mine": mine}
+    return {"gps": True, "near": radars.nearby(rows, edits, fix[0], fix[1], fix[2]), "mine": mine}
+
+  def radars_pin(self) -> tuple[int, dict]:
+    """Holds where the car is at the tap: at 60 km/h, ten seconds later it is 170 m ahead of the point."""
+    fix = self._gps()
+    if fix is None:
+      return 409, {"error": "Sem GPS agora: não dá para saber onde é."}
+    with self.lock:
+      now = self.clock()
+      self._radar_pins = {k: v for k, v in self._radar_pins.items() if now - v[0] < radars.PIN_SECONDS}
+      pin = secrets.token_urlsafe(8)
+      self._radar_pins[pin] = (now, fix)
+    return 200, {"pin": pin}
+
+  def radars_edit(self, who: dict, body: dict) -> tuple[int, dict]:
+    fix = self._gps()
+    point_key = str(body.get("key", ""))
+    limit = body.get("limit")
+    if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or not 20 <= limit <= 130):
+      return 400, {"error": "Limite inválido."}
+    with self.lock:
+      rows, edits = self._rows()
+      hit = [i for i in range(len(rows)) if radars.key(rows[i, 0], rows[i, 1]) == point_key]
+      if not hit:
+        return 404, {"error": "Ponto não encontrado."}
+      row = rows[hit[0]]
+      side = body.get("side")
+      if side in ("mesmo", "contrario") and fix is None:
+        return 409, {"error": "Sem GPS para saber o sentido."}
+      if side in ("mesmo", "contrario") and fix[3] < radars.DIRECTION_MIN_SPEED:
+        return 409, {"error": "Com o carro parado o GPS não sabe o sentido. Marque andando."}
+      direction = None if math.isnan(row[3]) else float(row[3])
+      if side == "mesmo":
+        direction = fix[2]
+      elif side == "contrario":
+        direction = (fix[2] + 180.) % 360.
+      elif side == "?":
+        direction = None
+      old = next((e for e in edits if e["key"] == point_key), {})
+      entry = {**old, "key": point_key, "lat": float(row[0]), "lon": float(row[1]), "kind": old.get("kind", "edit"), "limit": limit,
+               "direction": direction, "confirmed": bool(body.get("confirmed")), "removed": bool(body.get("removed")), "who": who.get("name", ""),
+               "t": int(self.clock())}
+      self.store.put(radars.EDITS_PARAM, radars.apply_edit(edits, entry, self.clock()))
+      self._audit({"event": "radar", "who": who.get("name", ""), "key": "removed" if entry["removed"] else "edit", "new": limit})
+    return 200, {"ok": True, "message": "Vale na próxima partida do carro."}
+
+  def radars_add(self, who: dict, body: dict) -> tuple[int, dict]:
+    kind = str(body.get("kind", ""))
+    limit = body.get("limit")
+    if kind not in radars.KINDS:
+      return 400, {"error": "Tipo desconhecido."}
+    if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or not 20 <= limit <= 130):
+      return 400, {"error": "Limite inválido."}
+    with self.lock:
+      now = self.clock()
+      held = self._radar_pins.pop(str(body.get("pin", "")), None)  # the phone never sends a position
+      if held is None or now - held[0] >= radars.PIN_SECONDS:
+        return 409, {"error": "Esse toque expirou. Toque de novo ao passar pelo ponto."}
+      lat, lon, bearing, speed = held[1]
+      direction = bearing if speed >= radars.DIRECTION_MIN_SPEED else None
+      rows, edits = self._rows()
+      if radars.taken(rows, lat, lon, direction):
+        return 409, {"error": "Já tem um ponto aqui: confira na lista."}
+      entry = {"key": radars.key(lat, lon), "lat": lat, "lon": lon, "kind": kind, "limit": limit, "direction": direction, "who": who.get("name", ""),
+               "t": int(now), "expires": now + radars.BLITZ_HOURS * 3600 if kind == "blitz" else None}
+      self.store.put(radars.EDITS_PARAM, radars.apply_edit(edits, entry, now))
+      self._audit({"event": "radar", "who": who.get("name", ""), "key": "add", "new": kind})
+    return 200, {"ok": True, "message": "Salvo. Vale na próxima partida do carro."}
+
+  def radars_delete(self, who: dict, point_key: str) -> tuple[int, dict]:
+    with self.lock:
+      edits = self._edits()
+      kept = [e for e in edits if e.get("key") != point_key]
+      if len(kept) == len(edits):
+        return 404, {"error": "Ponto não encontrado."}
+      self.store.put(radars.EDITS_PARAM, kept)
+      self._audit({"event": "radar", "who": who.get("name", ""), "key": "delete", "new": ""})
+    return 200, {"ok": True}
+
   def radars_update(self, who: dict) -> tuple[int, dict]:
     allowed, reason = updates.can_update(self.vehicle_state())
     if not allowed:
@@ -513,6 +625,9 @@ def make_handler(backend: PanelBackend):
       elif path == "/api/radars":
         if self._who() is not None:
           self._json(200, backend.radars_state())
+      elif path == "/api/radars/near":
+        if self._who() is not None:
+          self._json(200, backend.radars_near())
       elif path == "/api/live":
         if self._who() is not None:
           self._json(200, backend.live())
@@ -536,6 +651,10 @@ def make_handler(backend: PanelBackend):
         "/api/reasons": lambda who, b: backend.add_reason(who, str(b.get("label", ""))),
         "/api/reasons/remove": lambda who, b: backend.remove_reason(who, str(b.get("key", ""))),
         "/api/radars": lambda who, b: backend.radars_update(who),
+        "/api/radars/edit": lambda who, b: backend.radars_edit(who, b),
+        "/api/radars/pin": lambda who, b: backend.radars_pin(),
+        "/api/radars/add": lambda who, b: backend.radars_add(who, b),
+        "/api/radars/delete": lambda who, b: backend.radars_delete(who, str(b.get("key", ""))),
         "/api/update": lambda who, b: backend.update_action(who, str(b.get("action", "")), str(b.get("branch", ""))),
       }
       if path not in routes and path != "/api/logout":
@@ -602,9 +721,16 @@ def main():
                               sm["gpsLocationExternal"], now - sm.recv_time["gpsLocationExternal"], sm["deviceState"],
                               now - sm.recv_time["carState"] < 2.)
 
+  def gps_fix() -> tuple[float, float, float, float] | None:
+    sm.update(0)
+    g = sm["gpsLocationExternal"]
+    if not g.hasFix or g.horizontalAccuracy > radars.MIN_FIX_ACCURACY or time.monotonic() - sm.recv_time["gpsLocationExternal"] > hexa_live.GPS_MAX_AGE_S:
+      return None
+    return g.latitude, g.longitude, g.bearingDeg, g.speed
+
   from openpilot.common.hardware.hw import Paths
   backend = PanelBackend(params, vehicle_state, log_event=lambda fields: cloudlog.event("hexa_mark", **fields),
-                         log_root=Paths.log_root(), live_state=live_state, radar_path=radars.updated_path())
+                         log_root=Paths.log_root(), live_state=live_state, radar_path=radars.updated_path(), gps_fix=gps_fix)
 
   def watch_bookmarks():
     # every bookmark in the log becomes a mark: with the reason from the phone, or "sem motivo" to classify later

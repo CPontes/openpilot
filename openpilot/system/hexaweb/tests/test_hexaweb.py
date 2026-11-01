@@ -1,4 +1,5 @@
 import json
+import re
 import threading
 import urllib.error
 import urllib.request
@@ -561,3 +562,115 @@ def test_radar_download_failure_is_shown(panel, tmp_path, monkeypatch):
       break
   assert "ValueError" in d["error"]
 
+
+def radar_panel(panel, tmp_path, fix=True, speed=10.):
+  from openpilot.selfdrive.hexa import radars as r
+  row = r.load(r.BUNDLED)[0]
+  panel.lat, panel.lon = float(row[0]), float(row[1])
+  panel.backend.radar_path = tmp_path / "nao-existe.csv"
+  panel.fix = (panel.lat - .002, panel.lon, 0., speed) if fix else None
+  panel.backend._gps_fix = lambda: panel.fix
+  return panel.pair(), r
+
+
+def add_point(panel, token, kind="radar", **body):
+  pin = panel.json("/api/radars/pin", {}, token=token)[1]["pin"]
+  return panel.json("/api/radars/add", {"kind": kind, "pin": pin, **body}, token=token)
+
+
+def test_radar_routes_need_pairing(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path)
+  assert panel.json("/api/radars/near")[0] == 401
+  for path in ("/api/radars/pin", "/api/radars/add", "/api/radars/edit", "/api/radars/delete"):
+    assert panel.json(path, {})[0] == 401
+
+
+def test_no_position_reaches_the_phone(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path)
+  assert add_point(panel, token, limit=50)[0] == 200
+  status, d = panel.json("/api/radars/near", token=token)
+  assert status == 200 and d["gps"] is True and d["near"] and d["mine"]
+  assert re.search(r"-?\d+\.\d{3}", json.dumps(d)) is None
+
+
+def test_confirm_limit_and_side_of_a_camera(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path)
+  p = panel.json("/api/radars/near", token=token)[1]["near"][0]
+  body = {"key": p["key"], "limit": 70, "side": "mesmo", "confirmed": True}
+  assert panel.json("/api/radars/edit", body, token=token)[0] == 200
+  q = next(x for x in panel.json("/api/radars/near", token=token)[1]["near"] if x["limit"] == 70)
+  assert q["side"] == "mesmo" and q["confirmed"] is True
+  assert panel.store.get(r.EDITS_PARAM)[0]["direction"] == 0.
+
+
+def test_side_needs_a_moving_car(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path, speed=.5)
+  p = panel.json("/api/radars/near", token=token)[1]["near"][0]
+  assert panel.json("/api/radars/edit", {"key": p["key"], "side": "mesmo"}, token=token)[0] == 409
+  assert panel.json("/api/radars/edit", {"key": p["key"], "limit": 60, "confirmed": True}, token=token)[0] == 200
+
+
+def test_remove_a_camera_and_undo(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path)
+  p = panel.json("/api/radars/near", token=token)[1]["near"][0]
+  assert panel.json("/api/radars/edit", {"key": p["key"], "removed": True}, token=token)[0] == 200
+  d = panel.json("/api/radars/near", token=token)[1]
+  assert p["key"] not in [x["key"] for x in d["near"]] and d["mine"][0]["removed"] is True
+  assert panel.json("/api/radars/delete", {"key": p["key"]}, token=token)[0] == 200
+  assert p["key"] in [x["key"] for x in panel.json("/api/radars/near", token=token)[1]["near"]]
+
+
+def test_edit_checks_what_comes_from_outside(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path)
+  p = panel.json("/api/radars/near", token=token)[1]["near"][0]
+  assert panel.json("/api/radars/edit", {"key": "0,0"}, token=token)[0] == 404
+  for bad in (5, 999, "60", True):
+    assert panel.json("/api/radars/edit", {"key": p["key"], "limit": bad}, token=token)[0] == 400
+
+
+def test_add_keeps_the_place_of_the_tap(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path)
+  pin = panel.json("/api/radars/pin", {}, token=token)[1]["pin"]
+  tap = panel.fix
+  panel.fix = (panel.lat - .02, panel.lon, 0., 10.)  # 2 km later
+  body = {"kind": "blitz", "limit": 40, "pin": pin, "lat": 1., "lon": 2.}
+  assert panel.json("/api/radars/add", body, token=token)[0] == 200
+  e = panel.store.get(r.EDITS_PARAM)[0]
+  assert (e["lat"], e["lon"], e["direction"]) == (tap[0], tap[1], 0.) and e["kind"] == "blitz"
+  assert e["expires"] == panel.now + r.BLITZ_HOURS * 3600
+  assert panel.json("/api/radars/add", body, token=token)[0] == 409  # a pin only saves once
+
+
+def test_a_stopped_car_saves_no_direction(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path, speed=.5)
+  assert add_point(panel, token)[0] == 200
+  assert panel.store.get(r.EDITS_PARAM)[0]["direction"] is None
+
+
+def test_an_old_tap_expires(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path)
+  pin = panel.json("/api/radars/pin", {}, token=token)[1]["pin"]
+  panel.now += r.PIN_SECONDS + 1
+  assert panel.json("/api/radars/add", {"kind": "radar", "pin": pin}, token=token)[0] == 409
+
+
+def test_add_refuses_a_point_already_there(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path)
+  assert add_point(panel, token)[0] == 200
+  assert add_point(panel, token)[0] == 409
+
+
+def test_add_needs_gps_and_a_known_kind(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path, fix=False)
+  assert panel.json("/api/radars/pin", {}, token=token)[0] == 409
+  assert panel.json("/api/radars/add", {"kind": "outro"}, token=token)[0] == 400
+  assert panel.json("/api/radars/near", token=token)[1]["gps"] is False
+
+
+def test_delete_own_point(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path)
+  add_point(panel, token)
+  k = panel.store.get(r.EDITS_PARAM)[0]["key"]
+  assert panel.json("/api/radars/delete", {"key": "nada"}, token=token)[0] == 404
+  assert panel.json("/api/radars/delete", {"key": k}, token=token)[0] == 200
+  assert panel.store.get(r.EDITS_PARAM) == []

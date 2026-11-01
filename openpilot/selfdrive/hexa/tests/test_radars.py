@@ -168,3 +168,82 @@ def test_download_swaps_a_good_list(tmp_path, monkeypatch):
   monkeypatch.setattr(radars.urllib.request, "urlopen", lambda *a, **k: Answer(json.dumps({"elements": elements}).encode()))
   assert radars.download(p) == radars.MIN_RADARS
   assert len(radars.load(p)) == radars.MIN_RADARS
+
+
+def edit(n=0., e=0., **kw):
+  lat, lon = at(n, e)
+  return {"key": radars.key(lat, lon), "lat": lat, "lon": lon, "kind": "edit", **kw}
+
+
+def test_merge_corrects_limit_and_direction():
+  r = radars.merge(rows((0, 0, 60, NAN)), [edit(3, 3, limit=80, direction=90.)], 0.)
+  assert r.shape == (1, 5) and r[0, 2] == 80 and r[0, 3] == 90
+
+
+def test_merge_removes_a_camera():
+  assert len(radars.merge(rows((0, 0, 60, NAN), (500, 0, 60, NAN)), [edit(removed=True)], 0.)) == 1
+
+
+def test_edit_far_from_any_camera_changes_nothing():
+  r = radars.merge(rows((0, 0, 60, NAN)), [edit(300, limit=80)], 0.)
+  assert r[0, 2] == 60
+
+
+def test_added_points_keep_their_kind_and_a_blitz_expires():
+  added = [{**edit(100), "kind": "radar", "limit": 50, "direction": 0., "expires": None},
+           {**edit(200), "kind": "blitz", "limit": None, "direction": 0., "expires": 100.}]
+  r = radars.merge(rows((0, 0, 60, NAN)), added, 50.)
+  assert len(r) == 3 and r[2, 4] == radars.BLITZ and math.isnan(r[2, 2])
+  assert len(radars.merge(rows((0, 0, 60, NAN)), added, 200.)) == 2
+
+
+def test_edits_survive_a_new_list():
+  edits = [edit(limit=80)]
+  assert radars.merge(rows((1, 1, 60, NAN), (900, 0, 40, NAN)), edits, 0.)[0, 2] == 80
+
+
+def test_blitz_warns_with_its_kind():
+  r = radars.merge(np.zeros((0, 4)), [{**edit(), "kind": "blitz", "limit": None, "direction": None, "expires": None}], 0.)
+  assert drive(radars.RadarWatch(r))[0][1]["kind"] == radars.BLITZ
+
+
+def test_one_entry_per_point_and_a_cap():
+  e = radars.apply_edit([{"key": "a", "limit": 1}], {"key": "a", "limit": 2}, 0.)
+  assert e == [{"key": "a", "limit": 2}]
+  many = [{"key": str(i)} for i in range(radars.MAX_EDITS + 5)]
+  assert len(radars.apply_edit(many, {"key": "x"}, 0.)) == radars.MAX_EDITS
+
+
+def test_an_expired_blitz_leaves_the_stored_list():
+  edits = [{"key": "b", "expires": 10.}, {"key": "c", "expires": None}]
+  assert [e["key"] for e in radars.apply_edit(edits, {"key": "x"}, 50.)] == ["c", "x"]
+
+
+def test_a_removed_own_point_stops_warning():
+  own = {**edit(100), "kind": "radar", "limit": 50, "direction": None, "expires": None}
+  assert len(radars.merge(np.zeros((0, 4)), [own], 0.)) == 1
+  assert len(radars.merge(np.zeros((0, 4)), [{**own, "removed": True}], 0.)) == 0
+
+
+def test_key_does_not_carry_the_position():
+  k = radars.key(-22.90312, -43.17231)
+  assert "22" not in k[:2] and "." not in k and "," not in k and len(k) == 12
+
+
+def test_taken_sees_this_direction_only():
+  r = radars.merge(rows((0, 0, 60, 180.)), [], 0.)
+  lat, lon = at(10)
+  assert radars.taken(r, lat, lon, 180.)
+  assert not radars.taken(r, lat, lon, 0.)  # the other carriageway
+  assert radars.taken(r, lat, lon, None)
+  assert not radars.taken(r, *at(300), 180.)
+
+
+def test_nearby_says_distance_and_side_never_a_position():
+  r = radars.merge(rows((300, 0, 60, 0.), (-200, 0, 40, 180.), (9000, 0, 60, NAN)), [], 0.)
+  lat, lon = at()
+  near = radars.nearby(r, [], lat, lon, 0.)
+  assert [p["distance"] for p in near] == [200, 300]
+  assert near[0]["ahead"] is False and near[0]["side"] == "contrario" and near[1]["ahead"] is True and near[1]["side"] == "mesmo"
+  assert "lat" not in near[0] and "lon" not in near[0]
+

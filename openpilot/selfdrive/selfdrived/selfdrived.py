@@ -116,7 +116,7 @@ class SelfdriveD:
     self.radar_watch = None
     if self.params.get_bool("RadarAlert"):
       try:
-        self.radar_watch = radars.RadarWatch(radars.load(radars.current()))
+        self.radar_watch = radars.RadarWatch(radars.load_current(self.params.get(radars.EDITS_PARAM), time.time()))  # noqa: TID251
       except Exception:
         cloudlog.exception("radar list failed")
 

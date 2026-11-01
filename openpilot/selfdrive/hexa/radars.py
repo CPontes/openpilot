@@ -4,6 +4,7 @@ The list comes from OpenStreetMap (c) OpenStreetMap contributors, ODbL. It stays
 no internet and the car's position goes nowhere. Most cameras have no direction in the data, so one on the other side of
 a two-way road can warn too. A warning never stands in for watching the speed.
 """
+import hashlib
 import json
 import math
 import os
@@ -21,6 +22,15 @@ OVERPASS_QUERY = """[out:json][timeout:120];
 area["ISO3166-1"="BR"][admin_level=2]->.br;
 (node["highway"="speed_camera"](area.br);node["enforcement"="maxspeed"](area.br););
 out body;"""
+EDITS_PARAM = "HexaRadarEdits"
+MAX_EDITS = 500
+MATCH_RADIUS = 25.  # m, an edit finds its camera again after the list is updated
+RADAR, BLITZ = 0, 1
+KINDS = {"radar": RADAR, "blitz": BLITZ}
+BLITZ_HOURS = 12.  # a checkpoint moves: it leaves by itself
+PIN_SECONDS = 300.  # how long a tap holds the place while the note is filled in
+DIRECTION_MIN_SPEED = 2.  # m/s, the GPS bearing wanders below this and freezes when stopped
+NEAR_LIST = 6
 MAX_DOWNLOAD = 8 * 1024 * 1024
 MIN_RADARS = 1000  # fewer than this is a bad answer, not a smaller country
 COMPASS = dict(zip(("N", "NE", "E", "SE", "S", "SW", "W", "NW"), range(0, 360, 45), strict=True))
@@ -121,6 +131,95 @@ def download(path) -> int:
   return len(rows)
 
 
+def key(lat: float, lon: float) -> str:
+  """An opaque id: the phone gets distances, never a position."""
+  return hashlib.sha256(f"{lat:.5f},{lon:.5f}".encode()).hexdigest()[:12]
+
+
+def _meters(rows: np.ndarray, lat: float, lon: float) -> tuple[np.ndarray, np.ndarray]:
+  k = math.cos(math.radians(lat))
+  return (rows[:, 1] - lon) * k * M_PER_DEG, (rows[:, 0] - lat) * M_PER_DEG
+
+
+def merge(rows: np.ndarray, edits: list[dict] | None, now: float) -> np.ndarray:
+  """The list with the owner's corrections and points on top, with a fifth column for the kind.
+
+  Edits stay apart from the list and find their camera by position, so a new list doesn't lose them.
+  """
+  out = np.c_[rows, np.zeros(len(rows))]
+  added = []
+  for e in edits or []:
+    limit = float("nan") if e.get("limit") is None else float(e["limit"])
+    direction = float("nan") if e.get("direction") is None else float(e["direction"])
+    if e.get("kind") in KINDS:
+      if not e.get("removed") and (e.get("expires") is None or e["expires"] > now):
+        added.append((e["lat"], e["lon"], limit, direction, KINDS[e["kind"]]))
+      continue
+    if not len(out):
+      continue
+    east, north = _meters(out, e["lat"], e["lon"])
+    d = np.hypot(east, north)
+    i = int(np.argmin(d))
+    if d[i] >= MATCH_RADIUS:
+      continue
+    if e.get("removed"):
+      out = np.delete(out, i, axis=0)
+    else:
+      out[i, 2], out[i, 3] = limit, direction
+  return np.vstack([out, np.array(added, dtype=float).reshape(-1, 5)]) if added else out
+
+
+def load_current(edits: list[dict] | None, now: float) -> np.ndarray:
+  return merge(load(current()), edits, now)
+
+
+def active(edits: list[dict] | None, now: float) -> list[dict]:
+  return [e for e in edits or [] if e.get("expires") is None or e["expires"] > now]
+
+
+def apply_edit(edits: list[dict] | None, edit: dict, now: float) -> list[dict]:
+  """One entry per point: a new edit of the same point replaces the old one."""
+  kept = [e for e in active(edits, now) if e.get("key") != edit["key"]]
+  return (kept + [edit])[-MAX_EDITS:]
+
+
+def taken(rows: np.ndarray, lat: float, lon: float, direction: float | None) -> bool:
+  """A point already here for this direction. The other carriageway of a road can be this close."""
+  if not len(rows):
+    return False
+  east, north = _meters(rows, lat, lon)
+  close = np.hypot(east, north) < MATCH_RADIUS
+  if direction is None:
+    return bool(close.any())
+  return bool((close & (np.isnan(rows[:, 3]) | (angle_diff(rows[:, 3], direction) < DIRECTION_TOLERANCE))).any())
+
+
+def relative(direction: float, bearing: float) -> str:
+  if math.isnan(direction):
+    return "?"
+  return "mesmo" if float(angle_diff(direction, bearing)) < DIRECTION_TOLERANCE else "contrario"
+
+
+def nearby(rows: np.ndarray, edits: list[dict] | None, lat: float, lon: float, bearing: float, reach: float = REACH) -> list[dict]:
+  """The closest points, for the phone: distance and side, never a position."""
+  if not len(rows):
+    return []
+  east, north = _meters(rows, lat, lon)
+  dist = np.hypot(east, north)
+  mine = {e["key"]: e for e in edits or []}
+  out = []
+  for i in np.argsort(dist)[:NEAR_LIST]:
+    if dist[i] > reach:
+      break
+    k = key(rows[i, 0], rows[i, 1])
+    e = mine.get(k) or next((x for x in mine.values() if abs(x["lat"] - rows[i, 0]) < 3e-4 and abs(x["lon"] - rows[i, 1]) < 3e-4), None)
+    off = float(angle_diff(math.degrees(math.atan2(east[i], north[i])), bearing))
+    out.append({"key": k, "kind": "blitz" if rows[i, 4] == BLITZ else "radar", "distance": round(float(dist[i])), "ahead": off < 90,
+                "limit": None if math.isnan(rows[i, 2]) else round(float(rows[i, 2])), "side": relative(rows[i, 3], bearing),
+                "confirmed": bool(e and e.get("confirmed")), "mine": bool(e and e.get("kind") in KINDS)})
+  return out
+
+
 last_hit: dict = {}  # what the alert shows: it's built in this same process, on the same frame
 
 
@@ -178,7 +277,8 @@ class RadarWatch:
     self.sightings = self.sightings + 1 if radar == self.tracked and dist[i] < self.tracked_dist else 1
     self.tracked, self.tracked_dist = radar, float(dist[i])
     limit = None if math.isnan(self.near[i, 2]) else float(self.near[i, 2])
+    kind = int(self.near[i, 4]) if self.near.shape[1] > 4 else RADAR
     if radar in self.warned or self.sightings < SIGHTINGS or dist[i] > alert_distance(speed, limit):
       return None
     self.warned.add(radar)
-    return {"id": radar, "distance": float(dist[i]), "limit": limit}
+    return {"id": radar, "distance": float(dist[i]), "limit": limit, "kind": kind}

@@ -60,7 +60,8 @@
   .hidden { display: none; }
   nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; display: flex; background: var(--card); border-top: 1px solid var(--line);
              padding-bottom: env(safe-area-inset-bottom); z-index: 5; }
-  nav.tabs button { flex: 1; background: none; color: var(--muted); padding: 13px 2px; font-size: 14px; border-radius: 0; }
+  nav.tabs button { flex: 1; min-width: 0; background: none; color: var(--muted); padding: 13px 0; font-size: 13px; border-radius: 0; }
+  nav.tabs button.perto::after { content: " •"; color: var(--accent); }
   nav.tabs button[aria-current="page"] { color: var(--accent); box-shadow: inset 0 2px 0 var(--accent); }
   .big { font-size: 56px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
   .big small { font-size: 16px; font-weight: 500; color: var(--muted); }
@@ -153,6 +154,36 @@
     <h2>Comma</h2>
     <div class="tiles" id="liveDevice"></div>
     </div>
+    <div data-tab="radares" class="hidden">
+      <div class="card hidden" id="pointEditor">
+        <div class="title" id="pointTitle">Radar</div>
+        <label class="field" for="pointLimit">Velocidade</label>
+        <select id="pointLimit"></select>
+        <label class="field" for="pointSide" id="pointSideLabel">Sentido</label>
+        <select id="pointSide">
+          <option value="">não mudar</option><option value="mesmo">o sentido em que estou</option>
+          <option value="contrario">o sentido contrário</option><option value="?">não sei / os dois</option>
+        </select>
+        <button class="primary" id="pointSave">Confirmar</button>
+        <div class="rowlinks"><button id="pointCancel">Cancelar</button><button id="pointRemove">Não existe mais</button></div>
+      </div>
+      <h2>Perto de você</h2>
+      <div class="card"><ul class="audit" id="nearList"></ul></div>
+      <h2>Adicionar onde o carro está</h2>
+      <div class="card">
+        <div class="desc">Toque ao passar pelo ponto: o lugar fica guardado nesse toque e só salva ao confirmar. Blitz some sozinha em 12 horas.</div>
+        <div class="reasons"><button id="addRadar">Radar aqui</button><button id="addBlitz">Blitz aqui</button></div>
+      </div>
+      <h2>Meus pontos</h2>
+      <div class="card"><ul class="audit" id="mineRadars"></ul></div>
+    <h2>Radares</h2>
+    <div class="card">
+      <div class="title" id="radarCount">—</div>
+      <div class="desc" id="radarDesc"></div>
+      <div class="rowlinks"><button id="radarUpdate">Atualizar a lista</button></div>
+      <div class="note" id="radarNote"></div>
+    </div>
+    </div>
     <div data-tab="viagens" class="hidden">
     <a class="card row" href="/viagens" style="text-decoration:none;color:inherit">
       <div class="text"><div class="title">Ver como foi a viagem</div>
@@ -182,13 +213,6 @@
       </div>
       <div class="note" id="updNote"></div>
     </div>
-    <h2>Radares</h2>
-    <div class="card">
-      <div class="title" id="radarCount">—</div>
-      <div class="desc" id="radarDesc"></div>
-      <div class="rowlinks"><button id="radarUpdate">Atualizar a lista</button></div>
-      <div class="note" id="radarNote"></div>
-    </div>
     <h2>Aparelho</h2>
     <div class="card">
       <div class="desc" id="sysDesc">Reinicia só com o carro desligado. Instala a versão que já estiver baixada.</div>
@@ -203,6 +227,7 @@
 <nav class="tabs hidden" id="tabs" aria-label="Seções">
   <button data-go="marcar">Marcar</button>
   <button data-go="agora">Agora</button>
+  <button data-go="radares">Radares</button>
   <button data-go="viagens">Viagens</button>
   <button data-go="opcoes">Opções</button>
   <button data-go="sistema">Sistema</button>
@@ -252,7 +277,7 @@ function showTab(name) {
   document.querySelectorAll("[data-go]").forEach(b => b.dataset.go === name ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
   clearInterval(liveTimer); liveTimer = null;
   if (name === "agora") { refreshLive(); liveTimer = setInterval(refreshLive, 1000); }
-  if (name === "sistema") refreshRadars();
+  if (name === "radares") { refreshRadars(); refreshNear(); }
   window.scrollTo(0, 0);
 }
 
@@ -313,6 +338,7 @@ function auditText(a) {
   }
   if (a.event === "denied") return `${when} · ${who}${name}: recusado (${a.reason})`;
   if (a.event === "update") return `${when} · ${who}atualização: ${UPDATE_ACTIONS[a.key] || a.key}${a.new ? " " + a.new : ""}`;
+  if (a.event === "radar") return `${when} · ${who}radar: ${{ edit: "conferiu", removed: "tirou", add: "adicionou", delete: "apagou" }[a.key] || a.key}`;
   if (a.event === "reason_added") return `${when} · ${who}adicionou o motivo "${a.new}"`;
   return `${when} · ${who}${EVENTS[a.event] || a.event}`;
 }
@@ -488,6 +514,86 @@ async function refreshUpdate() {
   $("rebootBtn").disabled = !u.allowed;
 }
 
+const SIDES = { mesmo: "no seu sentido", contrario: "no sentido contrário", "?": "sentido não confirmado" };
+const POINT = { radar: "Radar", blitz: "Blitz", edit: "Correção" };
+const NEAR_BADGE_M = 1000;
+let point = null;
+
+function pointLine(p) {
+  const li = document.createElement("li");
+  const t = document.createElement("span");
+  const limit = p.limit ? `${p.limit} km/h` : "limite desconhecido";
+  t.textContent = `${POINT[p.kind]} a ${p.distance} m ${p.ahead ? "à frente" : "atrás"} · ${limit} · ${SIDES[p.side]}${p.confirmed ? " · confirmado" : ""}`;
+  const b = document.createElement("button"); b.className = "edit"; b.textContent = "conferir";
+  b.addEventListener("click", () => openPoint(p));
+  li.append(t, b);
+  return li;
+}
+
+async function refreshNear() {
+  const r = await api("/api/radars/near");
+  if (r.status !== 200) return;
+  const d = r.data, ul = $("nearList");
+  ul.replaceChildren(...d.near.map(pointLine));
+  if (!d.near.length) { const li = document.createElement("li"); li.textContent = d.gps ? "Nenhum ponto a menos de 1,7 km." : "Sem GPS agora."; ul.append(li); }
+  $("addRadar").disabled = $("addBlitz").disabled = !d.gps;
+  document.querySelector('[data-go="radares"]').classList.toggle("perto", d.near.some(p => p.ahead && p.distance < NEAR_BADGE_M));
+  const mine = $("mineRadars");
+  mine.replaceChildren(...d.mine.map(m => {
+    const li = document.createElement("li");
+    const t = document.createElement("span");
+    const when = new Date(m.t * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    t.textContent = `${m.removed ? "Tirado da lista" : POINT[m.kind]} · ${m.limit ? m.limit + " km/h · " : ""}${when}`;
+    const own = m.kind !== "edit";
+    const b = document.createElement("button"); b.className = "edit"; b.textContent = own ? "apagar" : "desfazer";
+    b.addEventListener("click", async () => {
+      if (!confirm(own ? "Apagar este ponto?" : "Desfazer esta correção?")) return;
+      const res = await api("/api/radars/delete", { key: m.key });
+      toast(res.status === 200 ? "Apagado." : (res.data.error || "Não foi possível."));
+      refreshNear();
+    });
+    li.append(t, b);
+    return li;
+  }));
+  if (!d.mine.length) { const li = document.createElement("li"); li.textContent = "Nenhum ainda."; mine.append(li); }
+}
+
+function fillLimits(value) {
+  const sel = $("pointLimit"); sel.replaceChildren();
+  const add = (v, t) => { const o = document.createElement("option"); o.value = v; o.textContent = t; o.selected = String(value ?? "") === v; sel.append(o); };
+  add("", "não sei");
+  for (let v = 20; v <= 130; v += 10) add(String(v), `${v} km/h`);
+}
+
+function openPoint(p) {
+  point = p;
+  $("pointTitle").textContent = p.key ? `${POINT[p.kind]} a ${p.distance} m` : POINT[p.kind] + " aqui";
+  fillLimits(p.limit);
+  $("pointSide").value = "";
+  $("pointSideLabel").classList.toggle("hidden", !p.key);
+  $("pointSide").classList.toggle("hidden", !p.key);
+  $("pointRemove").classList.toggle("hidden", !p.key);
+  $("pointEditor").classList.remove("hidden");
+  $("pointEditor").scrollIntoView({ block: "center" });
+}
+
+function closePoint() { point = null; $("pointEditor").classList.add("hidden"); }
+
+async function savePoint(removed) {
+  const v = $("pointLimit").value, limit = v ? Number(v) : null;
+  const res = point.key ? await api("/api/radars/edit", { key: point.key, limit, side: $("pointSide").value || undefined, confirmed: !removed, removed })
+                        : await api("/api/radars/add", { kind: point.kind, limit, pin: point.pin });
+  toast(res.status === 200 ? (res.data.message || "Salvo.") : (res.data.error || "Não foi possível salvar."));
+  if (res.status === 200 || !point.key) closePoint();  // a refused add has spent its tap
+  refreshNear();
+}
+
+async function addPoint(kind) {
+  const r = await api("/api/radars/pin", {});
+  if (r.status === 200) openPoint({ kind, limit: null, pin: r.data.pin });
+  else toast(r.data.error || "Sem GPS agora.");
+}
+
 async function refreshRadars() {
   const r = await api("/api/radars");
   if (r.status !== 200) return;
@@ -511,8 +617,8 @@ async function refreshMarks() {
 
 async function refresh() {
   refreshUpdate();
-  if (tab === "sistema") refreshRadars();
   if (!token) { show("pair"); return; }
+  if (!document.hidden) refreshNear().catch(() => {});
   try {
     const r = await api("/api/state");
     if (r.status === 200) { render(r.data); if ($("panel").classList.contains("hidden")) show("panel"); refreshMarks(); }
@@ -572,6 +678,11 @@ $("logoutBtn").addEventListener("click", async () => {
 
 refresh();
 document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.go)));
+$("addRadar").addEventListener("click", () => addPoint("radar"));
+$("addBlitz").addEventListener("click", () => addPoint("blitz"));
+$("pointSave").addEventListener("click", () => savePoint(false));
+$("pointCancel").addEventListener("click", closePoint);
+$("pointRemove").addEventListener("click", () => { if (confirm("Tirar este ponto da lista?")) savePoint(true); });
 $("radarUpdate").addEventListener("click", async () => {
   const r = await api("/api/radars", {});
   toast(r.status === 200 ? "Baixando a lista de radares." : (r.data.error || "Não foi possível."));

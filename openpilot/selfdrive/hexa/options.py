@@ -103,8 +103,8 @@ OPTIONS: tuple[HexaOption, ...] = (
     key="RadarAlert",
     group="avisos",
     title="aviso de radar",
-    description="Avisa com som antes dos radares da lista, com a distância e o limite.\n" +
-                "Precisa de GPS. Pode faltar radar, e pode avisar do outro sentido da via.",
+    description="Avisa com som antes dos radares e blitz da lista, com a distância e o limite.\n" +
+                "Precisa de GPS. Pode faltar ponto. Corrija e adicione na aba Radares.",
     driving=False,
     restart_needed=True,
   ),
