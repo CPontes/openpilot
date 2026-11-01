@@ -20,7 +20,7 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-  main { max-width: 560px; margin: 0 auto; padding: 16px 16px 48px; }
+  main { max-width: 560px; margin: 0 auto; padding: 16px 16px calc(96px + env(safe-area-inset-bottom)); }
   h1 { font-size: 22px; margin: 8px 0 2px; }
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 24px 0 8px; }
   .sub { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
@@ -58,6 +58,17 @@
   ul.audit li { padding: 6px 0; border-top: 1px solid var(--line); color: var(--muted); }
   ul.audit li:first-child { border-top: 0; }
   .hidden { display: none; }
+  nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; display: flex; background: var(--card); border-top: 1px solid var(--line);
+             padding-bottom: env(safe-area-inset-bottom); z-index: 5; }
+  nav.tabs button { flex: 1; background: none; color: var(--muted); padding: 13px 2px; font-size: 14px; border-radius: 0; }
+  nav.tabs button[aria-current="page"] { color: var(--accent); box-shadow: inset 0 2px 0 var(--accent); }
+  .big { font-size: 56px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .big small { font-size: 16px; font-weight: 500; color: var(--muted); }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+  .tile b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .tile span { color: var(--muted); font-size: 13px; }
+  .alert { color: var(--warn); font-weight: 600; margin-top: 8px; }
   .reasons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
   .reasons button { background: var(--bg); color: var(--text); border: 1px solid var(--line); min-height: 52px;
                     text-align: left; padding: 10px 12px; }
@@ -102,6 +113,7 @@
       </div>
       <span class="status" id="vehicleBadge"></span>
     </div>
+    <div data-tab="marcar">
     <h2>Marcar</h2>
     <div class="card hidden" id="editor">
       <div class="title">O que aconteceu?</div>
@@ -129,6 +141,20 @@
       </details>
     </div>
     <div class="card"><ul class="audit" id="markList"></ul></div>
+    </div>
+    <div data-tab="agora" class="hidden">
+    <div class="card">
+      <div class="row">
+        <div class="big text"><span id="liveV">—</span> <small>km/h</small></div>
+        <span class="status" id="liveWho"></span>
+      </div>
+      <div class="alert hidden" id="liveAlert"></div>
+    </div>
+    <div class="tiles" id="liveTiles"></div>
+    <h2>Comma</h2>
+    <div class="tiles" id="liveDevice"></div>
+    </div>
+    <div data-tab="viagens" class="hidden">
     <a class="card row" href="/viagens" style="text-decoration:none;color:inherit">
       <div class="text"><div class="title">Ver como foi a viagem</div>
         <div class="desc">Resumo e caminho, com as marcas. Arraste para percorrer o trajeto. Abre com o carro desligado.</div></div>
@@ -139,7 +165,11 @@
         <div class="desc">Replay com a linha do tempo marcada: bandeiras, força no limite, balanço, alertas. Abre com o carro desligado.</div></div>
       <span class="status ok">abrir</span>
     </a>
+    </div>
+    <div data-tab="opcoes" class="hidden">
     <div id="groups"></div>
+    </div>
+    <div data-tab="sistema" class="hidden">
     <h2>Atualização</h2>
     <div class="card">
       <div class="title" id="updNow">—</div>
@@ -153,11 +183,24 @@
       </div>
       <div class="note" id="updNote"></div>
     </div>
+    <h2>Aparelho</h2>
+    <div class="card">
+      <div class="desc" id="sysDesc">Reinicia só com o carro desligado. Instala a versão que já estiver baixada.</div>
+      <div class="rowlinks"><button id="rebootBtn">Reiniciar o comma</button></div>
+    </div>
     <h2>Últimas mudanças</h2>
     <div class="card"><ul class="audit" id="audit"></ul></div>
     <button class="link" id="logoutBtn">Desconectar este celular</button>
+    </div>
   </section>
 </main>
+<nav class="tabs hidden" id="tabs" aria-label="Seções">
+  <button data-go="marcar">Marcar</button>
+  <button data-go="agora">Agora</button>
+  <button data-go="viagens">Viagens</button>
+  <button data-go="opcoes">Opções</button>
+  <button data-go="sistema">Sistema</button>
+</nav>
 <div class="toast" id="toast" role="status"></div>
 
 <script>
@@ -191,14 +234,64 @@ async function api(path, body) {
   return { status: r.status, data };
 }
 
+let tab = "marcar", liveTimer = null;
+try { tab = localStorage.getItem("hexaTab") || tab; } catch (e) {}
+
+function showTab(name) {
+  tab = name;
+  try { localStorage.setItem("hexaTab", name); } catch (e) {}
+  document.querySelectorAll("[data-tab]").forEach(el => el.classList.toggle("hidden", el.dataset.tab !== name));
+  document.querySelectorAll("[data-go]").forEach(b => b.dataset.go === name ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
+  clearInterval(liveTimer); liveTimer = null;
+  if (name === "agora") { refreshLive(); liveTimer = setInterval(refreshLive, 1000); }
+  window.scrollTo(0, 0);
+}
+
+function tile(label, value) {
+  const d = document.createElement("div"); d.className = "tile";
+  const b = document.createElement("b"); b.textContent = value;
+  const s = document.createElement("span"); s.textContent = label;
+  d.append(b, s); return d;
+}
+
+const NETWORK = { wifi: "Wi-Fi", cell4G: "4G", cell5G: "5G", cell3G: "3G", cell2G: "2G", ethernet: "cabo", none: "sem rede" };
+
+async function refreshLive() {
+  const r = await api("/api/live");
+  if (r.status !== 200) return;
+  const l = r.data, d = l.device || {};
+  const who = !l.driving ? "carro desligado" : l.steering ? (l.driver ? "você e openpilot" : "openpilot dirigindo") : "você dirigindo";
+  $("liveV").textContent = l.driving ? l.v : "—";
+  $("liveWho").textContent = who;
+  $("liveWho").className = "status " + (l.steering ? "ok" : "ro");
+  $("liveAlert").textContent = l.alert || "";
+  $("liveAlert").classList.toggle("hidden", !l.alert);
+  const bs = l.blindspot || {};
+  const tiles = !l.driving ? [tile("GPS", l.gps && l.gps.ok ? "com sinal" : "sem sinal")] : [
+    tile("ACC", l.acc ? (l.acc_set ? `${l.acc_set} km/h` : "ligado") : "desligado"),
+    tile("carro à frente", l.lead ? `${l.lead.d} m` : "nenhum"),
+    tile("volante", `${l.wheel}°`),
+    tile("força do openpilot", `${l.torque}%`),
+    tile("seta", l.blinker || "desligada"),
+    tile("ponto cego", bs.left && bs.right ? "dos dois lados" : bs.left ? "esquerda" : bs.right ? "direita" : "livre"),
+    tile("GPS", l.gps && l.gps.ok ? `com sinal, ${l.gps.accuracy} m` : "sem sinal"),
+    tile("pedais", l.brake ? "freio" : l.gas ? "acelerador" : "soltos"),
+  ];
+  $("liveTiles").replaceChildren(...tiles);
+  $("liveDevice").replaceChildren(tile("temperatura", d.temp !== undefined ? `${d.temp} °C` : "—"), tile("disco livre", d.free !== undefined ? `${d.free}%` : "—"),
+                                  tile("memória", d.memory !== undefined ? `${d.memory}%` : "—"), tile("rede", NETWORK[d.network] || d.network || "—"));
+}
+
 function show(which) {
   $("pair").classList.toggle("hidden", which !== "pair");
   $("panel").classList.toggle("hidden", which !== "panel");
+  $("tabs").classList.toggle("hidden", which !== "panel");
+  if (which === "panel") showTab(tab);
   clearInterval(timer);
   if (which === "panel") timer = setInterval(refresh, 3000);
 }
 
-const UPDATE_ACTIONS = { check: "verificou", download: "baixou", install: "instalou", branch: "escolheu" };
+const UPDATE_ACTIONS = { check: "verificou", download: "baixou", install: "instalou", branch: "escolheu", reboot: "reiniciou" };
 const EVENTS = { paired: "pareou", logout: "desconectou", pin_locked: "código bloqueado por tentativas erradas",
                  reason_added: "adicionou motivo", reason_removed: "removeu motivo" };
 function auditText(a) {
@@ -404,6 +497,7 @@ async function refreshUpdate() {
   $("updDownload").disabled = !u.allowed || busy || !u.fetch_available;
   $("updInstall").disabled = !u.allowed || busy || !u.ready;
   $("updNote").textContent = u.allowed ? "" : u.reason;
+  $("rebootBtn").disabled = !u.allowed;
 }
 
 async function updateAction(action, branch) {
@@ -478,6 +572,10 @@ $("logoutBtn").addEventListener("click", async () => {
 });
 
 refresh();
+document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.go)));
+$("rebootBtn").addEventListener("click", () => {
+  if (confirm("Reiniciar o comma agora? Leva alguns minutos para voltar.")) updateAction("reboot");
+});
 $("editSave").addEventListener("click", saveEdit);
 $("editCancel").addEventListener("click", closeEditor);
 $("updCheck").addEventListener("click", () => updateAction("check"));

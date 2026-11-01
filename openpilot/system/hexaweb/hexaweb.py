@@ -14,6 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs
 
+from openpilot.selfdrive.hexa import live as hexa_live
 from openpilot.selfdrive.hexa import marks as hexa_marks
 from openpilot.selfdrive.hexa import phone
 from openpilot.selfdrive.hexa import timeline
@@ -48,7 +49,8 @@ class PanelBackend:
   def __init__(self, store, vehicle_state: Callable[[], VehicleState],
                clock: Callable[[], float] = phone.wall_time, mono: Callable[[], float] = time.monotonic,
                log_event: Callable[[dict], None] | None = None, log_root: str | None = None,
-               signal_updater: Callable[[str], None] = updates.signal_updater):
+               signal_updater: Callable[[str], None] = updates.signal_updater,
+               live_state: Callable[[], dict] | None = None):
     self.store = store  # Params, or anything with get/put/get_bool/put_bool/remove
     self._vehicle_state = vehicle_state
     self.clock = clock  # wall clock: token, audit and mark dates
@@ -64,6 +66,7 @@ class PanelBackend:
     self._trip_cache: OrderedDict[str, dict] = OrderedDict()
     self._trip_index: tuple[float, list[dict]] = (-TRIP_INDEX_S, [])
     self.signal_updater = signal_updater
+    self._live_state = live_state or dict
 
   def vehicle_state(self) -> VehicleState:
     with self._vs_lock:
@@ -85,6 +88,13 @@ class PanelBackend:
       return bool(self.store.get_bool(opt.key))
     v = self.store.get(opt.key)
     return opt.default if v is None else int(v)
+
+  def live(self) -> dict:
+    with self._vs_lock:
+      try:
+        return self._live_state()
+      except Exception:
+        return {}
 
   # *** API ***
 
@@ -356,6 +366,8 @@ class PanelBackend:
         if not self.store.get_bool("UpdateAvailable"):
           return 409, {"error": "Nenhuma versão pronta para instalar."}
         self.store.put_bool("DoReboot", True)
+      elif action == "reboot":
+        self.store.put_bool("DoReboot", True)
       else:
         return 400, {"error": "Ação desconhecida."}
       self._audit({"event": "update", "who": who.get("name", ""), "key": action, "new": branch})
@@ -461,6 +473,9 @@ def make_handler(backend: PanelBackend):
       elif path == "/api/update":
         if self._who() is not None:
           self._json(200, backend.update_state())
+      elif path == "/api/live":
+        if self._who() is not None:
+          self._json(200, backend.live())
       else:
         self._json(404, {"error": "Não encontrado."})
 
@@ -523,7 +538,7 @@ def main():
   from openpilot.common.swaglog import cloudlog
 
   params = Params()
-  sm = messaging.SubMaster(["deviceState", "carState", "selfdriveState"])
+  sm = messaging.SubMaster(["deviceState", "carState", "selfdriveState", "carControl", "carOutput", "radarState", "gpsLocationExternal"])
 
   def vehicle_state() -> VehicleState:
     sm.update(0)
@@ -539,9 +554,16 @@ def main():
     return VehicleState(onroad=True, parked=cs.gearShifter == "park", standstill=cs.standstill,
                         engaged=sm["selfdriveState"].enabled)
 
+  def live_state() -> dict:
+    sm.update(0)
+    now = time.monotonic()
+    return hexa_live.snapshot(sm["carState"], sm["selfdriveState"], sm["carControl"], sm["carOutput"], sm["radarState"].leadOne,
+                              sm["gpsLocationExternal"], now - sm.recv_time["gpsLocationExternal"], sm["deviceState"],
+                              now - sm.recv_time["carState"] < 2.)
+
   from openpilot.common.hardware.hw import Paths
   backend = PanelBackend(params, vehicle_state, log_event=lambda fields: cloudlog.event("hexa_mark", **fields),
-                         log_root=Paths.log_root())
+                         log_root=Paths.log_root(), live_state=live_state)
 
   def watch_bookmarks():
     # every bookmark in the log becomes a mark: with the reason from the phone, or "sem motivo" to classify later

@@ -485,3 +485,28 @@ def test_classifying_without_text_keeps_the_note(panel):
   # only a real true replaces it
   body = {"id": mark["id"], "reason": "curva", "note": "", "replace_note": "sim"}
   assert panel.json("/api/mark/classify", body, token=token)[1]["mark"]["note"] == "antes"
+
+
+def test_live_needs_pairing_and_shows_what_the_backend_gives(panel):
+  panel.backend._live_state = lambda: {"driving": True, "v": 42}
+  token = panel.pair()
+  assert panel.json("/api/live")[0] == 401
+  assert panel.json("/api/live", token=token) == (200, {"driving": True, "v": 42})
+
+
+def test_live_failure_only_empties_the_page(panel):
+  def fail():
+    raise RuntimeError("no data")
+  panel.backend._live_state = fail
+  assert panel.json("/api/live", token=panel.pair()) == (200, {})
+
+
+def test_reboot_only_with_the_car_off(panel):
+  token = updater(panel)
+  panel.vs = VehicleState(onroad=True, parked=True, standstill=True)
+  assert panel.json("/api/update", {"action": "reboot"}, token=token)[0] == 409
+  assert panel.store.get("DoReboot") is None
+  panel.vs = VehicleState(onroad=False)
+  assert panel.json("/api/update", {"action": "reboot"}, token=token)[0] == 200
+  assert panel.store.get("DoReboot") is True
+

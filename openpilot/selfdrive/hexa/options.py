@@ -92,6 +92,14 @@ OPTIONS: tuple[HexaOption, ...] = (
     restart_needed=True,
   ),
   HexaOption(
+    key="IsLdwEnabled",
+    group="avisos",
+    title="aviso de saída de faixa",
+    description="Avisa quando o carro cruza uma linha sem a seta, a partir de 50 km/h.\n" +
+                "Só alerta: não mexe no volante.",
+    driving=False,
+  ),
+  HexaOption(
     key="LeadDepartAlert",
     group="avisos",
     title="aviso de carro da frente saiu",
