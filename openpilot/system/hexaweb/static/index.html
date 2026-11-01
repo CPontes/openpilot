@@ -58,6 +58,19 @@
   ul.audit li { padding: 6px 0; border-top: 1px solid var(--line); color: var(--muted); }
   ul.audit li:first-child { border-top: 0; }
   .hidden { display: none; }
+  .reasons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .reasons button { background: var(--bg); color: var(--text); border: 1px solid var(--line); min-height: 52px;
+                    text-align: left; padding: 10px 12px; }
+  .reasons button:active { background: color-mix(in srgb, var(--accent) 22%, var(--bg)); }
+  .reasons button.mine { border-style: dashed; }
+  .pending { border-color: var(--warn); }
+  .pending .when { font-weight: 600; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chips button { background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 8px 10px; font-weight: 500; }
+  .small { font-size: 13px; color: var(--muted); }
+  .rowlinks { display: flex; gap: 16px; margin-top: 10px; }
+  .rowlinks button { background: none; color: var(--accent); padding: 4px 0; font-weight: 600; }
+  details summary { cursor: pointer; color: var(--accent); font-weight: 600; margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -86,6 +99,25 @@
       </div>
       <span class="status" id="vehicleBadge"></span>
     </div>
+    <h2>Marcar</h2>
+    <div id="pendingBox"></div>
+    <div class="card">
+      <div class="desc">Um toque marca o momento com o motivo e aciona a bandeira do comma.
+        Motorista: use a bandeira do comma; depois classifique aqui, parado.</div>
+      <div class="reasons" id="reasons"></div>
+      <details>
+        <summary>Observação e motivos</summary>
+        <label class="field" for="note">Observação (vai junto com a próxima marca)</label>
+        <input id="note" type="text" maxlength="140" placeholder="ex.: rotatória da avenida">
+        <label class="field" for="newReason">Novo motivo</label>
+        <input id="newReason" type="text" maxlength="24" placeholder="ex.: buraco">
+        <div class="rowlinks"><button id="addReasonBtn">Adicionar motivo</button></div>
+        <div class="small" id="mineHint"></div>
+        <div class="chips" id="mineList"></div>
+        <div class="rowlinks"><button id="exportBtn">Exportar marcas (para análise)</button></div>
+      </details>
+    </div>
+    <div class="card"><ul class="audit" id="markList"></ul></div>
     <div id="groups"></div>
     <h2>Últimas mudanças</h2>
     <div class="card"><ul class="audit" id="audit"></ul></div>
@@ -100,6 +132,7 @@ let token = null;
 try { token = localStorage.getItem("hexaToken"); } catch (e) {}
 let timer = null;
 let titles = {};
+let marksState = { reasons: [], marks: [], pending: 0 };
 
 function saveToken(t) {
   token = t;
@@ -129,7 +162,8 @@ function show(which) {
   if (which === "panel") timer = setInterval(refresh, 3000);
 }
 
-const EVENTS = { paired: "pareou", logout: "desconectou", pin_locked: "código bloqueado por tentativas erradas" };
+const EVENTS = { paired: "pareou", logout: "desconectou", pin_locked: "código bloqueado por tentativas erradas",
+                 reason_added: "adicionou motivo", reason_removed: "removeu motivo" };
 function auditText(a) {
   const when = new Date(a.t * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   const who = a.who ? a.who + ": " : "";
@@ -139,6 +173,7 @@ function auditText(a) {
     return `${when} · ${who}${name}: ${a.old} → ${a.new}`;
   }
   if (a.event === "denied") return `${when} · ${who}${name}: recusado (${a.reason})`;
+  if (a.event === "reason_added") return `${when} · ${who}adicionou o motivo "${a.new}"`;
   return `${when} · ${who}${EVENTS[a.event] || a.event}`;
 }
 
@@ -198,11 +233,84 @@ async function setOption(key, value, el) {
   refresh();
 }
 
+function hhmmss(t) {
+  return new Date(t * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function renderMarks(m) {
+  marksState = m;
+  const grid = $("reasons"); grid.replaceChildren();
+  for (const r of m.reasons) {
+    const b = document.createElement("button"); b.textContent = r.label;
+    if (r.custom) b.className = "mine";
+    b.addEventListener("click", () => doMark(r.key, b));
+    grid.appendChild(b);
+  }
+  const mine = m.reasons.filter(r => r.custom);
+  $("mineHint").textContent = mine.length ? "Seus motivos (toque para remover):" : "";
+  const ml = $("mineList"); ml.replaceChildren();
+  for (const r of mine) {
+    const b = document.createElement("button"); b.textContent = "✕ " + r.label;
+    b.addEventListener("click", async () => {
+      if (!confirm(`Remover o motivo "${r.label}"? As marcas antigas continuam com ele.`)) return;
+      const res = await api("/api/reasons/remove", { key: r.key });
+      toast(res.status === 200 ? "Motivo removido." : (res.data.error || "Não foi possível remover."));
+      refreshMarks();
+    });
+    ml.appendChild(b);
+  }
+  // bookmarks from the comma without a reason: classify them here, parked
+  const box = $("pendingBox"); box.replaceChildren();
+  const pending = m.marks.filter(x => !x.reason);
+  for (const p of pending) {
+    const card = document.createElement("div"); card.className = "card pending";
+    const t = document.createElement("div"); t.className = "when";
+    t.textContent = `Bandeira das ${hhmmss(p.t)} sem motivo`;
+    const chips = document.createElement("div"); chips.className = "chips";
+    for (const r of m.reasons) {
+      const b = document.createElement("button"); b.textContent = r.label;
+      b.addEventListener("click", async () => {
+        const res = await api("/api/mark/classify", { id: p.id, reason: r.key, note: $("note").value });
+        toast(res.status === 200 ? `Classificada: ${r.label}` : (res.data.error || "Não foi possível."));
+        if (res.status === 200) $("note").value = "";
+        refreshMarks();
+      });
+      chips.appendChild(b);
+    }
+    card.append(t, chips); box.appendChild(card);
+  }
+  const ul = $("markList"); ul.replaceChildren();
+  const done = m.marks.filter(x => x.reason).slice(0, 8);
+  if (!done.length) { const li = document.createElement("li"); li.textContent = "Nenhuma marca ainda."; ul.appendChild(li); }
+  for (const x of done) {
+    const li = document.createElement("li");
+    li.textContent = `${hhmmss(x.t)} · ${x.label}${x.note ? " — " + x.note : ""}${x.source === "comma" ? " (bandeira)" : ""}`;
+    ul.appendChild(li);
+  }
+}
+
+async function doMark(reason, btn) {
+  btn.disabled = true;
+  const res = await api("/api/mark", { reason, note: $("note").value });
+  btn.disabled = false;
+  if (res.status === 200) {
+    if (navigator.vibrate) navigator.vibrate(40);
+    toast(`Marcado: ${res.data.mark.label} (${hhmmss(res.data.mark.t)})`);
+    $("note").value = "";
+  } else toast(res.data.error || "Não foi possível marcar.");
+  refreshMarks();
+}
+
+async function refreshMarks() {
+  const r = await api("/api/marks");
+  if (r.status === 200) renderMarks(r.data);
+}
+
 async function refresh() {
   if (!token) { show("pair"); return; }
   try {
     const r = await api("/api/state");
-    if (r.status === 200) { render(r.data); if ($("panel").classList.contains("hidden")) show("panel"); }
+    if (r.status === 200) { render(r.data); if ($("panel").classList.contains("hidden")) show("panel"); refreshMarks(); }
   } catch (e) {
     $("vehicleText").textContent = "Sem conexão com o comma";
     $("vehicleDesc").textContent = "Confira se o celular está na mesma rede.";
@@ -214,6 +322,24 @@ $("pairBtn").addEventListener("click", async () => {
   const r = await api("/api/pair", { pin: $("pin").value, name: $("name").value });
   if (r.status === 200) { saveToken(r.data.token); $("pin").value = ""; refresh(); }
   else $("pairErr").textContent = r.data.error || "Não foi possível parear.";
+});
+
+$("exportBtn").addEventListener("click", async () => {
+  const r = await api("/api/marks/export");
+  if (r.status !== 200) { toast(r.data.error || "Não foi possível exportar."); return; }
+  const blob = new Blob([JSON.stringify(r.data, null, 1)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `marcas-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+});
+
+$("addReasonBtn").addEventListener("click", async () => {
+  const res = await api("/api/reasons", { label: $("newReason").value });
+  toast(res.status === 200 ? `Motivo adicionado: ${res.data.reason.label}` : (res.data.error || "Não foi possível."));
+  if (res.status === 200) $("newReason").value = "";
+  refreshMarks();
 });
 
 $("logoutBtn").addEventListener("click", async () => {
