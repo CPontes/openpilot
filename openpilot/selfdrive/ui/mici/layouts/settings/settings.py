@@ -1,4 +1,5 @@
 from openpilot.common.params import Params
+from openpilot.common.swaglog import cloudlog
 from openpilot.system.ui.widgets.scroller import NavScroller
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton
 from openpilot.selfdrive.ui.mici.layouts.settings.toggles import TogglesLayoutMici
@@ -24,6 +25,16 @@ class SettingsLayout(NavScroller):
     toggles_btn = SettingsBigButton("toggles", "", gui_app.texture("icons_mici/settings.png", 64, 64))
     toggles_btn.set_click_callback(lambda: gui_app.push_widget(toggles_panel))
 
+    # Hexa options (our fork). A failure here must never take the settings screen down with it.
+    hexa_btn = None
+    try:
+      from openpilot.selfdrive.ui.mici.layouts.settings.hexa import HexaLayoutMici
+      hexa_panel = HexaLayoutMici()
+      hexa_btn = SettingsBigButton("hexa", "", gui_app.texture("icons_mici/settings.png", 64, 64))
+      hexa_btn.set_click_callback(lambda: gui_app.push_widget(hexa_panel))
+    except Exception:
+      cloudlog.exception("hexa settings unavailable")
+
     network_panel = NetworkLayoutMici()
     network_btn = SettingsBigButton("network", "", gui_app.texture("icons_mici/settings/network/wifi_strength_full.png", 76, 56))
     network_btn.set_click_callback(lambda: gui_app.push_widget(network_panel))
@@ -46,6 +57,7 @@ class SettingsLayout(NavScroller):
 
     self._scroller.add_widgets([
       toggles_btn,
+      *([hexa_btn] if hexa_btn is not None else []),
       network_btn,
       self._device_button,
       software_btn,
