@@ -76,7 +76,10 @@
   label.field { display: block; font-size: 14px; color: var(--muted); margin: 14px 0 6px; }
   .err { color: var(--danger); font-size: 14px; min-height: 1em; margin-top: 8px; }
   .reasons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .reasons button { min-height: 58px; text-align: left; padding: 10px 14px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); font-weight: 600; font-size: 16px; line-height: 1.2; }
+  .reasons button { min-height: 58px; text-align: left; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); font-weight: 600; font-size: 16px; line-height: 1.2;
+                    display: flex; align-items: center; gap: 10px; }
+  .reasons button svg, .mk svg { flex: none; }
+  .mk { display: flex; align-items: center; gap: 10px; min-width: 0; }
   .reasons button.mine { border-style: dashed; }
   .reasons button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
   .pick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
@@ -458,6 +461,22 @@ function bumpSign(limit, size) {  // the speed to pass at, with the bump under i
 function pointIcon(p, size) {
   if (p.kind === "lombada") return p.limit ? bumpSign(p.limit, size) : ICON_BUMP.replace(/width="42" height="42"/, `width="${size || 42}" height="${size || 42}"`);
   return p.kind === "blitz" && !p.limit ? ICON_BLITZ : sign(p.limit, size);
+}
+// one icon per mark reason, to read the list at a glance; a reason the owner created gets the flag
+const REASON_ICONS = {
+  balancou: '<path d="M2 12c2.5-4 4.5-4 7 0s4.5 4 7 0 4-4 6 0"/>',                                  // wheel swinging
+  estrada: '<path d="M5 21l3-18M19 21l-3-18"/><ellipse cx="12" cy="16" rx="3.2" ry="1.7"/><path d="M11.5 7.5l1 1.5-1 1.5"/>', // road with a pothole
+  curva: '<path d="M4 21V11a4 4 0 0 1 8 0v2a3.5 3.5 0 0 0 7 0V4"/><path d="M16 7l3-3 3 3"/>',           // hairpin curve
+  soltou: '<circle cx="12" cy="12" r="9"/><path d="M3.5 10.5h6M14.5 10.5h6M12 14.5V21"/><path d="M4 4l16 16"/>',  // wheel let go
+  freada: '<circle cx="12" cy="12" r="6"/><path d="M5 6a9 9 0 0 0 0 12M19 6a9 9 0 0 1 0 12M12 9v3.5M12 15.2v.1"/>', // brake
+  faixa: '<path d="M4 21l3-18M16 21l-3-18"/><path d="M8.5 17.5l12-8M16.5 9h4.2v4.2"/>',                // crossing the lane line
+  alerta: '<path d="M12 3l9.5 17h-19z"/><path d="M10 10.5a2 2 0 1 1 3 1.7c-.6.4-1 .8-1 1.6M12 17v.1"/>', // alert, question mark
+  outro: '<path d="M5 12h.1M12 12h.1M19 12h.1"/>',
+};
+const ICON_FLAG_PATH = '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>';
+function reasonIcon(key, size) {
+  const s = size || 22;
+  return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${key === "outro" ? 3 : 2}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${REASON_ICONS[key] || ICON_FLAG_PATH}</svg>`;
 }
 function speedText(p) { return p.limit ? (p.kind === "lombada" ? tf("passar a {n} km/h", { n: p.limit }) : `${p.limit} km/h`) : ""; }
 function optionOf(key) { for (const g of (state && state.groups) || []) for (const o of g.options) if (o.key === key) return o; return null; }
@@ -845,7 +864,9 @@ function renderMarks(m) {
   if (!done.length) list.append(el("div", "line desc", t("Nenhuma marca ainda.")));
   for (const x of done) {
     const row = el("div", "line");
-    row.append(el("span", "desc", `${hhmmss(x.t)} · ${t(x.label)}${x.note ? " — " + x.note : ""}${x.source === "comma" ? " " + t("(bandeira)") : ""}`));
+    const txt = el("span", "mk desc"); txt.innerHTML = reasonIcon(x.reason, 20);
+    txt.append(el("span", "", `${hhmmss(x.t)} · ${t(x.label)}${x.note ? " — " + x.note : ""}${x.source === "comma" ? " " + t("(bandeira)") : ""}`));
+    row.append(txt);
     const b = el("button", "link", t("editar")); b.type = "button"; b.addEventListener("click", () => openMark(x, x.reason));
     row.append(b); list.append(row);
   }
@@ -890,7 +911,8 @@ function openMarkNow(mark, reason, tapped) {
 
 function drawReasons() {
   $("reasons").replaceChildren(...marksState.reasons.map((r) => {
-    const b = el("button", r.custom ? "mine" : "", t(r.label)); b.type = "button"; b.setAttribute("aria-pressed", r.key === picked ? "true" : "false");
+    const b = el("button", r.custom ? "mine" : ""); b.type = "button"; b.setAttribute("aria-pressed", r.key === picked ? "true" : "false");
+    b.innerHTML = reasonIcon(r.custom ? null : r.key, 24); b.append(el("span", "", t(r.label)));
     b.addEventListener("click", () => { clearTimeout(markTimer); picked = picked === r.key ? null : r.key; drawReasons(); });
     return b;
   }));
