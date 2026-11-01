@@ -1,13 +1,13 @@
 {
-  "name": "Hexa",
-  "short_name": "Hexa",
-  "description": "Painel do comma: estado e opções do fork Hexa",
+  "name": "LizPilot",
+  "short_name": "LizPilot",
+  "description": "LizPilot: estado e opções do comma",
   "lang": "pt-BR",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#101418",
-  "theme_color": "#101418",
+  "background_color": "#0B0E11",
+  "theme_color": "#0B0E11",
   "icons": [
     {
       "src": "/icon-192.png",

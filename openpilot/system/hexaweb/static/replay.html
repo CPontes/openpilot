@@ -3,19 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#101418">
+<meta name="theme-color" content="#0B0E11">
+<link rel="stylesheet" href="/lp.css">
 <title>Hexa · Replay</title>
 <style>
-  :root {
-    --bg: #f4f5f7; --card: #ffffff; --text: #14181c; --muted: #5b6470; --line: #e2e5ea; --road: #2b3138;
-    --accent: #1f7a4d; --warn: #9a5b00; --danger: #c0352b; --info: #2f6fd1; --purple: #7a4fd0; --pink: #c2417f; --off: #8a939d;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #101418; --card: #1a2027; --text: #eef1f4; --muted: #9aa4af; --line: #2a323b; --road: #20262d;
-            --accent: #3fb27a; --warn: #e0a640; --danger: #ef6b62; --info: #6ea2f0; --purple: #a98bf0; --pink: #ef7fb2; --off: #6c7680; }
-  }
+  :root { --road: #1A2128; --info: #6CB4FF; --purple: #B49BFF; --pink: #FF8FC0; --off: #8C97A3; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 var(--font); }
   main { max-width: 560px; margin: 0 auto; padding: 12px 12px 40px; }
   header { display: flex; align-items: baseline; gap: 10px; }
   h1 { font-size: 20px; margin: 4px 0; }
@@ -25,7 +19,7 @@
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px; margin-bottom: 8px; }
   .status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .chip { padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; color: #fff; background: var(--off); }
-  .chip.on { background: var(--accent); } .chip.alert { background: var(--danger); }
+  .chip.on { background: var(--accent); color: var(--on-accent); } .chip.alert { background: var(--danger); }
   .big { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .muted { color: var(--muted); font-size: 13px; }
   .alerttxt { color: var(--danger); font-weight: 600; font-size: 14px; flex-basis: 100%; min-height: 1.2em; }
@@ -37,7 +31,7 @@
   .controls { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
   .controls button { font: inherit; font-weight: 700; border: 1px solid var(--line); background: var(--card); color: var(--text);
                      border-radius: 10px; padding: 10px 14px; min-width: 48px; }
-  .controls button.play { background: var(--accent); color: #fff; border-color: var(--accent); flex: 1; }
+  .controls button.play { background: var(--accent); color: var(--on-accent); border-color: var(--accent); flex: 1; }
   .controls select { width: auto; }
   ul.events { list-style: none; margin: 0; padding: 0; }
   ul.events li { display: flex; gap: 8px; align-items: baseline; padding: 8px 4px; border-top: 1px solid var(--line); cursor: pointer; }
@@ -55,8 +49,8 @@
 </head>
 <body>
 <main>
-  <header><h1>Replay</h1><a href="/" class="muted">painel</a></header>
-  <select id="seg" aria-label="Trecho gravado"></select>
+  <header><h1>Replay</h1><a href="/" class="back">← LizPilot</a></header>
+  <select id="seg" data-t-aria="Trecho gravado" aria-label="Trecho gravado"></select>
   <p class="sub" id="summary"></p>
   <div id="msg" class="msg hidden"></div>
 
@@ -67,23 +61,23 @@
       <span class="muted" style="margin-left:auto" id="clock">0:00</span>
       <span class="alerttxt" id="alert"></span>
     </div>
-    <div class="card"><canvas id="road" height="340" aria-label="Vista de cima: faixas, caminho do openpilot e carro da frente"></canvas></div>
+    <div class="card"><canvas id="road" height="340" data-t-aria="Vista de cima: faixas, caminho do openpilot e carro da frente" aria-label="Vista de cima: faixas, caminho do openpilot e carro da frente"></canvas></div>
     <div class="gauges">
-      <div class="gauge"><div class="label">volante</div><canvas id="wheel" height="90"></canvas><div class="val" id="wheelv"></div></div>
-      <div class="gauge"><div class="label">força do openpilot (aplicada · pedida)</div><canvas id="torque" height="40"></canvas><div class="val" id="torquev"></div>
-        <div class="label" style="margin-top:6px">você no volante</div><canvas id="driver" height="28"></canvas><div class="val" id="driverv"></div></div>
+      <div class="gauge"><div class="label" data-t>volante</div><canvas id="wheel" height="90"></canvas><div class="val" id="wheelv"></div></div>
+      <div class="gauge"><div class="label" data-t>força do openpilot (aplicada · pedida)</div><canvas id="torque" height="40"></canvas><div class="val" id="torquev"></div>
+        <div class="label" style="margin-top:6px" data-t>você no volante</div><canvas id="driver" height="28"></canvas><div class="val" id="driverv"></div></div>
     </div>
-    <div class="gauge" style="margin-top:8px"><div class="label">curva: pedida × feita (m/s²) · faixa cinza = o que a direção consegue (~1,15)</div>
+    <div class="gauge" style="margin-top:8px"><div class="label" data-t>curva: pedida × feita (m/s²) · faixa cinza = o que a direção consegue (~1,15)</div>
       <canvas id="lat" height="36"></canvas><div class="val" id="latv"></div></div>
 
     <div class="card" style="margin-top:8px">
-      <canvas id="tl" height="110" aria-label="Linha do tempo: toque para ir ao momento"></canvas>
+      <canvas id="tl" height="110" data-t-aria="Linha do tempo: toque para ir ao momento" aria-label="Linha do tempo: toque para ir ao momento"></canvas>
       <div class="legend" id="legend"></div>
       <div class="controls">
-        <button id="prevBtn" aria-label="Evento anterior">⏮</button>
-        <button id="playBtn" class="play">▶ tocar</button>
-        <button id="nextBtn" aria-label="Próximo evento">⏭</button>
-        <select id="rate" aria-label="Velocidade"><option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+        <button id="prevBtn" data-t-aria="Evento anterior" aria-label="Evento anterior">⏮</button>
+        <button id="playBtn" class="play">▶</button>
+        <button id="nextBtn" data-t-aria="Próximo evento" aria-label="Próximo evento">⏭</button>
+        <select id="rate" data-t-aria="Velocidade" aria-label="Velocidade"><option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
       </div>
     </div>
 
@@ -94,8 +88,10 @@
   </div>
 </main>
 
+<script src="/i18n.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
+const T = (x) => LP.t(x), TF = (x, v) => LP.tf(x, v);
 const KINDS = {
   mark: ["bandeira", "--pink"], limit: ["no limite", "--warn"], oscillation: ["balanço", "--purple"],
   alert: ["alerta", "--danger"], brake: ["freio", "--danger"], disengage: ["desengate", "--off"],
@@ -119,24 +115,24 @@ function fmt(s) { s = Math.max(0, s); return `${Math.floor(s / 60)}:${String(Mat
 
 async function loadList() {
   const r = await get("/api/replay/list");
-  if (r.status === 401) { showMsg("Pareie este celular no painel primeiro."); return; }
-  if (r.status !== 200) { showMsg(r.body.error || "Não foi possível listar os trechos."); return; }
+  if (r.status === 401) { showMsg(T("Pareie este celular no painel primeiro.")); return; }
+  if (r.status !== 200) { showMsg(T(r.body.error || "Não foi possível listar os trechos.")); return; }
   const sel = $("seg"); sel.replaceChildren();
   for (const s of r.body.segments) { const o = document.createElement("option"); o.value = s.id; o.textContent = s.label || s.id; sel.appendChild(o); }
-  if (!r.body.segments.length) { showMsg("Nenhum trecho gravado encontrado."); return; }
+  if (!r.body.segments.length) { showMsg(T("Nenhum trecho gravado encontrado.")); return; }
   const query = new URLSearchParams(location.search), want = query.get("id");
   if (want) sel.value = want;
   loadSeg(sel.value, Number(query.get("t")) || 0);
 }
 
 async function loadSeg(id, start = 0) {
-  showMsg("Carregando…");
+  showMsg(T("Carregando…"));
   const r = await get("/api/replay/data?id=" + encodeURIComponent(id));
-  if (r.status !== 200) { showMsg(r.body.error || "Não foi possível abrir o trecho."); return; }
-  data = r.body; t = start; idx = 0; playing = false; $("playBtn").textContent = "▶ tocar";
+  if (r.status !== 200) { showMsg(T(r.body.error || "Não foi possível abrir o trecho.")); return; }
+  data = r.body; t = start; idx = 0; playing = false; $("playBtn").textContent = "▶ " + T("tocar");
   const s = data.summary, c = s.counts || {};
-  $("summary").textContent = `${fmt(data.duration)} · openpilot ativo ${s.lat_pct}% do trecho, parado incluído · máx ${Math.round(s.v_max)} km/h · ` +
-    Object.keys(KINDS).filter(k => c[k]).map(k => `${c[k]} ${KINDS[k][0]}`).join(" · ");
+  $("summary").textContent = `${fmt(data.duration)} · ` + TF("openpilot ativo {pct}% do trecho, parado incluído", { pct: s.lat_pct }) + ` · ${T("máx")} ${Math.round(s.v_max)} km/h · ` +
+    Object.keys(KINDS).filter(k => c[k]).map(k => `${c[k]} ${T(KINDS[k][0])}`).join(" · ");
   showMsg("");
   buildFilters(); renderEvents(); drawTimelineBase(); render();
 }
@@ -283,11 +279,11 @@ function buildFilters() {
   const lg = $("legend"); lg.replaceChildren();
   for (const [k, [label, color]] of Object.entries(KINDS)) {
     const n = (data.summary.counts || {})[k] || 0;
-    const s = document.createElement("span"); s.innerHTML = `<i class="dot" style="background:var(${color})"></i>`; s.append(label); lg.appendChild(s);
+    const s = document.createElement("span"); s.innerHTML = `<i class="dot" style="background:var(${color})"></i>`; s.append(T(label)); lg.appendChild(s);
     if (!n) continue;
     const l = document.createElement("label"); const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !hidden.has(k);
     cb.addEventListener("change", () => { cb.checked ? hidden.delete(k) : hidden.add(k); renderEvents(); drawTimelineBase(); render(); });
-    l.append(cb, `${label} (${n})`); box.appendChild(l);
+    l.append(cb, `${T(label)} (${n})`); box.appendChild(l);
   }
 }
 
@@ -299,7 +295,7 @@ function renderEvents() {
     const li = document.createElement("li"); li.dataset.t = e.t;
     const dot = document.createElement("i"); dot.className = "dot"; dot.style.background = `var(${(KINDS[e.kind] || ["", "--muted"])[1]})`;
     const tm = document.createElement("span"); tm.className = "time"; tm.textContent = fmt(e.t);
-    const tx = document.createElement("span"); tx.textContent = e.text + (e.dur ? ` (${String(e.dur).replace(".", ",")} s)` : "");
+    const tx = document.createElement("span"); tx.textContent = T(e.text) + (e.dur ? ` (${String(e.dur).replace(".", ",")} s)` : "");
     li.append(dot, tm, tx);
     li.addEventListener("click", () => { t = Math.max(0, e.t - 2); render(); window.scrollTo({ top: 0, behavior: "smooth" }); });
     ul.appendChild(li);
@@ -316,7 +312,7 @@ function render() {
   if (!data || !data.frames.length) return;
   idx = frameAt(t); const f = data.frames[idx];
   const chip = $("chip");
-  chip.textContent = f.alert ? "ALERTA" : f.lat ? (f.en ? "DIRIGINDO" : "SÓ DIREÇÃO") : (f.en ? "ACC" : "DESLIGADO");
+  chip.textContent = T(f.alert ? "ALERTA" : f.lat ? (f.en ? "DIRIGINDO" : "SÓ DIREÇÃO") : (f.en ? "ACC" : "DESLIGADO"));
   chip.className = "chip" + (f.alert ? " alert" : f.lat ? " on" : "");
   $("speed").textContent = `${Math.round(f.v)} km/h`;
   $("setspeed").textContent = f.set ? `ACC ${f.set}` : "";
@@ -327,14 +323,14 @@ function render() {
   const atLimit = f.sat || Math.abs(f.tq) >= 0.99;
   // torque and driver torque are + left (like the wheel angle): drawn to the left so they point where the wheel turns
   centeredBar("torque", -f.tq, 1, atLimit ? css("--danger") : css("--info"), -f.tqc);
-  $("torquev").textContent = `${Math.round(Math.abs(f.tq) * 100)}%${atLimit ? " · no limite" : ""}`;
+  $("torquev").textContent = `${Math.round(Math.abs(f.tq) * 100)}%${atLimit ? " · " + T("no limite") : ""}`;
   centeredBar("driver", -f.drv, 300, css("--warn"));
   const helping = f.drv * f.tqc > 0;
-  $("driverv").textContent = Math.abs(f.drv) < 50 ? "mãos leves ou soltas" : `${(Math.abs(f.drv) / 100).toFixed(1)} Nm · ${helping ? "ajudando" : "contra"}`;
+  $("driverv").textContent = Math.abs(f.drv) < 50 ? T("mãos leves ou soltas") : `${(Math.abs(f.drv) / 100).toFixed(1)} Nm · ${T(helping ? "ajudando" : "contra")}`;
   drawLat(f);
   // numbers only (no log text) go through innerHTML
-  $("latv").innerHTML = `<i class="dot" style="background:var(--purple);margin-right:4px"></i>pedida ${f.lad.toFixed(2)} · ` +
-    `<i class="dot" style="background:var(--info);margin-right:4px"></i>feita ${f.laa.toFixed(2)}${Math.abs(f.lad) > 1.15 ? " · acima do que a direção consegue" : ""}`;
+  $("latv").innerHTML = `<i class="dot" style="background:var(--purple);margin-right:4px"></i>${T("pedida")} ${f.lad.toFixed(2)} · ` +
+    `<i class="dot" style="background:var(--info);margin-right:4px"></i>${T("feita")} ${f.laa.toFixed(2)}${Math.abs(f.lad) > 1.15 ? " · " + T("acima do que a direção consegue") : ""}`;
   drawPlayhead();
   // highlight the latest event at or before now
   let current = null;
@@ -345,7 +341,7 @@ function render() {
 function loop(ts) {
   if (playing && data) {
     if (lastTs !== null) t = Math.min(data.duration, t + ((ts - lastTs) / 1000) * rate);
-    if (t >= data.duration) { playing = false; $("playBtn").textContent = "▶ tocar"; }
+    if (t >= data.duration) { playing = false; $("playBtn").textContent = "▶ " + T("tocar"); }
     render();
   }
   lastTs = ts; requestAnimationFrame(loop);
@@ -354,7 +350,7 @@ function loop(ts) {
 $("playBtn").addEventListener("click", () => {
   if (!data) return;
   if (t >= data.duration) t = 0;
-  playing = !playing; $("playBtn").textContent = playing ? "⏸ pausar" : "▶ tocar"; lastTs = null;
+  playing = !playing; $("playBtn").textContent = playing ? "⏸ " + T("pausar") : "▶ " + T("tocar"); lastTs = null;
 });
 $("prevBtn").addEventListener("click", () => jump(-1));
 $("nextBtn").addEventListener("click", () => jump(1));
@@ -362,7 +358,7 @@ $("rate").addEventListener("change", (e) => { rate = e.target.value * 1; });
 $("seg").addEventListener("change", (e) => loadSeg(e.target.value));
 window.addEventListener("resize", () => { if (data) { drawTimelineBase(); render(); } });
 requestAnimationFrame(loop);
-loadList();
+LP.ready.then(() => { LP.apply(); $("playBtn").textContent = "▶ " + T("tocar"); loadList(); });
 </script>
 </body>
 </html>

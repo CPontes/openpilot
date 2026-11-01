@@ -1,4 +1,6 @@
-"""Settings → hexa: the fork's own options, built from openpilot/selfdrive/hexa/options.py, plus phone pairing."""
+"""Settings → LizPilot: the fork's own options, built from openpilot/selfdrive/hexa/options.py, plus phone pairing.
+
+Texts follow the comma's language (pt, en or es; others get English), from the same catalogs as the phone panel."""
 import time
 
 from openpilot.common.params import Params
@@ -8,7 +10,7 @@ from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigParamContro
 from openpilot.selfdrive.ui.mici.widgets.qr import QR
 from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
 from openpilot.selfdrive.ui.ui_state import ui_state
-from openpilot.selfdrive.hexa import phone
+from openpilot.selfdrive.hexa import i18n, phone
 from openpilot.selfdrive.hexa.options import GROUPS, options_in_group, supported
 
 PHONE_REFRESH = 1.0  # s
@@ -22,10 +24,11 @@ class HexaPairScroller(NavScroller):
   def __init__(self, url: str, pin: str):
     super().__init__()
     self._params = Params()
+    lang = i18n.comma_lang(self._params)
     self._scroller.add_widgets([
       QR(url),
-      GreyBigButton(pin, "digite este código\nno celular"),
-      GreyBigButton("", "aponte a câmera do celular para o QR. o celular precisa estar no mesmo Wi-Fi ou no hotspot do comma."),
+      GreyBigButton(pin, i18n.tr("digite este código\nno celular", lang)),
+      GreyBigButton("", i18n.tr("aponte a câmera do celular para o QR. o celular precisa estar no mesmo Wi-Fi ou no hotspot do comma.", lang)),
     ])
 
   def _update_state(self):
@@ -38,6 +41,7 @@ class HexaLayoutMici(NavScroller):
   def __init__(self):
     super().__init__()
     self._params = Params()
+    self._lang = lang = i18n.comma_lang(self._params)
     self._param_controls: list[BigParamControl] = []
     widgets = []
 
@@ -45,24 +49,26 @@ class HexaLayoutMici(NavScroller):
       for opt in options_in_group(group):
         if not supported(opt, self._params):
           continue
+        title = i18n.tr(opt.title, lang)
+        description = (i18n.tr("em teste", lang) + " · " if opt.testing else "") + i18n.tr(opt.description, lang)
         if opt.kind == "bool":
-          widget = BigParamControl(opt.title, opt.key, toggle_callback=restart_needed_callback if opt.restart_needed else None,
-                                   description=opt.description)
+          widget = BigParamControl(title, opt.key, toggle_callback=restart_needed_callback if opt.restart_needed else None,
+                                   description=description)
           self._param_controls.append(widget)
         else:
-          widget = BigMultiParamToggle(opt.title, opt.key, list(opt.choices), description=opt.description)
+          widget = BigMultiParamToggle(title, opt.key, [i18n.tr(c, lang) for c in opt.choices], description=description)
         if opt.driving:
           widget.set_enabled(lambda: not ui_state.engaged)
         widgets.append(widget)
 
-    self._pair_btn = BigButton("parear celular", "toque para gerar o código",
-                               description="Mostra um código de 6 dígitos por 2 minutos.\n" +
-                                           "No celular, na mesma rede, abra o endereço que aparecer e digite o código.")
+    self._pair_btn = BigButton(i18n.tr("parear celular", lang), i18n.tr("toque para gerar o código", lang),
+                               description=i18n.tr("Mostra um código de 6 dígitos por 2 minutos.\n" +
+                                                   "No celular, na mesma rede, abra o endereço que aparecer e digite o código.", lang))
     self._pair_btn.set_click_callback(self._on_pair)
     self._pair_btn.set_visible(self._phone_enabled)
 
-    self._unpair_btn = BigButton("desconectar celulares", "",
-                                 description="Remove o acesso de todos os celulares pareados.")
+    self._unpair_btn = BigButton(i18n.tr("desconectar celulares", lang), "",
+                                 description=i18n.tr("Remove o acesso de todos os celulares pareados.", lang))
     self._unpair_btn.set_click_callback(self._on_unpair)
     self._unpair_btn.set_visible(self._phone_enabled)
 
@@ -101,12 +107,12 @@ class HexaLayoutMici(NavScroller):
     pin = phone.parse_pin(self._params.get(phone.PIN_PARAM))
     if pin is not None:
       self._pair_btn.set_text(pin)
-      self._pair_btn.set_value(f"abra {self._url()}")
+      self._pair_btn.set_value(i18n.tr(f"abra {self._url()}", self._lang))
     else:
-      self._pair_btn.set_text("parear celular")
-      self._pair_btn.set_value("toque para gerar o código")
+      self._pair_btn.set_text(i18n.tr("parear celular", self._lang))
+      self._pair_btn.set_value(i18n.tr("toque para gerar o código", self._lang))
     count = len(self._params.get(phone.TOKENS_PARAM) or [])
-    self._unpair_btn.set_value(f"{count} pareado(s)" if count else "nenhum pareado")
+    self._unpair_btn.set_value(i18n.tr(f"{count} pareado(s)", self._lang) if count else i18n.tr("nenhum pareado", self._lang))
 
   def _update_state(self):
     super()._update_state()

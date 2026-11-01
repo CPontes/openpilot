@@ -3,29 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#101418">
+<meta name="theme-color" content="#0B0E11">
+<link rel="stylesheet" href="/lp.css">
 <title>Viagens</title>
 <style>
-  :root {
-    --bg: #f4f5f7; --card: #ffffff; --text: #14181c; --muted: #5b6470; --line: #e2e5ea;
-    --accent: #1f7a4d; --warn: #9a5b00; --danger: #b3261e; --off: #9aa3ad; --mark: #2b5fd9;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #101418; --card: #1a2027; --text: #eef1f4; --muted: #9aa4af; --line: #2a323b;
-            --accent: #3fb27a; --warn: #e0a640; --danger: #ef6b62; --off: #5f6975; --mark: #7ea2ff; }
-  }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
-         font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+         font: 16px/1.45 var(--font); }
   main { max-width: 640px; margin: 0 auto; padding: 16px 16px 48px; }
-  h1 { font-size: 22px; margin: 8px 0 2px; }
+  h1 { font-size: 32px; margin: 4px 0 2px; }
   a { color: inherit; }
   .sub { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-bottom: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px 16px; margin-bottom: 12px; }
   select { width: 100%; font: inherit; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
            background: var(--bg); color: var(--text); }
   .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .stat b { display: block; font-size: 20px; }
+  .stat b { display: block; font-family: var(--font-display); font-size: 24px; font-variant-numeric: tabular-nums; }
   .stat span { color: var(--muted); font-size: 13px; }
   canvas { display: block; width: 100%; height: 340px; border-radius: 10px; background: var(--bg); touch-action: none; }
   input[type=range] { width: 100%; margin: 12px 0 4px; }
@@ -34,47 +27,49 @@
   .legend i { display: inline-block; width: 18px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
   .warn { color: var(--warn); font-size: 14px; }
   ul { list-style: none; padding: 0; margin: 0; }
-  li { padding: 10px 0; border-top: 1px solid var(--line); font-size: 15px; cursor: pointer; display: flex; gap: 12px; }
+  li { padding: 12px 0; min-height: 44px; border-top: 1px solid var(--line); font-size: 15px; cursor: pointer; display: flex; gap: 12px; }
   li:first-child { border-top: 0; }
   li .time { color: var(--muted); min-width: 52px; font-variant-numeric: tabular-nums; }
   button { font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 12px 16px; cursor: pointer;
-           background: var(--accent); color: #fff; width: 100%; margin-top: 10px; }
+           background: var(--accent); color: var(--on-accent); width: 100%; margin-top: 10px; min-height: 52px; font-family: var(--font-display); font-size: 19px; }
   .hidden { display: none; }
 </style>
 </head>
 <body>
 <main>
-  <p class="sub"><a href="/">← painel</a></p>
-  <h1>Viagens</h1>
-  <p class="sub" id="msg">Carregando…</p>
+  <p class="sub"><a href="/" class="back">← LizPilot</a></p>
+  <h1 data-t>Viagens</h1>
+  <p class="sub" id="msg" data-t>Carregando…</p>
   <div id="view" class="hidden">
-    <div class="card"><select id="trip" aria-label="Viagem"></select></div>
+    <div class="card"><select id="trip" data-t-aria="Viagem" aria-label="Viagem"></select></div>
     <div class="card stats">
-      <div class="stat"><b id="sKm">—</b><span>km</span></div>
-      <div class="stat"><b id="sMin">—</b><span>minutos</span></div>
-      <div class="stat"><b id="sOn">—</b><span>openpilot dirigindo, com o carro andando</span></div>
-      <div class="stat"><b id="sDriver">—</b><span>você no volante</span></div>
-      <div class="stat"><b id="sOff">—</b><span>desengates</span></div>
-      <div class="stat"><b id="sMarks">—</b><span>marcas</span></div>
+      <div class="stat"><b id="sKm">—</b><span data-t>km</span></div>
+      <div class="stat"><b id="sMin">—</b><span data-t>minutos</span></div>
+      <div class="stat"><b id="sOn">—</b><span data-t>openpilot dirigindo, com o carro andando</span></div>
+      <div class="stat"><b id="sDriver">—</b><span data-t>você no volante</span></div>
+      <div class="stat"><b id="sOff">—</b><span data-t>desengates</span></div>
+      <div class="stat"><b id="sMarks">—</b><span data-t>marcas</span></div>
     </div>
     <div class="card">
-      <canvas id="map" role="img" aria-label="Caminho da viagem"></canvas>
-      <input id="pos" type="range" min="0" max="0" value="0" aria-label="Percorrer o caminho">
+      <canvas id="map" role="img" data-t-aria="Caminho da viagem" aria-label="Caminho da viagem"></canvas>
+      <input id="pos" type="range" min="0" max="0" value="0" data-t-aria="Percorrer o caminho" aria-label="Percorrer o caminho">
       <div class="where"><span id="whereT">—</span><span id="whereV"></span></div>
-      <div class="warn hidden" id="noGps">Sem GPS nesta viagem: caminho aproximado, feito pelas rodas e pelo volante.</div>
+      <div class="warn hidden" id="noGps" data-t>Sem GPS nesta viagem: caminho aproximado, feito pelas rodas e pelo volante.</div>
       <div class="legend">
-        <span><i style="background:var(--accent)"></i>openpilot</span>
-        <span><i style="background:var(--off)"></i>você</span>
-        <span><i style="background:var(--mark)"></i>marca</span>
-        <span><i style="background:var(--danger)"></i>desengate</span>
+        <span><i style="background:var(--accent)"></i><b data-t style="font-weight:400">openpilot</b></span>
+        <span><i style="background:var(--off)"></i><b data-t style="font-weight:400">você</b></span>
+        <span><i style="background:var(--mark)"></i><b data-t style="font-weight:400">marca</b></span>
+        <span><i style="background:var(--danger)"></i><b data-t style="font-weight:400">desengate</b></span>
       </div>
-      <button id="openReplay">Ver este momento no replay</button>
+      <button id="openReplay" data-t>Ver este momento no replay</button>
     </div>
     <div class="card"><ul id="events"></ul></div>
   </div>
 </main>
+<script src="/i18n.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
+const T = (x) => LP.t(x), TF = (x, v) => LP.tf(x, v);
 let token = null;
 try { token = localStorage.getItem("hexaToken"); } catch (e) {}
 let points = [], events = [], drawn = [], loading = 0;
@@ -91,16 +86,18 @@ function color(name) { return getComputedStyle(document.documentElement).getProp
 
 async function loadTrips() {
   const r = await get("/api/trips");
-  if (r.status === 401) { $("msg").textContent = "Pareie este celular no painel primeiro."; return; }
-  if (r.status !== 200) { $("msg").textContent = r.body.error || "Não foi possível listar as viagens."; return; }
-  if (!r.body.trips.length) { $("msg").textContent = "Nenhuma viagem gravada."; return; }
+  if (r.status === 401) { $("msg").textContent = T("Pareie este celular no painel primeiro."); return; }
+  if (r.status !== 200) { $("msg").textContent = T(r.body.error || "Não foi possível listar as viagens."); return; }
+  if (!r.body.trips.length) { $("msg").textContent = T("Nenhuma viagem gravada."); return; }
   const sel = $("trip"); sel.replaceChildren();
   for (const t of r.body.trips) {
     const o = document.createElement("option"); o.value = t.id;
     o.dataset.segments = JSON.stringify(t.segments);
-    o.textContent = `${new Date(t.mtime * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${t.minutes} min`;
+    o.textContent = `${new Date(t.mtime * 1000).toLocaleString(LP.locale, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${t.minutes} min`;
     sel.append(o);
   }
+  const wanted = new URLSearchParams(location.search).get("trip");  // opened from a trip card on the panel
+  if (wanted && [...sel.options].some((o) => o.value === wanted)) sel.value = wanted;
   $("view").classList.remove("hidden");
   loadTrip();
 }
@@ -112,17 +109,17 @@ async function loadTrip() {
   points = []; events = []; render();
   let sum = { km: 0, s: 0, moving_s: 0, on_s: 0, driver: 0, off: 0, marks: 0 };
   for (const [i, n] of segments.entries()) {
-    $("msg").textContent = `Lendo minuto ${i + 1} de ${segments.length}…`;
+    $("msg").textContent = TF("Lendo minuto {i} de {n}…", { i: i + 1, n: segments.length });
     const r = await get(`/api/trip/segment?route=${encodeURIComponent(route)}&n=${n}`);
     if (load !== loading) return;  // another trip was picked
-    if (r.status !== 200) { $("msg").textContent = r.body.error || "Não foi possível ler a viagem."; return; }
+    if (r.status !== 200) { $("msg").textContent = T(r.body.error || "Não foi possível ler a viagem."); return; }
     const d = r.body, offset = n * 60;
     for (const p of d.points) points.push({ ...p, t: p.t + offset, n });
     for (const e of d.events) events.push({ ...e, t: e.t + offset, n });
     for (const k of Object.keys(sum)) sum[k] += d.summary[k] || 0;
     summary(sum); render();
   }
-  $("msg").textContent = "Arraste a barra para percorrer o caminho.";
+  $("msg").textContent = T("Arraste a barra para percorrer o caminho.");
 }
 
 function summary(s) {
@@ -187,7 +184,7 @@ function render() {
   g.fillStyle = color("--text");
   g.beginPath(); g.arc(...drawn[i], 7, 0, 7); g.fill();
   $("whereT").textContent = fmt(p.t);
-  $("whereV").textContent = `${Math.round(p.v)} km/h · ${p.on ? "openpilot dirigindo" : "você dirigindo"}`;
+  $("whereV").textContent = `${Math.round(p.v)} km/h · ${T(p.on ? "openpilot dirigindo" : "você dirigindo")}`;
   list();
 }
 
@@ -200,12 +197,12 @@ function list() {
     if (e.kind === "driver") continue;
     const li = document.createElement("li");
     const tm = document.createElement("span"); tm.className = "time"; tm.textContent = fmt(e.t);
-    const tx = document.createElement("span"); tx.textContent = e.text;
+    const tx = document.createElement("span"); tx.textContent = T(e.text);
     li.append(tm, tx);
     li.addEventListener("click", () => { $("pos").value = nearest(e.t); render(); window.scrollTo({ top: 0, behavior: "smooth" }); });
     ul.append(li);
   }
-  if (!ul.children.length) { const li = document.createElement("li"); li.textContent = "Sem marcas nem desengates."; ul.append(li); }
+  if (!ul.children.length) { const li = document.createElement("li"); li.textContent = T("Sem marcas nem desengates."); ul.append(li); }
 }
 
 $("pos").addEventListener("input", render);
@@ -222,7 +219,7 @@ $("openReplay").addEventListener("click", () => {
   if (p) location.href = `/replay?id=${encodeURIComponent($("trip").value + "--" + p.n)}&t=${Math.max(0, p.t - p.n * 60 - 2)}`;
 });
 window.addEventListener("resize", render);
-loadTrips();
+LP.ready.then(() => { LP.apply(); loadTrips(); });
 </script>
 </body>
 </html>
