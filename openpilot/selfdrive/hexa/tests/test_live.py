@@ -141,3 +141,21 @@ def test_alert_status_from_a_real_message():
   sd = message("selfdriveState", enabled=True, alertText1="TAKE CONTROL IMMEDIATELY", alertStatus="critical")
   cs, _, cc, out, lead = parts()
   assert live.snapshot(cs, sd, cc, out, lead, gps(), 1., device(), True)["alert_status"] == "critical"
+
+
+def test_recent_errors_from_swaglog_files(tmp_path):
+  import json
+  lines = [
+    {"msg$s": "all good", "levelnum$i": 20, "level$s": "INFO", "created$f": 100.},
+    {"msg$s": "modeld lagging", "levelnum$i": 40, "level$s": "ERROR", "created$f": 200.4, "ctx": {"daemon$s": "modeld", "dongle_id$s": "secret"}},
+    {"msg$s": "hexaweb: server failed", "levelnum$i": 40, "level$s": "ERROR", "created$f": 300., "name$s": "swaglog",
+     "exc_info$s": "Traceback (most recent call last):\n  File x\nOSError: [Errno 98] Address in use", "ctx": {"daemon$s": "hexaweb"}},
+  ]
+  (tmp_path / "swaglog.0000000001").write_text("\n".join(json.dumps(x) for x in lines[:2]) + "\nnot json ERROR\n")
+  (tmp_path / "swaglog.0000000002").write_text(json.dumps(lines[2]) + "\n")
+  (tmp_path / "other.log").write_text(json.dumps(lines[1]))
+  errors = live.recent_errors(tmp_path)
+  assert errors == [{"t": 300, "process": "hexaweb", "msg": "hexaweb: server failed", "error": "OSError: [Errno 98] Address in use"},
+                    {"t": 200, "process": "modeld", "msg": "modeld lagging", "error": ""}]
+  assert "secret" not in str(errors)
+  assert live.recent_errors(tmp_path / "missing") == []

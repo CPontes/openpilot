@@ -56,6 +56,10 @@ TRIP_INDEX_S = 30.  # the page asks once per minute of the trip: don't walk the 
 SUMMARY_PARAM = "HexaTripSummaries"  # {route: who had the wheel, for how long and how far}
 SUMMARY_NEWEST = 10  # drives summarized in the background, newest first, with the car off
 SUMMARY_KEEP = 60
+ERRORS_EVERY_S = 30.
+PROFILES_PARAM = "HexaOptionProfiles"  # {name: {option key: value}}, saved by the owner from the phone
+MAX_PROFILES = 6
+MAX_PROFILE_NAME = 20
 GZIP_MIN_BYTES = 16 * 1024  # segments kept in memory
 SERVE_RETRY = 5.  # s between tries when the port can't be opened
 SECURITY_HEADERS = {
@@ -203,6 +207,7 @@ class PanelBackend:
         "groups": groups,
         "audit": list(reversed(audit)),
         "titles": {o.key: o.title for o in OPTIONS},
+        "profiles": self.store.get(PROFILES_PARAM) or {},
         # what a speed bump below the Haval ACC's 30 km/h would need: shown in the bump editor, changes nothing
         "longitudinal": {"enabled": bool(self.store.get_bool("AlphaLongitudinalEnabled")), "calibrated": LONG_CALIBRATED},
         "you": who.get("name", ""),
@@ -230,6 +235,82 @@ class PanelBackend:
       self._audit({"event": "set", "who": who.get("name", ""), "key": key, "old": old, "new": value})
       msg = "Vale na próxima partida do carro." if opt.restart_needed else "Vale no próximo engate."
       return 200, {"ok": True, "message": msg}
+
+  # *** a copy of the options, and profiles ***
+
+  def _phone_options(self) -> list:
+    return [o for o in OPTIONS if supported(o, self.store) and o.phone_writable]
+
+  def options_export(self) -> dict:
+    """The options the phone can change, in a file of the owner's: a reset of the comma erases them. No positions, no logs."""
+    with self.lock:
+      return {"exported_at": int(self.clock()), "options": {o.key: self._value(o) for o in self._phone_options()},
+              "profiles": self.store.get(PROFILES_PARAM) or {}}
+
+  def options_changes(self, raw) -> tuple[list[dict], list[str]]:
+    """What a copy or a profile would change: [{key, old, new}], and the keys it can't use (unknown here, bad value)."""
+    changes, skipped = [], []
+    if not isinstance(raw, dict):
+      return changes, skipped
+    known = {o.key: o for o in self._phone_options()}
+    for key, value in raw.items():
+      opt = known.get(key)
+      if opt is None:
+        skipped.append(str(key)[:40])
+        continue
+      try:
+        value = opt.coerce(value)
+      except ValueError:
+        skipped.append(key)
+        continue
+      old = self._value(opt)
+      if value != old:
+        changes.append({"key": key, "old": old, "new": value})
+    return changes, skipped
+
+  def options_import(self, who: dict, raw, apply: bool) -> tuple[int, dict]:
+    """Shows what changes; with apply, writes it, option by option, under the same rules as a tap (car off or in P)."""
+    changes, skipped = self.options_changes(raw)
+    if not apply:
+      return 200, {"changes": changes, "skipped": skipped}
+    if not changes:
+      return 200, {"ok": True, "changes": [], "message": "Nada a mudar."}
+    vs = self.vehicle_state()
+    if any(not phone.can_write(get_option(c["key"]), vs)[0] for c in changes):  # all or nothing: never half a profile
+      return 409, {"error": "Só com o carro em P ou desligado.", "changes": changes}
+    done, failed = [], []
+    for c in changes:
+      status, _ = self.set_option(who, c["key"], c["new"])
+      (done if status == 200 else failed).append(c)
+    restart = any(o.restart_needed for o in OPTIONS if o.key in {c["key"] for c in done})
+    msg = "Vale na próxima partida do carro." if restart else "Vale no próximo engate."
+    return (200 if not failed else 409), {"ok": not failed, "changes": done, "failed": failed, "message": msg}
+
+  def profiles(self) -> dict:
+    return self.store.get(PROFILES_PARAM) or {}
+
+  def profile_save(self, who: dict, name: str) -> tuple[int, dict]:
+    name = " ".join(str(name or "").split())[:MAX_PROFILE_NAME]
+    if not name:
+      return 400, {"error": "Dê um nome ao perfil."}
+    with self.lock:
+      kept = self.profiles()
+      if name not in kept and len(kept) >= MAX_PROFILES:
+        return 409, {"error": "Já tem 6 perfis. Apague um antes."}
+      kept[name] = {o.key: self._value(o) for o in self._phone_options()}
+      self.store.put(PROFILES_PARAM, kept)
+      self._audit({"event": "profile_saved", "who": who.get("name", ""), "new": name})
+    return 200, {"ok": True, "message": "Perfil salvo com os ajustes de agora."}
+
+  def profile_delete(self, who: dict, name: str) -> tuple[int, dict]:
+    with self.lock:
+      kept = self.profiles()
+      if name not in kept:
+        return 404, {"error": "Perfil não encontrado."}
+      del kept[name]
+      self.store.put(PROFILES_PARAM, kept)
+      self._audit({"event": "profile_removed", "who": who.get("name", ""), "new": name})
+    return 200, {"ok": True}
 
   # *** marks ***
 
@@ -745,6 +826,9 @@ def make_handler(backend: PanelBackend):
       elif path == "/api/radars/export":
         if self._who() is not None:
           self._json(200, backend.radars_export())
+      elif path == "/api/options/export":
+        if self._who() is not None:
+          self._json(200, backend.options_export())
       elif path == "/api/live":
         if self._who() is not None:
           self._json(200, backend.live())
@@ -780,6 +864,9 @@ def make_handler(backend: PanelBackend):
         "/api/radars/add": lambda who, b: backend.radars_add(who, b),
         "/api/radars/delete": lambda who, b: backend.radars_delete(who, str(b.get("key", ""))),
         "/api/radars/import": lambda who, b: backend.radars_import(who, b.get("edits")),
+        "/api/options/import": lambda who, b: backend.options_import(who, b.get("options"), bool(b.get("apply"))),
+        "/api/profiles/save": lambda who, b: backend.profile_save(who, b.get("name", "")),
+        "/api/profiles/delete": lambda who, b: backend.profile_delete(who, str(b.get("name", ""))),
         "/api/update": lambda who, b: backend.update_action(who, str(b.get("action", "")), str(b.get("branch", ""))),
         "/api/phones/revoke": lambda who, b: backend.revoke_phone(who, str(b.get("id", ""))),
       }
@@ -850,6 +937,8 @@ def main():
                               now - sm.recv_time["carState"] < 2., events=sm["onroadEvents"], model=sm["drivingModelData"],
                               monitoring=sm["driverMonitoringState"] if params.get_bool("AutoResume") else None)
 
+  errors_at: list = [-ERRORS_EVERY_S, []]
+
   def health_state() -> dict:
     sm.update(0)
 
@@ -857,8 +946,12 @@ def main():
       return sm[name] if sm.recv_frame[name] > 0 else None
 
     manager = seen("managerState")
+    now = time.monotonic()
+    if now - errors_at[0] >= ERRORS_EVERY_S:  # the log is read at most every 30 s
+      errors_at[0], errors_at[1] = now, hexa_live.recent_errors(Paths.swaglog_root())
     return {"device": hexa_live.device_state(sm["deviceState"]), "down": hexa_live.processes_down(manager) if manager is not None else None,
-            "learned": hexa_live.learned(seen("lateralTorqueParameters"), seen("vehicleParameters"), seen("lateralDelay"))}
+            "learned": hexa_live.learned(seen("lateralTorqueParameters"), seen("vehicleParameters"), seen("lateralDelay")),
+            "errors": errors_at[1]}
 
   def gps_fix() -> tuple[float, float, float, float] | None:
     sm.update(0)

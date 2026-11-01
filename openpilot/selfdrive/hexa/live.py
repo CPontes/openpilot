@@ -81,6 +81,48 @@ def device_state(ds) -> dict:
   }
 
 
+ERROR_LEVEL = 40  # logging.ERROR
+ERRORS_TAIL = 256 * 1024  # bytes read from each of the newest swaglog files
+
+
+def _field(d: dict, name: str):
+  """swaglog files name each key with its type (msg$s, levelnum$i): read either form."""
+  if name in d:
+    return d[name]
+  return next((v for k, v in d.items() if k.startswith(name + "$")), None)
+
+
+def recent_errors(log_dir, files: int = 3, limit: int = 5) -> list[dict]:
+  """The last errors the comma's processes logged, newest first: when, which process, what. Nothing else from the log
+  line goes out (no ids, no paths, no context)."""
+  import json
+  from pathlib import Path
+  try:
+    names = sorted(p for p in Path(log_dir).iterdir() if p.name.startswith("swaglog.") and p.is_file())
+  except OSError:
+    return []
+  out: list[dict] = []
+  for path in names[-files:]:
+    try:
+      raw = path.read_bytes()[-ERRORS_TAIL:]
+    except OSError:
+      continue
+    for line in raw.splitlines():
+      if b'"ERROR"' not in line and b'"CRITICAL"' not in line:
+        continue
+      try:
+        d = json.loads(line)
+      except ValueError:
+        continue
+      if not isinstance(d, dict) or (_field(d, "levelnum") or 0) < ERROR_LEVEL:
+        continue
+      ctx = _field(d, "ctx") or {}
+      exc = str(_field(d, "exc_info") or "").strip().splitlines()
+      out.append({"t": round(float(_field(d, "created") or 0)), "process": str(_field(ctx, "daemon") or _field(d, "name") or "")[:40],
+                  "msg": str(_field(d, "msg") or "")[:200], "error": exc[-1][:200] if exc else ""})
+  return out[-limit:][::-1]
+
+
 def processes_down(manager) -> list[str]:
   return sorted(p.name for p in manager.processes if p.shouldBeRunning and not p.running)
 

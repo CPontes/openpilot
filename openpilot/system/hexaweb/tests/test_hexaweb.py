@@ -877,3 +877,38 @@ def test_every_element_the_page_asks_for_exists(panel):
   page = panel.request("/")[2].decode()
   assert set(re.findall(r'\$\("([A-Za-z]+)"\)', page)) <= set(re.findall(r'id="([A-Za-z]+)"', page))
 
+
+
+def test_options_copy_preview_and_restore(panel):
+  token = panel.pair()
+  copy = panel.json("/api/options/export", token=token)[1]
+  assert copy["options"]["LaneOffsetEnabled"] is False and "HexaWebEnabled" not in copy["options"]  # only what the phone can change
+  wanted = {**copy["options"], "LaneOffsetEnabled": True, "AutoLaneChangeDelay": 2, "NotAnOption": True}
+  status, preview = panel.json("/api/options/import", {"options": wanted}, token=token)
+  assert status == 200 and {c["key"] for c in preview["changes"]} == {"LaneOffsetEnabled", "AutoLaneChangeDelay"}
+  assert preview["skipped"] == ["NotAnOption"] and panel.store.get("LaneOffsetEnabled") is None  # a preview writes nothing
+  panel.vs = VehicleState(onroad=True, parked=False, standstill=False, engaged=True)
+  status, body = panel.json("/api/options/import", {"options": wanted, "apply": True}, token=token)
+  assert status == 409 and panel.store.get("LaneOffsetEnabled") is None  # moving: all or nothing
+  panel.vs = VehicleState(onroad=False)
+  status, body = panel.json("/api/options/import", {"options": wanted, "apply": True}, token=token)
+  assert status == 200 and panel.store.get("LaneOffsetEnabled") is True and panel.store.get("AutoLaneChangeDelay") == 2
+  assert "partida" in body["message"]  # the delay needs a new start
+  assert panel.json("/api/options/import", {"options": "nonsense", "apply": True}, token=token)[1]["changes"] == []
+
+
+def test_profiles_are_saved_from_now_and_applied_like_a_copy(panel):
+  token = panel.pair()
+  assert panel.json("/api/profiles/save", {"name": "  Estrada  "}, token=token)[0] == 200
+  profile = panel.json("/api/state", token=token)[1]["profiles"]["Estrada"]
+  assert profile["LaneOffsetEnabled"] is False
+  panel.json("/api/option", {"key": "LaneOffsetEnabled", "value": True}, token=token)
+  changes = panel.json("/api/options/import", {"options": profile}, token=token)[1]["changes"]
+  assert changes == [{"key": "LaneOffsetEnabled", "old": True, "new": False}]
+  assert panel.json("/api/profiles/save", {"name": ""}, token=token)[0] == 400
+  for n in range(5):
+    panel.json("/api/profiles/save", {"name": f"p{n}"}, token=token)
+  assert panel.json("/api/profiles/save", {"name": "sétimo"}, token=token)[0] == 409
+  assert panel.json("/api/profiles/delete", {"name": "Estrada"}, token=token)[0] == 200
+  assert panel.json("/api/profiles/delete", {"name": "Estrada"}, token=token)[0] == 404
+  assert panel.store.get(phone.AUDIT_PARAM)[-1]["event"] == "profile_removed"

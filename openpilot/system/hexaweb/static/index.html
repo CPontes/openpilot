@@ -119,6 +119,10 @@
   .legend3 { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto 64px; gap: 8px 10px; align-items: center; font-size: 15px; font-variant-numeric: tabular-nums; }
   .legend3 .sw { width: 12px; height: 12px; border-radius: 3px; }
   .legend3 .km { color: var(--muted); text-align: right; }
+  .search { position: relative; display: block; margin: 12px 0 4px; }
+  .search svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); }
+  .search input { padding-left: 44px; min-height: 50px; }
+  .changes { margin: 8px 0 0; padding: 12px; border-radius: 12px; background: var(--card-2); display: flex; flex-direction: column; gap: 6px; font-size: 15px; }
   .hero { font-family: var(--font-display); font-weight: 700; font-size: 56px; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; }
   canvas#road { display: block; width: 100%; height: 190px; margin-top: 8px; border-radius: 12px; background: var(--card-2); }
   .hint { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--card-2); border-left: 4px solid var(--warn); font-size: 15px; color: var(--text); }
@@ -330,7 +334,19 @@
         <button type="button" role="tab" data-sub="comma" data-t>Comma</button>
         <button type="button" role="tab" data-sub="celulares" data-t>Celulares</button>
       </div>
-      <div data-subview="opcoes"><div id="groups"></div><p class="small" style="margin:12px 4px" data-t>Opções de direção e velocidade só mudam com o carro em P ou desligado. Cada uma diz quando passa a valer.</p></div>
+      <div data-subview="opcoes">
+        <label class="search" for="optSearch"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--dim)" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+          <input id="optSearch" type="text" autocomplete="off" data-t-ph="Buscar ajuste: lombada, faixa, seta…" placeholder="Buscar ajuste: lombada, faixa, seta…" data-t-aria="Buscar ajuste" aria-label="Buscar ajuste"></label>
+        <section class="card stack" id="profilesCard" style="gap:8px;margin-top:10px">
+          <div class="label" style="margin:0" data-t>Perfis</div>
+          <div class="chips" id="profileChips"></div>
+          <div id="profileBox"></div>
+          <details><summary data-t>Salvar os ajustes de agora como perfil</summary>
+            <div class="row" style="gap:8px"><input id="profileName" type="text" maxlength="20" data-t-ph="ex.: Estrada" placeholder="ex.: Estrada" data-t-aria="Nome do perfil" aria-label="Nome do perfil" style="flex:1;min-width:0">
+              <button class="btn" id="profileSave" type="button" style="width:auto;min-height:48px;padding:0 18px;font-size:17px" data-t>Salvar</button></div>
+          </details>
+        </section>
+        <div id="groups"></div><p class="small" style="margin:12px 4px" data-t>Opções de direção e velocidade só mudam com o carro em P ou desligado. Cada uma diz quando passa a valer.</p></div>
       <div data-subview="comma" class="hidden">
         <div class="label" data-t>Atualização</div>
         <div class="card stack" style="gap:6px">
@@ -340,6 +356,10 @@
           <button class="btn" id="updMain" type="button" style="margin-top:8px">—</button>
           <div class="small" id="updNote" style="color:var(--warn)"></div>
         </div>
+        <div class="label" data-t>Erros</div>
+        <div class="card" id="errorsCard"><div class="list" id="errorsList"></div>
+          <button class="link" id="errorsSend" type="button" data-t>Enviar para análise</button>
+          <div class="small" data-t>Gera um arquivo com os erros e a versão, para você mandar. Nada sai do comma sozinho.</div></div>
         <div class="label" data-t>Saúde do comma</div>
         <div class="card"><div class="title" id="healthTitle">—</div><div class="desc" id="healthDesc"></div></div>
         <div class="grid2" id="healthTiles"></div>
@@ -348,6 +368,11 @@
           <div class="desc hidden" id="learnedEmpty" data-t>Aparece depois da primeira viagem desde que o comma ligou.</div>
           <div class="grid2" id="learnedTiles"></div>
         </details>
+        <div class="label" data-t>Cópia dos ajustes</div>
+        <div class="card"><div class="desc" data-t>Um reset do comma apaga seus ajustes. A cópia vai para um arquivo no celular, sem posições nem logs.</div>
+          <div class="chips"><button class="link" id="optExport" type="button" data-t>Guardar uma cópia</button><button class="link" id="optImport" type="button" data-t>Restaurar</button></div>
+          <input class="hidden" id="optFile" type="file" accept="application/json,.json">
+          <div id="restoreBox"></div></div>
         <div class="card"><div class="desc" data-t>Reinicia só com o carro desligado.</div><button class="link" id="rebootBtn" type="button" data-t>Reiniciar o comma</button></div>
         <div class="label" data-t>Últimas mudanças</div>
         <div class="card list" id="audit"></div>
@@ -618,14 +643,70 @@ function render(s) {
 }
 
 const openOpt = new Set();
+let optQuery = "";
+const plain = (x) => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 function renderGroups(groups) {
   const root = $("groups"); root.replaceChildren();
+  const q = plain(optQuery.trim());
   for (const g of groups) {
+    const opts = g.options.filter((o) => !q || plain(t(o.title) + " " + t(o.description) + " " + t(g.title)).includes(q));  // in the phone's language
+    if (!opts.length) continue;
     root.append(el("div", "label", t(g.title)));
     const box = el("div", "card opts"); box.style.padding = "0";
-    for (const o of g.options) box.append(optionRow(o));
+    for (const o of opts) box.append(optionRow(o));
     root.append(box);
   }
+  if (q && !root.children.length) root.append(el("div", "card desc", t("Nenhum ajuste com esse nome.")));
+  renderProfiles();
+}
+
+// ----- profiles and the copy of the options: both show what changes before anything is written -----
+let profileOpen = null;
+function valueText(key, v) {
+  const o = optionOf(key);
+  if (typeof v === "boolean") return v ? t("ligado") : t("desligado");
+  return o && o.choices && o.choices[v] !== undefined ? t(o.choices[v]) : String(v);
+}
+function showChanges(box, changes, applyLabel, onApply, onCancel) {
+  box.replaceChildren();
+  if (!changes.length) { box.append(el("div", "changes", t("Já está assim: nada a mudar."))); return; }
+  const list = el("div", "changes");
+  list.append(el("b", "", changes.length === 1 ? t("Muda 1 ajuste:") : tf("Muda {n} ajustes:", { n: changes.length })));
+  for (const c of changes) list.append(el("span", "", `${t(titles[c.key] || c.key)}: ${valueText(c.key, c.old)} → ${valueText(c.key, c.new)}`));
+  const parked = !carOn || (state && state.vehicle.parked && state.vehicle.standstill);
+  if (!parked) list.append(el("span", "lock", t("Só com o carro em P ou desligado.")));
+  const go = el("button", "btn", applyLabel); go.type = "button"; go.disabled = !parked; go.style.marginTop = "6px";
+  go.addEventListener("click", onApply);
+  const no = el("button", "btn ghost", t("Cancelar")); no.type = "button"; no.addEventListener("click", onCancel);
+  list.append(go, no); box.append(list);
+}
+function renderProfiles() {
+  const profiles = (state && state.profiles) || {};
+  const names = Object.keys(profiles);
+  $("profileChips").replaceChildren(...names.map((n) => {
+    const b = el("button", "chip", n); b.type = "button"; b.setAttribute("aria-pressed", n === profileOpen ? "true" : "false");
+    b.addEventListener("click", () => openProfile(profileOpen === n ? null : n)); return b;
+  }));
+  if (!names.length) $("profileChips").append(el("span", "small", t("Nenhum perfil ainda. Ajuste as opções e salve, por exemplo, como Cidade ou Estrada.")));
+  if (profileOpen && !profiles[profileOpen]) openProfile(null);
+}
+async function openProfile(name) {
+  profileOpen = name; renderProfiles();
+  const box = $("profileBox"); box.replaceChildren();
+  if (!name) return;
+  const r = await api("/api/options/import", { options: state.profiles[name] });
+  if (r.status !== 200 || profileOpen !== name) return;
+  showChanges(box, r.data.changes, tf("Usar o perfil {nome}", { nome: name }), async () => {
+    const res = await api("/api/options/import", { options: state.profiles[name], apply: true });
+    toast(res.status === 200 ? (res.data.message || t("Salvo.")) : (res.data.error || t("Não foi possível salvar.")));
+    openProfile(null); refresh();
+  }, () => openProfile(null));
+  const del = el("button", "link danger", tf("Apagar o perfil {nome}", { nome: name })); del.type = "button";
+  del.addEventListener("click", async () => {
+    if (!confirm(tf("Apagar o perfil {nome}? Os ajustes de agora não mudam.", { nome: name }))) return;
+    await api("/api/profiles/delete", { name }); openProfile(null); refresh();
+  });
+  box.append(del);
 }
 
 function optionRow(o) {
@@ -678,7 +759,8 @@ async function setOption(key, value, e, undo) {
 }
 
 const UPDATE_ACTIONS = { radars: "atualizou a lista de radares", check: "verificou", download: "baixou", install: "instalou", branch: "escolheu", reboot: "reiniciou" };
-const EVENTS = { paired: "pareou", logout: "desconectou", phone_revoked: "desconectou outro celular", pin_locked: "código bloqueado por tentativas erradas", reason_added: "adicionou motivo", reason_removed: "removeu motivo" };
+const EVENTS = { paired: "pareou", logout: "desconectou", phone_revoked: "desconectou outro celular", pin_locked: "código bloqueado por tentativas erradas", reason_added: "adicionou motivo", reason_removed: "removeu motivo",
+                 profile_saved: "salvou um perfil", profile_removed: "apagou um perfil" };
 const RADAR_ACTIONS = { edit: "conferiu", removed: "tirou", add: "adicionou", delete: "apagou", import: "restaurou pontos" };
 function auditText(a) {
   const head = dayTime(a.t) + " · " + (a.who ? a.who + ": " : "");
@@ -691,6 +773,8 @@ function auditText(a) {
   if (a.event === "update") return head + tf("atualização: {acao}", { acao: t(UPDATE_ACTIONS[a.key] || a.key) }) + (a.new ? " " + a.new : "");
   if (a.event === "radar") return head + tf("radar: {acao}", { acao: t(RADAR_ACTIONS[a.key] || a.key) });
   if (a.event === "reason_added") return head + tf("adicionou o motivo \"{motivo}\"", { motivo: a.new });
+  if (a.event === "profile_saved") return head + tf("salvou o perfil \"{nome}\"", { nome: a.new });
+  if (a.event === "profile_removed") return head + tf("apagou o perfil \"{nome}\"", { nome: a.new });
   return head + t(EVENTS[a.event] || a.event);
 }
 
@@ -1218,6 +1302,13 @@ async function refreshHealth() {
   if (n.wheel) tiles.push(tileOf(t("volante reto em"), wheelText(n.wheel.offset)), tileOf(t("relação de direção"), num(n.wheel.ratio, 1)));
   if (n.delay) tiles.push(tileOf(t("atraso da direção"), `${num(n.delay.s, 2)} s (${n.delay.percent}%)`));
   $("learnedTiles").replaceChildren(...tiles);
+  const errs = h.errors || [];
+  $("errorsList").replaceChildren(...(errs.length ? errs.map((e) => {
+    const row = el("div", "line"); row.style.cssText = "flex-direction:column;align-items:flex-start;gap:2px;padding:8px 0";
+    row.append(el("span", "small num", `${when(e.t)} · ${e.process || "—"}`), el("span", "desc", e.error || e.msg));
+    return row;
+  }) : [el("div", "line desc", t("Nenhum erro recente."))]));
+  $("errorsSend").classList.toggle("hidden", !errs.length);
   $("learnedEmpty").classList.toggle("hidden", tiles.length > 0);
   if (view === "inicio" && !driving) renderGarage();
 }
@@ -1335,6 +1426,35 @@ $("pointSave").addEventListener("click", savePoint);
 $("pointCancel").addEventListener("click", closePoint);
 $("pointScrim").addEventListener("click", closePoint);
 $("passCheck").addEventListener("change", () => { $("passGo").disabled = !$("passCheck").checked; });
+$("optSearch").addEventListener("input", (e) => { optQuery = e.target.value; if (state) renderGroups(state.groups); });
+$("profileSave").addEventListener("click", async () => {
+  const res = await api("/api/profiles/save", { name: $("profileName").value });
+  toast(res.status === 200 ? (res.data.message || t("Salvo.")) : (res.data.error || t("Não foi possível salvar.")));
+  if (res.status === 200) { $("profileName").value = ""; refresh(); }
+});
+$("optExport").addEventListener("click", async () => {
+  const r = await api("/api/options/export");
+  if (r.status === 200) saveFile(`lizpilot-ajustes-${new Date().toISOString().slice(0, 10)}.json`, r.data);
+});
+$("optImport").addEventListener("click", () => $("optFile").click());
+$("errorsSend").addEventListener("click", () => {  // a file the owner sends himself: versions, errors, the last disengagement
+  const h = health || {};
+  saveFile(`lizpilot-erros-${new Date().toISOString().slice(0, 10)}.json`,
+           { exported_at: Math.round(Date.now() / 1000), device: state && state.device, errors: h.errors || [], last_off: h.last_off || null, down: h.down || null });
+});
+$("optFile").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  let data;
+  try { data = JSON.parse(await f.text()); } catch (err) { toast(t("Esse arquivo não é uma cópia dos ajustes.")); return; }
+  const r = await api("/api/options/import", { options: data.options });
+  if (r.status !== 200) { toast(r.data.error || t("Não foi possível.")); return; }
+  showChanges($("restoreBox"), r.data.changes, t("Restaurar estes ajustes"), async () => {
+    const res = await api("/api/options/import", { options: data.options, apply: true });
+    toast(res.status === 200 ? (res.data.message || t("Salvo.")) : (res.data.error || t("Não foi possível salvar.")));
+    $("restoreBox").replaceChildren(); refresh();
+  }, () => $("restoreBox").replaceChildren());
+});
 $("passGo").addEventListener("click", () => {
   if (!$("passCheck").checked) return;
   passengerOk = true;  // until the car turns off
