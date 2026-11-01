@@ -410,7 +410,7 @@ class PanelBackend:
     with self.lock:
       rows, edits = self._rows()
       mine = [{"key": e["key"], "kind": e["kind"], "limit": e.get("limit"), "t": e.get("t"), "removed": bool(e.get("removed")),
-               "side": "dois" if e.get("both") else "?"} for e in reversed(radars.active(edits, self.clock()))][:40]
+               "side": "dois" if e.get("both") else "?", "passed": e.get("passed")} for e in reversed(radars.active(edits, self.clock()))][:40]
     if fix is None:
       return {"gps": False, "moving": False, "near": [], "mine": mine}
     return {"gps": True, "moving": fix[3] >= radars.DIRECTION_MIN_SPEED, "near": radars.nearby(rows, edits, fix[0], fix[1], fix[2]), "mine": mine}
@@ -444,20 +444,20 @@ class PanelBackend:
       self._radar_pins = {k: v for k, v in self._radar_pins.items() if now - v[0] < radars.PIN_SECONDS}
       pin = secrets.token_urlsafe(8)
       self._radar_pins[pin] = (now, fix)
-    return 200, {"pin": pin, "moving": fix[3] >= radars.DIRECTION_MIN_SPEED}
+    return 200, {"pin": pin, "moving": fix[3] >= radars.DIRECTION_MIN_SPEED, "speed": round(fix[3] * 3.6)}
 
   def radars_edit(self, who: dict, body: dict) -> tuple[int, dict]:
     fix = self._gps()
     point_key = str(body.get("key", ""))
     limit = body.get("limit")
-    if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or not 20 <= limit <= 130):
-      return 400, {"error": "Limite inválido."}
     with self.lock:
       rows, edits = self._rows()
       hit = [i for i in range(len(rows)) if radars.key(rows[i, 0], rows[i, 1]) == point_key]
       if not hit:
         return 404, {"error": "Ponto não encontrado."}
       row = rows[hit[0]]
+      if not radars.valid_limit(limit, int(row[4])):
+        return 400, {"error": "Limite inválido."}
       side = body.get("side")
       if side in ("mesmo", "contrario") and fix is None:
         return 409, {"error": "Sem GPS para saber o sentido."}
@@ -483,8 +483,8 @@ class PanelBackend:
     limit = body.get("limit")
     if kind not in radars.KINDS:
       return 400, {"error": "Tipo desconhecido."}
-    if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or not 20 <= limit <= 130):
-      return 400, {"error": "Limite inválido."}
+    if not radars.valid_limit(limit, radars.KINDS[kind]):
+      return 400, {"error": "Velocidade inválida."}
     with self.lock:
       now = self.clock()
       pin = str(body.get("pin", ""))
@@ -503,7 +503,7 @@ class PanelBackend:
       if radars.taken(rows, lat, lon, direction, radars.KINDS[kind]) or any(e["key"] == radars.key(lat, lon) for e in edits):
         return 409, {"error": "Já tem um ponto aqui: confira na lista."}
       entry = {"key": radars.key(lat, lon), "lat": lat, "lon": lon, "kind": kind, "limit": limit, "direction": direction, "both": side == "dois",
-               "who": who.get("name", ""), "t": int(now), "expires": now + radars.BLITZ_HOURS * 3600 if kind == "blitz" else None}
+               "passed": round(speed * 3.6), "who": who.get("name", ""), "t": int(now), "expires": now + radars.BLITZ_HOURS * 3600 if kind == "blitz" else None}
       self.store.put(radars.EDITS_PARAM, radars.apply_edit(edits, entry, now))
       self._audit({"event": "radar", "who": who.get("name", ""), "key": "add", "new": kind})
     return 200, {"ok": True, "message": "Salvo. Vale na próxima partida do carro."}

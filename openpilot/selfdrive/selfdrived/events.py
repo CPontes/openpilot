@@ -286,12 +286,11 @@ def posenet_invalid_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.Sub
 
 
 def radar_ahead_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
-  hit = radars.last_hit
-  limit = hit.get("limit")
+  title, detail = radars.alert_lines(radars.last_hit)
   return Alert(
-    f"{radars.KIND_TEXT.get(hit.get('kind'), 'Radar')} a {round(hit.get('distance', 0.) / 10) * 10:.0f} m",
-    f"Limite {limit:.0f} km/h" if limit else "",
-    AlertStatus.normal, AlertSize.mid if limit else AlertSize.small,
+    title,
+    detail,
+    AlertStatus.normal, AlertSize.mid if detail else AlertSize.small,
     Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 4.)
 
 

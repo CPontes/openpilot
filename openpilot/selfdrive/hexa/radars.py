@@ -30,6 +30,8 @@ KINDS = {"radar": RADAR, "blitz": BLITZ, "lombada": BUMP}
 KIND_NAMES = {v: k for k, v in KINDS.items()}
 KIND_TEXT = {RADAR: "Radar", BLITZ: "Blitz", BUMP: "Lombada"}
 SIDES = ("mesmo", "contrario", "dois")  # as the driver sees it: this way, the other way, both ways
+CAMERA_LIMITS = (20, 130)  # km/h
+BUMP_SPEEDS = (5, 60)  # km/h, the speed the owner wants over a bump
 BLITZ_HOURS = 12.  # a checkpoint moves: it leaves by itself
 PIN_SECONDS = 300.  # how long a tap holds the place while the note is filled in
 DIRECTION_MIN_SPEED = 2.  # m/s, the GPS bearing wanders below this and freezes when stopped
@@ -209,17 +211,34 @@ def clean_edits(raw) -> list[dict]:
       expires = e.get("expires")
       if not (-90. <= lat <= 90. and -180. <= lon <= 180. and kind in ("edit", *KINDS)):
         continue
-      if limit is not None and not 20 <= int(limit) <= 130:
+      if limit is not None and not valid_limit(int(limit), KINDS.get(kind, RADAR)):
         continue
       if direction is not None and not 0. <= float(direction) <= 360.:
         continue
       out.append({"key": key(lat, lon), "lat": lat, "lon": lon, "kind": kind, "limit": None if limit is None else int(limit),
                   "direction": None if direction is None else float(direction), "both": bool(e.get("both")) and direction is None,
+                  "passed": int(e["passed"]) if 0 <= int(e.get("passed") or -1) <= 200 else None,
                   "confirmed": bool(e.get("confirmed")), "removed": bool(e.get("removed")),
                   "who": str(e.get("who", ""))[:40], "t": int(e.get("t") or 0), "expires": None if expires is None else float(expires)})
     except (AttributeError, KeyError, OverflowError, TypeError, ValueError):
       continue
   return out[-MAX_EDITS:]
+
+
+def valid_limit(limit, kind: int = RADAR) -> bool:
+  if limit is None:
+    return True
+  low, high = BUMP_SPEEDS if kind == BUMP else CAMERA_LIMITS
+  return isinstance(limit, int) and not isinstance(limit, bool) and low <= limit <= high
+
+
+def alert_lines(hit: dict) -> tuple[str, str]:
+  """What the alert says. At a bump the number is the owner's own speed, not a legal limit."""
+  kind, limit = hit.get("kind"), hit.get("limit")
+  title = f"{KIND_TEXT.get(kind, 'Radar')} a {round(hit.get('distance', 0.) / 10) * 10:.0f} m"
+  if not limit:
+    return title, ""
+  return title, f"Passe a {limit:.0f} km/h" if kind == BUMP else f"Limite {limit:.0f} km/h"
 
 
 def direction_of(side: str, bearing: float) -> float | None:

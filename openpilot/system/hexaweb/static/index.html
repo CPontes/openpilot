@@ -191,7 +191,7 @@
         <div class="title" id="pointTitle">Radar</div>
         <div class="desc" id="pointHint"></div>
         <div id="pointLimitBox">
-          <label class="field">Velocidade</label>
+          <label class="field" id="pointLimitLabel">Velocidade</label>
           <div class="pick" id="pointLimits"></div>
         </div>
         <div id="pointSideBox">
@@ -689,13 +689,13 @@ async function refreshUpdate() {
 const SIDES = { mesmo: "no seu sentido", contrario: "no sentido contrário", dois: "nos dois sentidos", "?": "sentido não confirmado" };
 const SIDE_CHIPS = [["mesmo", "Mesmo sentido"], ["contrario", "Sentido oposto"], ["dois", "Dois sentidos"]];
 const POINT = { radar: "Radar", blitz: "Blitz", lombada: "Lombada", edit: "Correção" };
-const NEAR_BADGE_M = 1000;
+const NEAR_BADGE_M = 1000, BUMP_MIN = 5, BUMP_MAX = 60;
 let point = null, pick = {}, moving = false;
 
 function pointLine(p) {
   const li = document.createElement("li"); li.className = "line";
   const t = document.createElement("span");
-  const limit = p.kind === "lombada" ? "" : (p.limit ? `${p.limit} km/h · ` : "limite desconhecido · ");
+  const limit = p.kind === "lombada" ? (p.limit ? `passar a ${p.limit} km/h · ` : "") : (p.limit ? `${p.limit} km/h · ` : "limite desconhecido · ");
   t.textContent = `${POINT[p.kind]} a ${p.distance} m ${p.ahead ? "à frente" : "atrás"} · ${limit}${SIDES[p.side]}${p.confirmed ? " · confirmado" : ""}`;
   const b = document.createElement("button"); b.className = "edit"; b.textContent = "editar";
   b.addEventListener("click", () => openPoint({ ...p, own: p.mine }));
@@ -717,10 +717,10 @@ async function refreshNear() {
     const li = document.createElement("li"); li.className = "line";
     const t = document.createElement("span");
     const when = new Date(m.t * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-    t.textContent = `${m.removed ? "Tirado da lista" : POINT[m.kind]} · ${m.limit ? m.limit + " km/h · " : ""}${m.side === "dois" ? "dois sentidos · " : ""}${when}`;
+    t.textContent = `${m.removed ? "Tirado da lista" : POINT[m.kind]} · ${m.limit ? (m.kind === "lombada" ? "passar a " : "") + m.limit + " km/h · " : ""}${m.side === "dois" ? "dois sentidos · " : ""}${when}`;
     const b = document.createElement("button"); b.className = "edit"; b.textContent = m.removed ? "desfazer" : "editar";
     b.addEventListener("click", async () => {
-      if (!m.removed) { openPoint({ ...m, own: m.kind !== "edit" }); return; }
+      if (!m.removed) { openPoint({ ...m, own: m.kind !== "edit" }); return; }  // m.passed comes along
       if (!confirm("Desfazer e voltar este ponto para a lista?")) return;
       const res = await api("/api/radars/delete", { key: m.key });
       toast(res.status === 200 ? "Desfeito." : (res.data.error || "Não foi possível."));
@@ -738,24 +738,33 @@ function drawPoint() {
     b.disabled = !!disabled; b.addEventListener("click", click);
     return b;
   };
+  const bump = point.kind === "lombada";
   const limits = [["", "Não sei"]];
-  for (let v = 20; v <= 120; v += 10) limits.push([v, String(v)]);
+  if (bump) {
+    if (point.passed >= BUMP_MIN && point.passed <= BUMP_MAX) limits.push([point.passed, `Manter ${point.passed}`]);
+    const speeds = [...new Set([10, 15, 20, 25, 30, 40, 50, point.limit].filter(v => v >= BUMP_MIN && v <= BUMP_MAX))].sort((x, y) => x - y);
+    for (const v of speeds) if (v !== point.passed) limits.push([v, String(v)]);
+  } else {
+    for (let v = 20; v <= 120; v += 10) limits.push([v, String(v)]);
+  }
   $("pointLimits").replaceChildren(...limits.map(([v, t]) => chip(t, (pick.limit ?? "") === v, () => { pick.limit = v === "" ? null : v; drawPoint(); })));
   $("pointSides").replaceChildren(...SIDE_CHIPS.map(([v, t]) => chip(t, pick.side === v, () => { pick.side = v; drawPoint(); }, v !== "dois" && !moving)));
   $("pointSideNote").textContent = moving ? "Mesmo sentido é o sentido em que o carro está andando agora." : "Com o carro parado, só dá para escolher dois sentidos.";
-  const bump = point.kind === "lombada";
-  $("pointLimitBox").classList.toggle("hidden", bump || pick.removed);
+  $("pointLimitLabel").textContent = bump ? "Velocidade para passar aqui" : "Velocidade";
+  $("pointLimitBox").classList.toggle("hidden", !!pick.removed);
   $("pointSideBox").classList.toggle("hidden", !!pick.removed);
   $("pointRemove").setAttribute("aria-pressed", pick.removed ? "true" : "false");
   $("pointSummary").textContent = pick.removed ? "Ao salvar, este ponto sai da lista."
-    : `Ao salvar: ${POINT[point.kind]}${bump ? "" : pick.limit ? `, ${pick.limit} km/h` : ", velocidade não informada"}, ${SIDES[pick.side || "?"]}.`;
+    : `Ao salvar: ${POINT[point.kind]}${pick.limit ? `, ${bump ? "passar a " : ""}${pick.limit} km/h` : ", velocidade não informada"}, ${SIDES[pick.side || "?"]}.`;
 }
 
 function openPoint(p) {
   point = p;
-  pick = { limit: p.limit ?? null, side: p.key ? (p.side === "?" ? "" : p.side) : (p.kind === "lombada" || !moving ? "dois" : "mesmo"), removed: false };
+  const kept = p.kind === "lombada" && p.passed >= BUMP_MIN && p.passed <= BUMP_MAX ? p.passed : null;
+  pick = { limit: p.limit ?? kept, side: p.key ? (p.side === "?" ? "" : p.side) : (p.kind === "lombada" || !moving ? "dois" : "mesmo"), removed: false };
   $("pointTitle").textContent = p.key ? (p.distance == null ? `Editar ${POINT[p.kind].toLowerCase()}` : `${POINT[p.kind]} a ${p.distance} m`) : `${POINT[p.kind]} neste lugar`;
-  $("pointHint").textContent = p.key ? "Nada muda antes de você tocar em Salvar." : "Lugar guardado. Nada foi salvo ainda.";
+  $("pointHint").textContent = p.key ? "Nada muda antes de você tocar em Salvar."
+    : `Lugar guardado. Nada foi salvo ainda.${p.kind === "lombada" && p.passed > 0 ? ` Você passou a ${p.passed} km/h.` : ""}`;
   $("pointRemove").textContent = p.own ? "Apagar este ponto" : "Não existe mais";
   $("pointRemove").classList.toggle("hidden", !p.key);
   $("pointEditor").classList.remove("hidden");
@@ -778,7 +787,7 @@ async function savePoint() {
 
 async function addPoint(kind) {
   const r = await api("/api/radars/pin", {});
-  if (r.status === 200) { moving = !!r.data.moving; openPoint({ kind, limit: null, pin: r.data.pin }); }
+  if (r.status === 200) { moving = !!r.data.moving; openPoint({ kind, limit: null, pin: r.data.pin, passed: r.data.speed }); }
   else toast(r.data.error || "Sem GPS agora.");
 }
 

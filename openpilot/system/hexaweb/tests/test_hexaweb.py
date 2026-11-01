@@ -689,6 +689,23 @@ def test_edit_a_point_to_both_ways_and_back(panel, tmp_path):
   assert e["direction"] == 0. and e["both"] is False
 
 
+def test_a_bump_keeps_the_speed_it_was_passed_at_and_the_one_asked(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path)
+  got = panel.json("/api/radars/pin", {}, token=token)[1]
+  assert got["speed"] == round(panel.fix[3] * 3.6)
+  assert panel.json("/api/radars/add", {"kind": "lombada", "pin": got["pin"], "limit": 4, "side": "dois"}, token=token)[0] == 400
+  assert panel.json("/api/radars/add", {"kind": "lombada", "pin": got["pin"], "limit": 15, "side": "dois"}, token=token)[0] == 200
+  e = panel.store.get(r.EDITS_PARAM)[0]
+  assert (e["limit"], e["passed"]) == (15, round(panel.fix[3] * 3.6))
+  panel.backend._radar_rows = ((), None)
+  near = panel.json("/api/radars/near", token=token)[1]
+  p = next(x for x in near["near"] if x["kind"] == "lombada")
+  assert p["limit"] == 15 and near["mine"][0]["passed"] == e["passed"]
+  assert panel.json("/api/radars/edit", {"key": p["key"], "limit": 20, "confirmed": True}, token=token)[0] == 200
+  assert panel.json("/api/radars/edit", {"key": p["key"], "limit": 4, "confirmed": True}, token=token)[0] == 400
+  assert panel.store.get(r.EDITS_PARAM)[0]["passed"] == e["passed"]  # an edit keeps what was measured
+
+
 def test_an_old_tap_expires(panel, tmp_path):
   token, r = radar_panel(panel, tmp_path)
   pin = panel.json("/api/radars/pin", {}, token=token)[1]["pin"]

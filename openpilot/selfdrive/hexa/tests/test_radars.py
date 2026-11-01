@@ -213,6 +213,32 @@ def test_speed_bump_warns_with_its_kind_and_never_expires():
   assert hit["kind"] == radars.BUMP and hit["limit"] is None and radars.KIND_TEXT[hit["kind"]] == "Lombada"
 
 
+def test_a_bump_says_the_speed_to_pass_and_a_camera_its_limit():
+  assert radars.alert_lines({"kind": radars.BUMP, "distance": 204., "limit": 20.}) == ("Lombada a 200 m", "Passe a 20 km/h")
+  assert radars.alert_lines({"kind": radars.RADAR, "distance": 204., "limit": 60.}) == ("Radar a 200 m", "Limite 60 km/h")
+  assert radars.alert_lines({"kind": radars.BUMP, "distance": 204., "limit": None}) == ("Lombada a 200 m", "")
+
+
+def test_a_bump_warns_early_enough_for_its_speed():
+  r = radars.merge(np.zeros((0, 4)), [{**edit(), "kind": "lombada", "limit": 20, "direction": None, "expires": None}], 0.)
+  hit = drive(radars.RadarWatch(r))[0][1]
+  assert hit["limit"] == 20 and hit["distance"] > radars.alert_distance(16.7, None)
+
+
+@pytest.mark.parametrize("kind, limit, ok", [(radars.BUMP, 5, True), (radars.BUMP, 60, True), (radars.BUMP, 4, False), (radars.BUMP, 61, False),
+                                             (radars.RADAR, 19, False), (radars.RADAR, 20, True), (radars.RADAR, 130, True), (radars.RADAR, 131, False),
+                                             (radars.BUMP, None, True), (radars.BUMP, True, False), (radars.BUMP, 20.5, False)])
+def test_valid_limit(kind, limit, ok):
+  assert radars.valid_limit(limit, kind) is ok
+
+
+def test_a_saved_copy_keeps_the_speed_of_a_bump():
+  ok = {**edit(10), "kind": "lombada", "limit": 15, "direction": None, "both": True, "passed": 38}
+  bad = {**edit(20), "kind": "radar", "limit": 15, "direction": None}
+  clean = radars.clean_edits([ok, bad])
+  assert len(clean) == 1 and clean[0]["limit"] == 15 and clean[0]["passed"] == 38
+
+
 def test_every_kind_has_a_text_for_the_alert():
   assert set(radars.KIND_TEXT) == set(radars.KINDS.values())
 
