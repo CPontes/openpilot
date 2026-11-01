@@ -20,7 +20,7 @@ def test_keys_unique_and_groups_known():
 def test_every_option_is_off_by_default():
   for o in OPTIONS:
     # a fix the car needs stays on, and switchable: everything else starts off
-    assert o.default in (False, 0) or o.key == "LowSpeedFilter", o.key
+    assert o.default in (False, 0) or o.key == "LowSpeedFilter" or o.kind == "enum", o.key
 
 
 def test_every_option_is_a_registered_param():

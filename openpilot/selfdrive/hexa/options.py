@@ -74,6 +74,24 @@ OPTIONS: tuple[HexaOption, ...] = (
                 "Segure de volta ao centro para voltar. Zera ao desengatar.",
   ),
   HexaOption(
+    key="AutoLaneChange",
+    group="direcao",
+    title="troca de faixa pela seta",
+    description="A partir de 60 km/h, a seta ligada troca de faixa sem empurrar o volante.\n" +
+                "Uma troca por seta, e só com o ponto cego livre. Não use para virar.",
+    restart_needed=True,
+  ),
+  HexaOption(
+    key="AutoLaneChangeDelay",
+    group="direcao",
+    title="tempo da seta até trocar",
+    description="Quanto tempo a seta fica ligada antes de a troca começar.",
+    kind="enum",
+    choices=("1 s", "2 s", "3 s"),
+    default=1,
+    restart_needed=True,
+  ),
+  HexaOption(
     key="LeadDepartAlert",
     group="avisos",
     title="aviso de carro da frente saiu",
