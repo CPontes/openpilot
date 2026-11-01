@@ -29,8 +29,10 @@ def lang_of(code: str | None) -> str:
 
 
 def comma_lang(params) -> str:
+  """The comma 4 has no language menu, so its default "en" says nothing about the person: only another value counts."""
   try:
-    return lang_of(params.get("LanguageSetting"))
+    code = params.get("LanguageSetting")
+    return SOURCE if code in (None, "", "en") else lang_of(code)
   except Exception:
     return SOURCE
 

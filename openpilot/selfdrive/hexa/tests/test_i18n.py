@@ -61,5 +61,8 @@ def test_language_from_the_comma():
       assert key == "LanguageSetting"
       return self.value
 
+  assert i18n.comma_lang(Params("en")) == "pt"  # the default on a comma 4, which has no language menu
+  assert i18n.comma_lang(Params(None)) == "pt"
+  assert i18n.comma_lang(Params("de")) == "en"
   assert i18n.comma_lang(Params("pt-BR")) == "pt"
   assert i18n.comma_lang(Params("es")) == "es"

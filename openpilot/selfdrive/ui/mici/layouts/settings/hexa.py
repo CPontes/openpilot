@@ -1,6 +1,6 @@
 """Settings → LizPilot: the fork's own options, built from openpilot/selfdrive/hexa/options.py, plus phone pairing.
 
-Texts follow the comma's language (pt, en or es; others get English), from the same catalogs as the phone panel."""
+Texts follow i18n.comma_lang, from the same catalogs as the phone panel."""
 import time
 
 from openpilot.common.params import Params
