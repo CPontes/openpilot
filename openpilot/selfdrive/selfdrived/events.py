@@ -513,6 +513,14 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
     ET.PERMANENT: radar_ahead_alert,
   },
 
+  EventName.autoResume: {
+    ET.PERMANENT: Alert(
+      "Saindo sozinho",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 3.),
+  },
+
   EventName.leadDeparted: {
     ET.PERMANENT: Alert(
       "Lead Car Moved",

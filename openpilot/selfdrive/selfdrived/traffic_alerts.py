@@ -1,5 +1,6 @@
 import numpy as np
 
+from openpilot.cereal import log
 from openpilot.common.realtime import DT_CTRL
 
 LEAD_SETTLE_TIME = .5  # s, the distance is still changing right after stopping
@@ -9,6 +10,9 @@ LEAD_MAX_DISTANCE = 25.  # m, farther than this it isn't the car we stopped behi
 LEAD_DEPART_DISTANCE = 3.  # m, over the vision distance noise at a stop: 2.3 m at p90, 92 stops
 LEAD_DEPART_SPEED = .5  # m/s
 LEAD_DEPART_TIME = .5  # s
+
+AUTO_RESUME_MAX_STOP = 60.  # s, after this long the street in front may be another one. Longest stop in the logs: 62.8 s
+AUTO_RESUME_REQUEST = .5  # s, it has to outlast the messages between here and the car port
 
 
 class LeadDepartAlert:
@@ -48,5 +52,45 @@ class LeadDepartAlert:
     self.depart_frames = self.depart_frames + 1 if departing else 0
     if self.depart_frames * self.dt >= LEAD_DEPART_TIME - 1e-6:
       self.done = True
+      return True
+    return False
+
+
+def driver_attentive(dm) -> bool:
+  """The camera sees the driver looking at the road, with no alert going. Wheel touch mode says nothing about that."""
+  vision = dm.visionPolicyState
+  return bool(dm.activePolicy == log.DriverMonitoringState.MonitoringPolicy.vision and dm.alertLevel == log.DriverMonitoringState.AlertLevel.none and
+              vision.faceDetected and not vision.isDistracted)
+
+
+class AutoResume:
+  """Asks the ACC to pull away, once per stop, after the car ahead left. Anything unusual leaves the stop to the driver."""
+  def __init__(self, dt: float = DT_CTRL):
+    self.dt = dt
+    self.depart = LeadDepartAlert(dt)
+    self.reset()
+
+  def reset(self) -> None:
+    self.stopped_frames = 0
+    self.driver_took_over = False
+    self.request_frames = 0
+
+  def update(self, enabled: bool, standstill: bool, in_drive: bool, gas_pressed: bool, brake_pressed: bool,
+             lead_present: bool, d_rel: float, v_lead: float, attentive: bool) -> bool:
+    departed = self.depart.update(standstill, in_drive, gas_pressed, lead_present, d_rel, v_lead)
+    if not standstill or not in_drive:
+      self.reset()
+      return False
+
+    self.stopped_frames += 1
+    self.driver_took_over |= gas_pressed or brake_pressed or not enabled
+    if self.driver_took_over:
+      self.request_frames = 0
+      return False
+    if self.request_frames > 0:
+      self.request_frames -= 1
+      return True
+    if departed and attentive and self.stopped_frames * self.dt <= AUTO_RESUME_MAX_STOP:
+      self.request_frames = round(AUTO_RESUME_REQUEST / self.dt) - 1
       return True
     return False

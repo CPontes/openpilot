@@ -134,6 +134,7 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     bigModelFailed @102;
     leadDeparted @105;
     radarAhead @106;
+    autoResume @107;
 
     lowBatteryDEPRECATED @40;
     soundsUnavailableDEPRECATED @47;

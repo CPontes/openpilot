@@ -22,7 +22,7 @@ from openpilot.selfdrive.selfdrived.events import Events, ET
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
 from openpilot.selfdrive.selfdrived.always_on_lateral import LongitudinalPause
-from openpilot.selfdrive.selfdrived.traffic_alerts import LeadDepartAlert
+from openpilot.selfdrive.selfdrived.traffic_alerts import AutoResume, LeadDepartAlert, driver_attentive
 from openpilot.selfdrive.hexa import radars
 from opendbc.car.gwm.values import GwmSafetyFlags
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
@@ -113,6 +113,9 @@ class SelfdriveD:
                              bool(self.CP.safetyConfigs[-1].safetyParam & GwmSafetyFlags.ALWAYS_ON_LATERAL)
     self.long_pause = LongitudinalPause()
     self.lead_depart_alert = LeadDepartAlert() if self.params.get_bool("LeadDepartAlert") else None
+    # the panda only lets the pull out with the same flag
+    self.auto_resume = AutoResume() if self.CP.brand == 'gwm' and len(self.CP.safetyConfigs) > 0 and \
+                                       bool(self.CP.safetyConfigs[-1].safetyParam & GwmSafetyFlags.AUTO_RESUME) else None
     self.radar_watch = None
     if self.params.get_bool("RadarAlert"):
       try:
@@ -229,6 +232,13 @@ class SelfdriveD:
     # Don't add any more events while in dashcam mode
     if self.CP.passive:
       return
+
+    if self.auto_resume is not None:
+      lead = self.sm['radarState'].leadOne
+      in_drive = CS.gearShifter == car.CarState.GearShifter.drive
+      if self.auto_resume.update(self.enabled, CS.standstill, in_drive, CS.gasPressed, CS.brakePressed, lead.present, lead.dRel, lead.vLead,
+                                 driver_attentive(self.sm['driverMonitoringState'])):
+        self.events.add(EventName.autoResume)
 
     # Block resume if cruise never previously enabled
     resume_pressed = any(be.type in (ButtonType.accelCruise, ButtonType.resumeCruise) for be in CS.buttonEvents)

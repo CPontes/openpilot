@@ -117,9 +117,13 @@ class Car:
       safety_config = structs.CarParams.SafetyConfig()
       safety_config.safetyModel = structs.CarParams.SafetyModel.noOutput
       self.CP.safetyConfigs = [safety_config]
-    elif self.CP.brand == 'gwm' and self.params.get_bool("AlwaysOnLateral"):
-      # brake pauses longitudinal only, steering stays engaged until cancel
-      self.CP.safetyConfigs[-1].safetyParam |= GwmSafetyFlags.ALWAYS_ON_LATERAL.value
+    elif self.CP.brand == 'gwm':
+      if self.params.get_bool("AlwaysOnLateral"):
+        # brake pauses longitudinal only, steering stays engaged until cancel
+        self.CP.safetyConfigs[-1].safetyParam |= GwmSafetyFlags.ALWAYS_ON_LATERAL.value
+      if self.params.get_bool("AutoResume"):
+        # one pull of the stalk per stop, after the car ahead left
+        self.CP.safetyConfigs[-1].safetyParam |= GwmSafetyFlags.AUTO_RESUME.value
 
     if self.CP.secOcRequired:
       # Copy user key if available

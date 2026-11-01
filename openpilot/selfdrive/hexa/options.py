@@ -109,6 +109,14 @@ OPTIONS: tuple[HexaOption, ...] = (
     restart_needed=True,
   ),
   HexaOption(
+    key="AutoResume",
+    group="velocidade",
+    title="sair sozinho da parada",
+    description="Parado atrás de um carro, o ACC sai quando ele anda. Só com openpilot ligado, você olhando para a frente, sem pedal e até 60 s parado.\n" +
+                "Em teste: fique pronto para frear. Sem carro à frente, não sai.",
+    restart_needed=True,
+  ),
+  HexaOption(
     key="LeadDepartAlert",
     group="avisos",
     title="aviso de carro da frente saiu",
