@@ -19,6 +19,7 @@ from urllib.parse import parse_qs
 from openpilot.selfdrive.hexa import i18n
 from openpilot.selfdrive.hexa import live as hexa_live
 from openpilot.selfdrive.hexa import marks as hexa_marks
+from openpilot.selfdrive.hexa import mdns as hexa_mdns
 from openpilot.selfdrive.hexa import radars
 from openpilot.selfdrive.hexa import phone
 from openpilot.selfdrive.hexa import timeline
@@ -59,7 +60,9 @@ SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
   "Referrer-Policy": "no-referrer",
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:",
+  # connect-src: a page opened by address may check that the fixed name answers on this network, and nothing else
+  "Content-Security-Policy": "; ".join(("default-src 'self'", "script-src 'self' 'unsafe-inline'", "style-src 'self' 'unsafe-inline'",
+                                         "img-src 'self' data:", f"connect-src 'self' http://{hexa_mdns.NAME}:{phone.PORT}")),
 }
 
 
@@ -847,6 +850,7 @@ def main():
       backend.on_drive_state(watched["selfdriveState"].enabled, watched["onroadEvents"])
 
   threading.Thread(target=watch_bookmarks, daemon=True).start()
+  threading.Thread(target=hexa_mdns.serve, daemon=True).start()  # lizpilot.local on the local network
   serve(backend)
 
 

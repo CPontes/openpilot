@@ -110,6 +110,17 @@
     return T("Aqui o comma só avisa.");  // the text for a calibrated longitudinal comes with the calibration
   }
 
+  // lizpilot.local: one address for the panel, whatever network the comma is on (mdns.py on the comma).
+  // A phone keeps the panel (and its pairing) by address, so the fixed one is offered once, and taken before pairing.
+  //   fixed  already there · move  not paired yet: go there before typing the code · offer  paired here: suggest it
+  //   ip     the name doesn't answer from this phone (some Android, some networks): stay by address
+  const FIXED_HOST = "lizpilot.local";
+  function addressPlan(host, reachable, paired) {
+    if (String(host || "").toLowerCase() === FIXED_HOST) return "fixed";
+    if (!reachable) return "ip";
+    return paired ? "offer" : "move";
+  }
+
   // With the car moving, the phone is for the passenger. Asked once per trip, before Marcar or a point; never parked,
   // never stored on the phone or the comma. Stopping in traffic doesn't ask again; turning the car off does.
   function passenger(gate, car) {
@@ -117,6 +128,6 @@
     return { ok, ask: !!car.on && !!car.moving && !ok };
   }
 
-  root.LPL = { STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
+  root.LPL = { FIXED_HOST, addressPlan, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

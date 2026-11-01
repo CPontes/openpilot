@@ -85,6 +85,7 @@ def test_page_is_served_with_security_headers(panel):
   assert headers["X-Frame-Options"] == "DENY"
   assert headers["Cache-Control"] == "no-store"
   assert "default-src 'self'" in headers["Content-Security-Policy"]
+  assert headers["Content-Security-Policy"].endswith("connect-src 'self' http://lizpilot.local:8088")  # only the fixed name, to check it
   assert panel.request("/manifest.webmanifest")[0] == 200
   assert panel.request("/../hexaweb.py")[0] == 404
 

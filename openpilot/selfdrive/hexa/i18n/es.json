@@ -466,5 +466,10 @@
  "sem dados": "sin datos",
  "só direção · a velocidade é sua": "solo dirección · la velocidad es suya",
  "você e openpilot na direção": "usted y openpilot en la dirección",
- "ACC desligado": "ACC apagado"
+ "ACC desligado": "ACC apagado",
+ "Endereço fixo disponível": "Dirección fija disponible",
+ "Funciona mesmo se o comma mudar de rede. Lá você pareia uma vez com o código do comma e adiciona à tela de início de novo.": "Funciona aunque el comma cambie de red. Allí empareja una vez con el código del comma y lo agrega de nuevo a la pantalla de inicio.",
+ "Abrir pelo endereço fixo": "Abrir por la dirección fija",
+ "Endereço fixo: funciona mesmo se o comma mudar de rede.": "Dirección fija: funciona aunque el comma cambie de red.",
+ "Endereço que você está usando agora. Muda quando o comma troca de rede.": "La dirección que está usando ahora. Cambia cuando el comma cambia de red."
 }

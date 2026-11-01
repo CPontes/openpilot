@@ -466,5 +466,10 @@
  "sem dados": "no data",
  "só direção · a velocidade é sua": "steering only · speed is yours",
  "você e openpilot na direção": "you and openpilot steering",
- "ACC desligado": "ACC off"
+ "ACC desligado": "ACC off",
+ "Endereço fixo disponível": "Fixed address available",
+ "Funciona mesmo se o comma mudar de rede. Lá você pareia uma vez com o código do comma e adiciona à tela de início de novo.": "Works even if the comma changes network. There you pair once with the code on the comma and add it to the home screen again.",
+ "Abrir pelo endereço fixo": "Open by the fixed address",
+ "Endereço fixo: funciona mesmo se o comma mudar de rede.": "Fixed address: works even if the comma changes network.",
+ "Endereço que você está usando agora. Muda quando o comma troca de rede.": "The address you are using now. It changes when the comma changes network."
 }

@@ -172,3 +172,13 @@ def test_passenger_question():
   gone = run("passenger", {"ok": True}, off)                                     # turning the car off ends it
   assert gone == {"ok": False, "ask": False}
   assert run("passenger", gone, moving)["ask"] is True                           # next trip asks once again
+
+
+# ----- the fixed address
+
+def test_fixed_address_plan():
+  assert run("addressPlan", "lizpilot.local", False, True) == "fixed"
+  assert run("addressPlan", "LizPilot.local", True, False) == "fixed"
+  assert run("addressPlan", "192.168.0.23", True, False) == "move"   # not paired: go there before the code
+  assert run("addressPlan", "192.168.0.23", True, True) == "offer"   # paired by address: suggest, pairs again once
+  assert run("addressPlan", "192.168.0.23", False, True) == "ip"     # the name doesn't answer here

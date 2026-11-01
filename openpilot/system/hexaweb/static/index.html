@@ -341,8 +341,14 @@
         <div class="label" data-t>Celulares pareados</div>
         <div class="card list" id="phoneList"></div>
         <div class="label" data-t>Este celular</div>
+        <section class="card ok stack hidden" id="fixedCard" style="gap:8px">
+          <div class="title" data-t>Endereço fixo disponível</div>
+          <div class="big" style="color:var(--accent)">lizpilot.local</div>
+          <div class="desc" data-t>Funciona mesmo se o comma mudar de rede. Lá você pareia uma vez com o código do comma e adiciona à tela de início de novo.</div>
+          <a class="btn" id="fixedGo" href="#" data-t>Abrir pelo endereço fixo</a>
+        </section>
         <div class="card"><div class="title num" id="thisAddress">—</div>
-          <div class="desc" data-t>Se o comma mudar de rede, este endereço muda: leia o QR de novo no comma, em Configurações → LizPilot → parear celular.</div>
+          <div class="desc" id="thisNote"></div>
           <div class="desc" id="thisHow" style="margin-top:6px"></div></div>
         <button class="link danger" id="logoutBtn" type="button" data-t>Desconectar este celular</button>
       </div>
@@ -1168,6 +1174,12 @@ async function refreshPhones() {
   }));
   $("thisAddress").textContent = location.host;
   $("thisHow").textContent = howToInstall();
+  const plan = LPL.addressPlan(location.hostname, await fixedReachable(), !!token);
+  $("fixedCard").classList.toggle("hidden", plan !== "offer");
+  $("fixedGo").href = fixedUrl("#parear");
+  $("thisNote").textContent = plan === "fixed" ? t("Endereço fixo: funciona mesmo se o comma mudar de rede.")
+    : plan === "offer" ? t("Endereço que você está usando agora. Muda quando o comma troca de rede.")
+    : t("Se o comma mudar de rede, este endereço muda: leia o QR de novo no comma, em Configurações → LizPilot → parear celular.");
 }
 
 function saveFile(name, data) {
@@ -1175,6 +1187,20 @@ function saveFile(name, data) {
   a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: "application/json" }));
   a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+// ----- the fixed address: lizpilot.local, answered by the comma on the local network -----
+let fixedProbe = null;
+function fixedUrl(hash) { return `http://${LPL.FIXED_HOST}:${location.port || "80"}/${hash || ""}`; }
+function fixedReachable() {  // one check per page: does the fixed name answer from this phone, on this network?
+  if (location.hostname.toLowerCase() === LPL.FIXED_HOST) return Promise.resolve(true);
+  if (!fixedProbe) {
+    const ctl = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = ctl && setTimeout(() => ctl.abort(), 1500);
+    fixedProbe = fetch(fixedUrl("manifest.webmanifest"), { mode: "no-cors", cache: "no-store", signal: ctl ? ctl.signal : undefined })
+      .then(() => true, () => false).finally(() => clearTimeout(timer));
+  }
+  return fixedProbe;
 }
 
 // ----- main loop -----
@@ -1206,6 +1232,10 @@ LP.ready.then(() => {
     $("name").value = defaultName();
     setTimeout(() => $("pin").focus(), 50);
   }
+  // Not paired yet and opened by address: pair on the fixed name instead, so the phone keeps it. Never mid-typing.
+  if (!token) fixedReachable().then((ok) => {
+    if (!token && !$("pin").value && LPL.addressPlan(location.hostname, ok, false) === "move") location.replace(fixedUrl(location.hash === "#parear" ? "#parear" : ""));
+  });
   refresh();
 });
 
