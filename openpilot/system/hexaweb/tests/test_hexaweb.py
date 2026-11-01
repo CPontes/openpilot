@@ -732,7 +732,7 @@ def test_radar_points_go_out_and_come_back(panel, tmp_path):
   assert len(saved) == 1 and saved[0]["lat"] == panel.lat - .002
   panel.store.put(r.EDITS_PARAM, [])
   status, d = panel.json("/api/radars/import", {"edits": saved}, token=token)
-  assert status == 200 and "1 pontos" in d["message"]
+  assert status == 200 and "restaurados: 1" in d["message"]
   back = panel.store.get(r.EDITS_PARAM)
   assert [(e["key"], e["lat"], e["limit"], e["kind"]) for e in back] == [(e["key"], e["lat"], e["limit"], e["kind"]) for e in saved]
 

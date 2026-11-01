@@ -432,7 +432,7 @@ class PanelBackend:
         edits = radars.apply_edit(edits, entry, self.clock())
       self.store.put(radars.EDITS_PARAM, edits)
       self._audit({"event": "radar", "who": who.get("name", ""), "key": "import", "new": len(incoming)})
-    return 200, {"ok": True, "message": f"{len(incoming)} pontos restaurados. Valem na próxima partida do carro."}
+    return 200, {"ok": True, "message": f"Pontos restaurados: {len(incoming)}. Valem na próxima partida do carro."}
 
   def radars_pin(self) -> tuple[int, dict]:
     """Holds where the car is at the tap: at 60 km/h, ten seconds later it is 170 m ahead of the point."""
