@@ -19,7 +19,8 @@ def test_keys_unique_and_groups_known():
 
 def test_every_option_is_off_by_default():
   for o in OPTIONS:
-    assert o.default in (False, 0), o.key
+    # a fix the car needs stays on, and switchable: everything else starts off
+    assert o.default in (False, 0) or o.key == "LowSpeedFilter", o.key
 
 
 # test branch on top of the canal (h6gt): these features are not on this base, so their params are not

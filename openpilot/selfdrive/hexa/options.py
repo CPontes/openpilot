@@ -1,7 +1,8 @@
 """Hexa options: the single list of the fork's own settings.
 
 The comma screen (selfdrive/ui/mici/layouts/settings/hexa.py) and the phone panel (system/hexaweb) are both
-built from this list, so a new option only has to be added here. Every option is off by default.
+built from this list, so a new option only has to be added here. New options are off by default, except
+fixes the car needs, which stay switchable so they can be turned off without an update.
 """
 from dataclasses import dataclass, field
 
@@ -45,6 +46,15 @@ class HexaOption:
 
 
 OPTIONS: tuple[HexaOption, ...] = (
+  HexaOption(
+    key="LowSpeedFilter",
+    group="direcao",
+    title="volante calmo em baixa velocidade",
+    description="Abaixo de 30 km/h, o volante ignora as tremidas pequenas do modelo e fica reto.\n" +
+                "Curvas de verdade continuam passando, com um pequeno atraso.",
+    default=True,
+    restart_needed=True,
+  ),
   HexaOption(
     key="AlwaysOnLateral",
     group="direcao",
