@@ -463,3 +463,25 @@ def test_trip_mark_shows_the_reason(panel, tmp_path):
   panel.store.put(marks.MARKS_PARAM, [{"id": "a", "mono_ns": ns, "label": "curva difícil", "note": "rotatória"}])
   ev = panel.json("/api/trip/segment?route=0000000f--8784034901&n=0", token=token)[1]["events"]
   assert next(e for e in ev if e["kind"] == "mark")["text"] == "curva difícil: rotatória"
+
+
+def test_mark_text_can_be_written_changed_and_cleared(panel):
+  token = panel.pair()
+  mark = panel.json("/api/mark", {"reason": "outro"}, token=token)[1]["mark"]
+  body = {"id": mark["id"], "reason": "outro", "note": "moto colou na lateral", "replace_note": True}
+  assert panel.json("/api/mark/classify", body, token=token)[1]["mark"]["note"] == "moto colou na lateral"
+  body = {"id": mark["id"], "reason": "curva", "note": "buraco na curva", "replace_note": True}
+  edited = panel.json("/api/mark/classify", body, token=token)[1]["mark"]
+  assert edited["note"] == "buraco na curva" and edited["label"] == "curva difícil"
+  body = {"id": mark["id"], "reason": "curva", "note": "", "replace_note": True}
+  assert panel.json("/api/mark/classify", body, token=token)[1]["mark"]["note"] == ""
+
+
+def test_classifying_without_text_keeps_the_note(panel):
+  token = panel.pair()
+  mark = panel.json("/api/mark", {"reason": "outro", "note": "antes"}, token=token)[1]["mark"]
+  body = {"id": mark["id"], "reason": "curva", "note": ""}
+  assert panel.json("/api/mark/classify", body, token=token)[1]["mark"]["note"] == "antes"
+  # only a real true replaces it
+  body = {"id": mark["id"], "reason": "curva", "note": "", "replace_note": "sim"}
+  assert panel.json("/api/mark/classify", body, token=token)[1]["mark"]["note"] == "antes"

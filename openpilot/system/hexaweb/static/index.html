@@ -64,6 +64,9 @@
   .reasons button:active { background: color-mix(in srgb, var(--accent) 22%, var(--bg)); }
   .reasons button.mine { border-style: dashed; }
   .pending { border-color: var(--warn); }
+  textarea { width: 100%; font: inherit; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
+             background: var(--bg); color: var(--text); resize: vertical; }
+  button.edit { background: none; color: var(--accent); padding: 0 0 0 8px; }
   .pending .when { font-weight: 600; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .chips button { background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 8px 10px; font-weight: 500; }
@@ -99,21 +102,19 @@
       </div>
       <span class="status" id="vehicleBadge"></span>
     </div>
-    <a class="card row" href="/viagens" style="text-decoration:none;color:inherit">
-      <div class="text"><div class="title">Ver como foi a viagem</div>
-        <div class="desc">Resumo e caminho, com as marcas. Arraste para percorrer o trajeto. Abre com o carro desligado.</div></div>
-      <span class="status ok">abrir</span>
-    </a>
-    <a class="card row" href="/replay" style="text-decoration:none;color:inherit">
-      <div class="text"><div class="title">Assistir viagens gravadas</div>
-        <div class="desc">Replay com a linha do tempo marcada: bandeiras, força no limite, balanço, alertas. Abre com o carro desligado.</div></div>
-      <span class="status ok">abrir</span>
-    </a>
     <h2>Marcar</h2>
+    <div class="card hidden" id="editor">
+      <div class="title">O que aconteceu?</div>
+      <label class="field" for="editReason">Motivo</label>
+      <select id="editReason"></select>
+      <label class="field" for="editNote">Descreva</label>
+      <textarea id="editNote" rows="3" maxlength="140" placeholder="ex.: moto colou na lateral"></textarea>
+      <div class="rowlinks"><button id="editSave">Salvar</button><button id="editCancel">Cancelar</button></div>
+    </div>
     <div id="pendingBox"></div>
     <div class="card">
       <div class="desc">Um toque marca o momento com o motivo e aciona a bandeira do comma.
-        Motorista: use a bandeira do comma; depois classifique aqui, parado.</div>
+        Em "outro", escreva ou dite pelo teclado do celular assim que parar.</div>
       <div class="reasons" id="reasons"></div>
       <details>
         <summary>Observação e motivos</summary>
@@ -128,6 +129,16 @@
       </details>
     </div>
     <div class="card"><ul class="audit" id="markList"></ul></div>
+    <a class="card row" href="/viagens" style="text-decoration:none;color:inherit">
+      <div class="text"><div class="title">Ver como foi a viagem</div>
+        <div class="desc">Resumo e caminho, com as marcas. Arraste para percorrer o trajeto. Abre com o carro desligado.</div></div>
+      <span class="status ok">abrir</span>
+    </a>
+    <a class="card row" href="/replay" style="text-decoration:none;color:inherit">
+      <div class="text"><div class="title">Assistir viagens gravadas</div>
+        <div class="desc">Replay com a linha do tempo marcada: bandeiras, força no limite, balanço, alertas. Abre com o carro desligado.</div></div>
+      <span class="status ok">abrir</span>
+    </a>
     <div id="groups"></div>
     <h2>Atualização</h2>
     <div class="card">
@@ -156,6 +167,8 @@ try { token = localStorage.getItem("hexaToken"); } catch (e) {}
 let timer = null;
 let titles = {};
 let marksState = { reasons: [], marks: [], pending: 0 };
+let carStopped = false;
+let editing = null;  // the mark being written: the editor stays out of what the refresh redraws
 
 function saveToken(t) {
   token = t;
@@ -208,6 +221,7 @@ function render(s) {
   $("device").textContent = [d.branch, d.commit].filter(Boolean).join(" · ") + (s.you ? " · " + s.you : "");
   const v = s.vehicle;
   const parked = !v.onroad || (v.parked && v.standstill && !v.engaged);
+  carStopped = !v.onroad || v.standstill;
   $("vehicleText").textContent = !v.onroad ? "Carro desligado" : (parked ? "Carro parado em P" : "Carro ligado ou andando");
   $("vehicleDesc").textContent = parked ? "Pode mudar as opções." : "Opções de direção e velocidade só em P ou com o carro desligado.";
   $("vehicleBadge").textContent = parked ? "pode mudar" : "só leitura";
@@ -268,7 +282,7 @@ function renderMarks(m) {
   for (const r of m.reasons) {
     const b = document.createElement("button"); b.textContent = r.label;
     if (r.custom) b.className = "mine";
-    b.addEventListener("click", () => doMark(r.key, b));
+    b.addEventListener("click", () => (r.key === "outro" ? markOther(b) : doMark(r.key, b)));
     grid.appendChild(b);
   }
   const mine = m.reasons.filter(r => r.custom);
@@ -295,6 +309,7 @@ function renderMarks(m) {
     for (const r of m.reasons) {
       const b = document.createElement("button"); b.textContent = r.label;
       b.addEventListener("click", async () => {
+        if (r.key === "outro" && carStopped) { openEditor(p, r.key); return; }
         const res = await api("/api/mark/classify", { id: p.id, reason: r.key, note: $("note").value });
         toast(res.status === 200 ? `Classificada: ${r.label}` : (res.data.error || "Não foi possível."));
         if (res.status === 200) $("note").value = "";
@@ -309,7 +324,11 @@ function renderMarks(m) {
   if (!done.length) { const li = document.createElement("li"); li.textContent = "Nenhuma marca ainda."; ul.appendChild(li); }
   for (const x of done) {
     const li = document.createElement("li");
-    li.textContent = `${hhmmss(x.t)} · ${x.label}${x.note ? " — " + x.note : ""}${x.source === "comma" ? " (bandeira)" : ""}`;
+    const text = document.createElement("span");
+    text.textContent = `${hhmmss(x.t)} · ${x.label}${x.note ? " — " + x.note : ""}${x.source === "comma" ? " (bandeira)" : ""}`;
+    const b = document.createElement("button"); b.className = "edit"; b.textContent = "editar";
+    b.addEventListener("click", () => openEditor(x, x.reason));
+    li.append(text, b);
     ul.appendChild(li);
   }
 }
@@ -322,7 +341,42 @@ async function doMark(reason, btn) {
     if (navigator.vibrate) navigator.vibrate(40);
     toast(`Marcado: ${res.data.mark.label} (${hhmmss(res.data.mark.t)})`);
     $("note").value = "";
-  } else toast(res.data.error || "Não foi possível marcar.");
+    refreshMarks();
+    return res.data.mark;
+  }
+  toast(res.data.error || "Não foi possível marcar.");
+  refreshMarks();
+  return null;
+}
+
+// The moment is marked at once, then the text. Moving, the box doesn't open: the mark is safe and "editar" stays there.
+async function markOther(btn) {
+  if (carStopped) openEditor({}, "outro");
+  const mark = await doMark("outro", btn);
+  if (mark && !carStopped) toast("Marcado. Escreva o motivo quando parar.");
+  if (!editing || editing.id) return;
+  if (mark) { editing.id = mark.id; $("editSave").disabled = false; } else closeEditor();
+}
+
+function openEditor(mark, reason) {
+  editing = { id: mark.id || null };
+  const sel = $("editReason"); sel.replaceChildren();
+  for (const r of marksState.reasons) {
+    const o = document.createElement("option"); o.value = r.key; o.textContent = r.label; o.selected = r.key === reason; sel.append(o);
+  }
+  $("editNote").value = mark.note || "";
+  $("editSave").disabled = !editing.id;
+  $("editor").classList.remove("hidden");
+  $("editNote").focus();
+  $("editor").scrollIntoView({ block: "center" });
+}
+
+function closeEditor() { editing = null; $("editor").classList.add("hidden"); }
+
+async function saveEdit() {
+  const res = await api("/api/mark/classify", { id: editing.id, reason: $("editReason").value, note: $("editNote").value, replace_note: true });
+  toast(res.status === 200 ? "Marca salva." : (res.data.error || "Não foi possível salvar."));
+  if (res.status === 200) closeEditor();
   refreshMarks();
 }
 
@@ -424,6 +478,8 @@ $("logoutBtn").addEventListener("click", async () => {
 });
 
 refresh();
+$("editSave").addEventListener("click", saveEdit);
+$("editCancel").addEventListener("click", closeEditor);
 $("updCheck").addEventListener("click", () => updateAction("check"));
 $("updDownload").addEventListener("click", () => updateAction("download"));
 $("updInstall").addEventListener("click", () => {
