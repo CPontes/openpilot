@@ -9,7 +9,7 @@ from openpilot.selfdrive.ui.mici.widgets.qr import QR
 from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.hexa import phone
-from openpilot.selfdrive.hexa.options import GROUPS, options_in_group
+from openpilot.selfdrive.hexa.options import GROUPS, options_in_group, supported
 
 PHONE_REFRESH = 1.0  # s
 IP_REFRESH = 10.0  # s
@@ -43,6 +43,8 @@ class HexaLayoutMici(NavScroller):
 
     for group, _ in GROUPS:
       for opt in options_in_group(group):
+        if not supported(opt, self._params):
+          continue
         if opt.kind == "bool":
           widget = BigParamControl(opt.title, opt.key, toggle_callback=restart_needed_callback if opt.restart_needed else None,
                                    description=opt.description)

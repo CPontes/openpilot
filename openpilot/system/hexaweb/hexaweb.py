@@ -17,7 +17,7 @@ from urllib.parse import parse_qs
 from openpilot.selfdrive.hexa import marks as hexa_marks
 from openpilot.selfdrive.hexa import phone
 from openpilot.selfdrive.hexa import timeline
-from openpilot.selfdrive.hexa.options import GROUPS, OPTIONS, get_option
+from openpilot.selfdrive.hexa.options import GROUPS, OPTIONS, get_option, supported
 from openpilot.selfdrive.hexa.phone import VehicleState
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -110,7 +110,7 @@ class PanelBackend:
       for gkey, gtitle in GROUPS:
         items = []
         for opt in OPTIONS:
-          if opt.group != gkey:
+          if opt.group != gkey or not supported(opt, self.store):
             continue
           writable, reason = phone.can_write(opt, vs)
           items.append({
@@ -136,7 +136,7 @@ class PanelBackend:
 
   def set_option(self, who: dict, key: str, value) -> tuple[int, dict]:
     opt = get_option(key)
-    if opt is None:
+    if opt is None or not supported(opt, self.store):
       return 404, {"error": "Opção desconhecida."}
     try:
       value = opt.coerce(value)
