@@ -124,6 +124,16 @@ OPTIONS: tuple[HexaOption, ...] = (
     testing=True,
   ),
   HexaOption(
+    key="LeadClosing",
+    group="velocidade",
+    title="frear antes com a distância da haval",
+    description="Quando a distância medida pela Haval mostra o carro da frente parando antes do modelo perceber, " +
+                "o comma começa a frear mais cedo e mais suave.\n" +
+                "Em teste: fique pronto para frear. Precisa do longitudinal do comma. Só adiciona freio, e pode reduzir um pouco sem necessidade.",
+    restart_needed=True,
+    testing=True,
+  ),
+  HexaOption(
     key="BumpSlowdown",
     group="velocidade",
     title="reduzir na lombada",

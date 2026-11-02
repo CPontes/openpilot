@@ -5,10 +5,12 @@ import openpilot.cereal.messaging as messaging
 from opendbc.car.interfaces import ACCEL_MIN, ACCEL_MAX
 from openpilot.common.constants import CV
 from openpilot.common.filter_simple import FirstOrderFilter
+from openpilot.common.params import Params
 from openpilot.common.realtime import DT_MDL
 from openpilot.selfdrive.modeld.constants import ModelConstants
 from openpilot.selfdrive.controls.lib.accel_boost import AccelBoost
 from openpilot.selfdrive.controls.lib.lead_boost import LeadBoost
+from openpilot.selfdrive.controls.lib.lead_closing import LeadClosing
 from openpilot.selfdrive.controls.lib.longcontrol import LongCtrlState
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import LongitudinalMpc, LongitudinalPlanSource
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import T_IDXS as T_IDXS_MPC
@@ -40,6 +42,7 @@ class LongitudinalPlanner:
     self.accel_boost = AccelBoost()
     self.stop_point = StopPoint(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl else None
     self.lead_boost = LeadBoost(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl else None
+    self.lead_closing = LeadClosing(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl and Params().get_bool("LeadClosing") else None
 
     self.v_desired_filter = FirstOrderFilter(init_v, 2.0, self.dt)
     self.a_cruise = init_a
@@ -73,6 +76,8 @@ class LongitudinalPlanner:
         self.stop_point.reset()
       if self.lead_boost is not None:
         self.lead_boost.reset()
+      if self.lead_closing is not None:
+        self.lead_closing.reset()
 
     # Prevent divergence, smooth in current v_ego
     self.v_desired_filter.x = max(0.0, self.v_desired_filter.update(v_ego))
@@ -121,6 +126,9 @@ class LongitudinalPlanner:
     if self.stop_point is not None:
       a_stop = self.stop_point.update(v_ego, sm['radarState'].leadOne.present, sm['carState'].gasPressed, sm['modelV2'])
       candidates.append((a_stop, LongitudinalPlanSource.e2e, False))
+    if self.lead_closing is not None and not reset_state:
+      a_closing = self.lead_closing.update(v_ego, sm['carState'].camLeadDistance, sm['radarState'].leadOne, sm['carState'].gasPressed, a_prev)
+      candidates.append((a_closing, LongitudinalPlanSource.lead0, False))
 
     output_a_target, self.mpc.source, _ = min(candidates, key=lambda c: c[0])
     self.output_should_stop = any(should_stop for _, _, should_stop in candidates)

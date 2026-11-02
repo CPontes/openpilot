@@ -85,6 +85,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"IsTestedBranch", {CLEAR_ON_MANAGER_START, BOOL}},
     {"JoystickDebugMode", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, BOOL}},
     {"LaneOffsetEnabled", {PERSISTENT, BOOL, "0"}},
+    {"LeadClosing", {PERSISTENT, BOOL, "0"}},
     {"LanguageSetting", {PERSISTENT, STRING, "en"}},
     {"LastAthenaPingTime", {CLEAR_ON_MANAGER_START, INT}},
     {"LastGPSPosition", {PERSISTENT, BYTES}},

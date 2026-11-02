@@ -639,6 +639,8 @@
  "restaurou os perfis {nomes}": "restored the profiles {nomes}",
  "restaurou perfis": "restored profiles",
  "restaurou pontos": "restored spots",
+ "frear antes com a distância da haval": "brake earlier with the Haval's distance",
+ "Quando a distância medida pela Haval mostra o carro da frente parando antes do modelo perceber, o comma começa a frear mais cedo e mais suave.\nEm teste: fique pronto para frear. Precisa do longitudinal do comma. Só adiciona freio, e pode reduzir um pouco sem necessidade.": "When the distance the Haval measures shows the car ahead stopping before the model notices, the comma starts braking earlier and more gently.\nIn testing: be ready to brake. It needs the comma longitudinal. It only adds braking, and it may slow down a little without need.",
  "sair sozinho da parada": "resume from a stop",
  "saiu da faixa": "left the lane",
  "salvou o perfil \"{nome}\"": "saved the \"{nome}\" profile",
