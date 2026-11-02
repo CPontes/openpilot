@@ -354,23 +354,65 @@ class PanelBackend:
         changes.append({"key": key, "old": old, "new": value})
     return changes, skipped
 
-  def options_import(self, who: dict, raw, apply: bool) -> tuple[int, dict]:
-    """Shows what changes; with apply, writes it, option by option, under the same rules as a tap (car off or in P)."""
+  def profiles_changes(self, raw) -> tuple[list[dict], dict, list[str]]:
+    """What the profiles in a copy would change: [{name, new}], all the profiles after it, and the names left out.
+    A profile with the same name is replaced; the others stay. Values are checked like a tap; unknown options drop out."""
+    kept = self.profiles()
+    merged = dict(kept)
+    changes: list[dict] = []
+    skipped: list[str] = []
+    if not isinstance(raw, dict):
+      return changes, merged, skipped
+    known = {o.key: o for o in self._phone_options()}
+    for raw_name, values in list(raw.items())[:2 * MAX_PROFILES]:
+      name = " ".join(str(raw_name or "").split())[:MAX_PROFILE_NAME]
+      clean = {}
+      for key, value in (values.items() if isinstance(values, dict) else ()):
+        if key in known:
+          try:
+            clean[key] = known[key].coerce(value)
+          except ValueError:
+            pass
+      if not name or not clean or (name not in merged and len(merged) >= MAX_PROFILES):
+        if name:
+          skipped.append(name)
+        continue
+      if merged.get(name) != clean:
+        changes.append({"name": name, "new": name not in kept})
+        merged[name] = clean
+    return changes, merged, skipped
+
+  def options_import(self, who: dict, raw, apply: bool, profiles=None) -> tuple[int, dict]:
+    """Shows what changes; with apply, writes it, option by option, under the same rules as a tap (car off or in P).
+    A copy of the settings also brings its profiles back (profiles); a profile alone sends only its options."""
     changes, skipped = self.options_changes(raw)
+    p_changes, _, p_skipped = self.profiles_changes(profiles)
     if not apply:
-      return 200, {"changes": changes, "skipped": skipped}
-    if not changes:
+      out = {"changes": changes, "skipped": skipped}
+      if profiles is not None:
+        out.update(profiles=p_changes, profiles_skipped=p_skipped)
+      return 200, out
+    if not changes and not p_changes:
       return 200, {"ok": True, "changes": [], "message": "Nada a mudar."}
     vs = self.vehicle_state()
-    if any(not phone.can_write(get_option(c["key"]), vs)[0] for c in changes):  # all or nothing: never half a profile
-      return 409, {"error": "Só com o carro em P ou desligado.", "changes": changes}
+    parked = not vs.onroad or (vs.parked and vs.standstill and not vs.engaged)
+    if any(not phone.can_write(get_option(c["key"]), vs)[0] for c in changes) or (p_changes and not parked):
+      return 409, {"error": "Só com o carro em P ou desligado.", "changes": changes}  # all or nothing: never half a copy
     done, failed = [], []
     for c in changes:
       status, _ = self.set_option(who, c["key"], c["new"])
       (done if status == 200 else failed).append(c)
+    if p_changes:
+      with self.lock:
+        p_changes, merged, _ = self.profiles_changes(profiles)  # again, under the lock: another phone may have saved one
+        if p_changes:
+          self.store.put(PROFILES_PARAM, merged)
+          self._audit({"event": "profiles_restored", "who": who.get("name", ""), "new": ", ".join(c["name"] for c in p_changes)[:80]})
+    if not done and not failed:
+      return 200, {"ok": True, "changes": [], "failed": [], "profiles": p_changes, "message": "Perfis restaurados."}
     restart = any(o.restart_needed for o in OPTIONS if o.key in {c["key"] for c in done})
     msg = "Vale na próxima partida do carro." if restart else "Vale no próximo engate."
-    return (200 if not failed else 409), {"ok": not failed, "changes": done, "failed": failed, "message": msg}
+    return (200 if not failed else 409), {"ok": not failed, "changes": done, "failed": failed, "profiles": p_changes, "message": msg}
 
   def profiles(self) -> dict:
     return self.store.get(PROFILES_PARAM) or {}
@@ -975,7 +1017,7 @@ def make_handler(backend: PanelBackend):
         "/api/radars/add": lambda who, b: backend.radars_add(who, b),
         "/api/radars/delete": lambda who, b: backend.radars_delete(who, str(b.get("key", ""))),
         "/api/radars/import": lambda who, b: backend.radars_import(who, b.get("edits")),
-        "/api/options/import": lambda who, b: backend.options_import(who, b.get("options"), bool(b.get("apply"))),
+        "/api/options/import": lambda who, b: backend.options_import(who, b.get("options"), bool(b.get("apply")), b.get("profiles")),
         "/api/mark/clip": lambda who, b: backend.clip_ticket(who, str(b.get("id", ""))),
         "/api/profiles/save": lambda who, b: backend.profile_save(who, b.get("name", "")),
         "/api/profiles/delete": lambda who, b: backend.profile_delete(who, str(b.get("name", ""))),

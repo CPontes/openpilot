@@ -527,5 +527,13 @@
  "Sem vídeo para esta marca.": "Sin video para esta marca.",
  "Vídeo da marca": "Video de la marca",
  "vídeo": "video",
- "Outro comma já usa lizpilot.local nesta rede. Este continua pelo endereço numérico.": "Otro comma ya usa lizpilot.local en esta red. Este sigue con su dirección numérica."
+ "Outro comma já usa lizpilot.local nesta rede. Este continua pelo endereço numérico.": "Otro comma ya usa lizpilot.local en esta red. Este sigue con su dirección numérica.",
+ "O perfil {nome} fica de fora: já são 6 ou não tem ajuste deste comma.": "El perfil {nome} queda fuera: ya hay 6 o no tiene ningún ajuste de este comma.",
+ "Volta 1 perfil:": "Vuelve 1 perfil:",
+ "Voltam {n} perfis:": "Vuelven {n} perfiles:",
+ "restaurou os perfis {nomes}": "restauró los perfiles {nomes}",
+ "restaurou perfis": "restauró perfiles",
+ "{nome}: novo": "{nome}: nuevo",
+ "{nome}: troca o que está no comma": "{nome}: reemplaza el que está en el comma",
+ "Perfis restaurados.": "Perfiles restaurados."
 }

@@ -682,12 +682,20 @@ function valueText(key, v) {
   if (typeof v === "boolean") return v ? t("ligado") : t("desligado");
   return o && o.choices && o.choices[v] !== undefined ? t(o.choices[v]) : String(v);
 }
-function showChanges(box, changes, applyLabel, onApply, onCancel) {
+function showChanges(box, changes, applyLabel, onApply, onCancel, profiles) {  // profiles: from a copy of the settings
   box.replaceChildren();
-  if (!changes.length) { box.append(el("div", "changes", t("Já está assim: nada a mudar."))); return; }
+  const p = profiles || { changes: [], skipped: [] };
+  if (!changes.length && !p.changes.length) {
+    box.append(el("div", "changes", t("Já está assim: nada a mudar.")));
+    for (const n of p.skipped) box.append(el("div", "small", tf("O perfil {nome} fica de fora: já são 6 ou não tem ajuste deste comma.", { nome: n })));
+    return;
+  }
   const list = el("div", "changes");
-  list.append(el("b", "", changes.length === 1 ? t("Muda 1 ajuste:") : tf("Muda {n} ajustes:", { n: changes.length })));
+  if (changes.length) list.append(el("b", "", changes.length === 1 ? t("Muda 1 ajuste:") : tf("Muda {n} ajustes:", { n: changes.length })));
   for (const c of changes) list.append(el("span", "", `${t(titles[c.key] || c.key)}: ${valueText(c.key, c.old)} → ${valueText(c.key, c.new)}`));
+  if (p.changes.length) list.append(el("b", "", p.changes.length === 1 ? t("Volta 1 perfil:") : tf("Voltam {n} perfis:", { n: p.changes.length })));
+  for (const c of p.changes) list.append(el("span", "", tf(c.new ? "{nome}: novo" : "{nome}: troca o que está no comma", { nome: c.name })));
+  for (const n of p.skipped) list.append(el("span", "small", tf("O perfil {nome} fica de fora: já são 6 ou não tem ajuste deste comma.", { nome: n })));
   const parked = !carOn || (state && state.vehicle.parked && state.vehicle.standstill);
   if (!parked) list.append(el("span", "lock", t("Só com o carro em P ou desligado.")));
   const go = el("button", "btn", applyLabel); go.type = "button"; go.disabled = !parked; go.style.marginTop = "6px";
@@ -775,7 +783,7 @@ async function setOption(key, value, e, undo) {
 
 const UPDATE_ACTIONS = { radars: "atualizou a lista de radares", check: "verificou", download: "baixou", install: "instalou", branch: "escolheu", reboot: "reiniciou" };
 const EVENTS = { paired: "pareou", logout: "desconectou", phone_revoked: "desconectou outro celular", pin_locked: "código bloqueado por tentativas erradas", reason_added: "adicionou motivo", reason_removed: "removeu motivo",
-                 profile_saved: "salvou um perfil", profile_removed: "apagou um perfil" };
+                 profile_saved: "salvou um perfil", profile_removed: "apagou um perfil", profiles_restored: "restaurou perfis" };
 const RADAR_ACTIONS = { edit: "conferiu", removed: "tirou", add: "adicionou", delete: "apagou", import: "restaurou pontos" };
 function auditText(a) {
   const head = dayTime(a.t) + " · " + (a.who ? a.who + ": " : "");
@@ -790,6 +798,7 @@ function auditText(a) {
   if (a.event === "reason_added") return head + tf("adicionou o motivo \"{motivo}\"", { motivo: a.new });
   if (a.event === "profile_saved") return head + tf("salvou o perfil \"{nome}\"", { nome: a.new });
   if (a.event === "profile_removed") return head + tf("apagou o perfil \"{nome}\"", { nome: a.new });
+  if (a.event === "profiles_restored") return head + tf("restaurou os perfis {nomes}", { nomes: a.new });
   return head + t(EVENTS[a.event] || a.event);
 }
 
@@ -1484,13 +1493,14 @@ $("optFile").addEventListener("change", async (e) => {
   if (!f) return;
   let data;
   try { data = JSON.parse(await f.text()); } catch (err) { toast(t("Esse arquivo não é uma cópia dos ajustes.")); return; }
-  const r = await api("/api/options/import", { options: data.options });
+  const profiles = data && typeof data.profiles === "object" && data.profiles ? data.profiles : {};  // older copies have none
+  const r = await api("/api/options/import", { options: data.options, profiles });
   if (r.status !== 200) { toast(r.data.error || t("Não foi possível.")); return; }
   showChanges($("restoreBox"), r.data.changes, t("Restaurar estes ajustes"), async () => {
-    const res = await api("/api/options/import", { options: data.options, apply: true });
+    const res = await api("/api/options/import", { options: data.options, profiles, apply: true });
     toast(res.status === 200 ? (res.data.message || t("Salvo.")) : (res.data.error || t("Não foi possível salvar.")));
     $("restoreBox").replaceChildren(); refresh();
-  }, () => $("restoreBox").replaceChildren());
+  }, () => $("restoreBox").replaceChildren(), { changes: r.data.profiles || [], skipped: r.data.profiles_skipped || [] });
 });
 $("passGo").addEventListener("click", () => {
   if (!$("passCheck").checked) return;

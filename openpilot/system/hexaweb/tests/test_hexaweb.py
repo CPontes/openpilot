@@ -914,6 +914,44 @@ def test_profiles_are_saved_from_now_and_applied_like_a_copy(panel):
   assert panel.store.get(phone.AUDIT_PARAM)[-1]["event"] == "profile_removed"
 
 
+def test_a_copy_brings_its_profiles_back(panel):
+  token = panel.pair()
+  panel.json("/api/profiles/save", {"name": "Estrada"}, token=token)
+  copy = panel.json("/api/options/export", token=token)[1]
+  panel.json("/api/profiles/delete", {"name": "Estrada"}, token=token)
+  panel.json("/api/profiles/save", {"name": "Cidade"}, token=token)
+  sent = {**copy["profiles"], "Velho": {"NaoExisteMais": 1}, "": {"LaneOffsetEnabled": True}, "Ruim": "x"}
+  status, body = panel.json("/api/options/import", {"options": copy["options"], "profiles": sent}, token=token)
+  assert status == 200 and body["changes"] == [] and body["profiles"] == [{"name": "Estrada", "new": True}]
+  assert body["profiles_skipped"] == ["Velho", "Ruim"]
+  assert set(panel.json("/api/state", token=token)[1]["profiles"]) == {"Cidade"}  # showing what changes writes nothing
+
+  panel.vs = VehicleState(onroad=True, parked=False, standstill=False, engaged=True)
+  assert panel.json("/api/options/import", {"options": copy["options"], "profiles": sent, "apply": True}, token=token)[0] == 409
+  assert set(panel.store.get(hexaweb.PROFILES_PARAM)) == {"Cidade"}
+
+  panel.vs = VehicleState(onroad=False)
+  status, body = panel.json("/api/options/import", {"options": copy["options"], "profiles": sent, "apply": True}, token=token)
+  assert status == 200 and body["message"] == "Perfis restaurados."
+  kept = panel.store.get(hexaweb.PROFILES_PARAM)
+  assert set(kept) == {"Cidade", "Estrada"} and kept["Estrada"] == copy["profiles"]["Estrada"]  # the others stay
+  assert panel.store.get(phone.AUDIT_PARAM)[-1] | {"t": 0} == {"event": "profiles_restored", "who": "celular de teste", "new": "Estrada", "t": 0}
+  assert panel.json("/api/options/import", {"options": copy["options"], "profiles": sent, "apply": True}, token=token)[1]["message"] == "Nada a mudar."
+  assert "profiles" not in panel.json("/api/options/import", {"options": copy["options"]}, token=token)[1]  # a profile sends only options
+
+
+def test_a_copy_never_goes_past_six_profiles(panel):
+  token = panel.pair()
+  for n in range(hexaweb.MAX_PROFILES):
+    panel.json("/api/profiles/save", {"name": f"p{n}"}, token=token)
+  kept = panel.store.get(hexaweb.PROFILES_PARAM)
+  sent = {"p0": {**kept["p0"], "LaneOffsetEnabled": not kept["p0"]["LaneOffsetEnabled"]}, "Sétimo": kept["p1"]}
+  status, body = panel.json("/api/options/import", {"options": {}, "profiles": sent, "apply": True}, token=token)
+  assert status == 200 and body["profiles"] == [{"name": "p0", "new": False}]
+  kept = panel.store.get(hexaweb.PROFILES_PARAM)
+  assert len(kept) == hexaweb.MAX_PROFILES and "Sétimo" not in kept and kept["p0"] == sent["p0"]
+
+
 def test_mark_clip_by_ticket_with_the_car_off(panel, tmp_path):
   import os
   end0 = 50_000.

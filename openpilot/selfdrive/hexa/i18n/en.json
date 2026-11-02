@@ -527,5 +527,13 @@
  "Sem vídeo para esta marca.": "No video for this mark.",
  "Vídeo da marca": "Mark video",
  "vídeo": "video",
- "Outro comma já usa lizpilot.local nesta rede. Este continua pelo endereço numérico.": "Another comma already uses lizpilot.local on this network. This one stays on its numeric address."
+ "Outro comma já usa lizpilot.local nesta rede. Este continua pelo endereço numérico.": "Another comma already uses lizpilot.local on this network. This one stays on its numeric address.",
+ "O perfil {nome} fica de fora: já são 6 ou não tem ajuste deste comma.": "The profile {nome} is left out: there are already 6, or it has no setting this comma uses.",
+ "Volta 1 perfil:": "1 profile comes back:",
+ "Voltam {n} perfis:": "{n} profiles come back:",
+ "restaurou os perfis {nomes}": "restored the profiles {nomes}",
+ "restaurou perfis": "restored profiles",
+ "{nome}: novo": "{nome}: new",
+ "{nome}: troca o que está no comma": "{nome}: replaces the one on the comma",
+ "Perfis restaurados.": "Profiles restored."
 }
