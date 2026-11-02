@@ -1271,7 +1271,8 @@ function compareLine(label, x) {
 // Compares the chosen version with the others: rates per 100 km, never a score.
 function versionCard(all, v) {
   const c = el("section", "card stack"); c.style.gap = "4px";
-  c.append(el("span", "label", tf("Versão {v}", { v }))); c.lastChild.style.margin = "0";
+  c.append(el("span", "label", t("Comparar versões"))); c.lastChild.style.margin = "0";
+  c.append(el("span", "title num", tf("Versão {v}", { v })));
   c.append(compareLine(t("Nesta versão"), LPL.totals(all.filter((tr) => LPL.versionOf(tr) === v), 0)));
   c.append(compareLine(t("Nas outras"), LPL.totals(all.filter((tr) => LPL.versionOf(tr) && LPL.versionOf(tr) !== v), 0)));
   c.append(el("span", "small", t("Estrada e trânsito mudam os números: compare com várias viagens.")));
