@@ -325,9 +325,10 @@ def trip_segment(events: Iterable) -> dict:
   pedal_at = {"gas": -1e9, "brake": -1e9}
   shadow = ShadowCounter()
   car = hexa_sensors.CarSensors()
-  run = [0., 0.]  # km and s of openpilot steering with no intervention (no driver torque: steeringPressed), now
+  run = [0., 0.]  # km and s without an intervention, now: a hand resting on the wheel isn't one, a pedal or a real push is
   run_head: list | None = None  # the run the minute started with, until its first break
   run_best = [0., 0.]
+  wheel_since = None
   v_max = 0.
   lat_seen = False  # the minute's first carState comes before its first carControl: not a break
 
@@ -385,7 +386,9 @@ def trip_segment(events: Iterable) -> dict:
       dt = min(t - last, .5) if last is not None else 0.
       last = t
       v_max = max(v_max, cs.vEgo)
-      if lat and not cs.steeringPressed:
+      wheel_since = (t if wheel_since is None else wheel_since) if cs.steeringPressed else None
+      intervened = cs.gasPressed or cs.brakePressed or (wheel_since is not None and t - wheel_since >= DRIVER_MIN_S)
+      if lat and not intervened:
         run[0] += cs.vEgo * dt / 1e3
         run[1] += dt
       elif lat_seen:

@@ -232,8 +232,8 @@
   }
 
   // A drive's numbers, as a trip computer shows them. Averages only from 1 km and 1 min on; older summaries lack v_max and run_*.
-  // run: the longest stretch with openpilot steering and no intervention (no torque from the driver on the wheel; the hands may
-  // still be on it). A measure of openpilot in that drive, never a record to beat (no streaks: weekTotal).
+  // run: the longest stretch without an intervention: a pedal or a push of half a second ends it, a hand resting on the wheel
+  // doesn't. A measure of openpilot in that drive, never a record to beat (no streaks: weekTotal).
   function tripNumbers(s) {
     if (!s || !(s.moving_s > 0)) return null;
     const km = s.km || 0;

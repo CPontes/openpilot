@@ -271,7 +271,7 @@ def test_trip_summary_keeps_a_light_path_with_who_drove():
 
 
 def test_trip_summary_has_the_numbers_anyone_wants(tmp_path):
-  # top speed, and the longest stretch with no intervention: it goes on into the next minute, and torque on the wheel ends it
+  # top speed, and the longest stretch without an intervention: it goes on into the next minute, and a push on the wheel ends it
   files = {}
   for n, kw in ((0, {"pressed": (3., 4.)}), (1, {"lat_from": 0.}), (2, {"pressed": (2., 3.), "lat_from": 0.})):
     d = tmp_path / f"00000001--abc--{n}"
@@ -282,3 +282,25 @@ def test_trip_summary_has_the_numbers_anyone_wants(tmp_path):
   assert abs(s["run_s"] - 14) < 0.2 and abs(s["run_km"] - 0.14) < 0.01  # 4 s + 8 s + 2 s
   del files[1]  # a minute that is missing breaks the stretch
   assert abs(tl.trip_summary(files)["run_s"] - 5) < 0.2  # the 4 s at the end of minute 0 no longer join the start of minute 2
+
+
+def stretch(*samples):
+  """samples: (seconds, wheel pressed, gas, brake), at 10 Hz with openpilot steering."""
+  msgs = [Msg("carControl", 0., latActive=True, orientationNED=[])]
+  t = .1
+  for seconds, pressed, gas, brake in samples:
+    for _ in range(round(seconds * 10)):
+      msgs.append(Msg("carState", t, vEgo=10., steeringPressed=pressed, gasPressed=gas, brakePressed=brake))
+      t += .1
+  return tl.trip_segment(msgs)["summary"]["run_best"][1]
+
+
+def test_a_hand_on_the_wheel_is_no_intervention():
+  # owner, 02/11: "pode estar com a mão e não intervir"
+  assert stretch((5., False, False, False), (.3, True, False, False), (5., False, False, False)) > 10.
+
+
+def test_a_real_push_or_a_pedal_ends_the_stretch():
+  assert stretch((5., False, False, False), (1., True, False, False), (3., False, False, False)) < 6.
+  assert stretch((5., False, False, False), (.2, False, True, False), (3., False, False, False)) < 6.
+  assert stretch((5., False, False, False), (.2, False, False, True), (3., False, False, False)) < 6.
