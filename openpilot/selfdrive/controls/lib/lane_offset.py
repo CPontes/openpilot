@@ -22,6 +22,9 @@ LaneChangeState = log.LaneChangeState
 HOLD_TIME = 1.5             # s, driver must hold the wheel this long before a new position is learned
 RELEASE_TIME = 0.3          # s, shorter gaps in steeringPressed don't end a hold
 LOG_PERIOD = 1.0            # s, while a position is taught
+LINES_STEADY_TIME = 2.0     # s, lane lines visible this long before correcting. Flickering lines rocked the car at 0.25 to 1 Hz (route 2b)
+LINES_LOST_FADE = 0.995     # per frame, about 2 s
+CORRECTION_RATE = 0.002     # 1/m per s, the correction never jumps
 MAX_LEARN_LAT_ACCEL = 0.4   # m/s^2, a hold in a curve is steering, not a chosen position
 STABLE_WINDOW = 1.0         # s, lateral position must be stable over the end of the hold
 STABLE_TOLERANCE = 0.15     # m, max lateral movement within STABLE_WINDOW
@@ -59,6 +62,7 @@ class LaneOffset:
     self.last_position: float | None = None
     self.last_position_t = 0.0
     self.log_t = 0.0
+    self.lines_time = 0.0    # s, how long the lane lines have been visible
 
   def reset(self):
     self.rate = 0.0
@@ -101,6 +105,7 @@ class LaneOffset:
     if self.learned != 0.0 and self.t - self.log_t >= LOG_PERIOD:
       self.log_t = self.t
       cloudlog.event("lane_offset", learned_cm=self.offset_cm, position_cm=round(self.position * 100, 1), correction=round(self.correction, 5))
+    self.lines_time = self.lines_time + DT_CTRL if self.valid else 0.0
     if self.valid:
       # the model runs slower than this loop, only use new measurements
       if self.last_position is None:
@@ -141,9 +146,13 @@ class LaneOffset:
 
     self.target += float(np.clip(self.learned - self.target, -TARGET_RATE * DT_CTRL, TARGET_RATE * DT_CTRL))
 
-    if not (lat_active and self.valid) or CS.steeringPressed:
-      # fade out the correction while lanes are not visible or the driver is steering
+    if not lat_active or CS.steeringPressed:
+      # fade out the correction while the driver is steering
       self.correction *= 0.98
+      return self.correction
+    if self.lines_time < LINES_STEADY_TIME:
+      # no lanes, or lanes that come and go: slowly back to what the model does, not on and off
+      self.correction *= LINES_LOST_FADE
       return self.correction
 
     target = self._limit(self.target)
@@ -163,7 +172,8 @@ class LaneOffset:
       if outward:
         correction = 0.0
         self.integral = 0.0
-    self.correction = float(np.clip(correction, -MAX_CURVATURE_CORRECTION, MAX_CURVATURE_CORRECTION))
+    correction = float(np.clip(correction, -MAX_CURVATURE_CORRECTION, MAX_CURVATURE_CORRECTION))
+    self.correction += float(np.clip(correction - self.correction, -CORRECTION_RATE * DT_CTRL, CORRECTION_RATE * DT_CTRL))
     return self.correction
 
   @property

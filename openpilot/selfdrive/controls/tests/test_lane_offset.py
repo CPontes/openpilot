@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from openpilot.cereal import log
 from openpilot.common.realtime import DT_CTRL
-from openpilot.selfdrive.controls.lib.lane_offset import LaneOffset, MAX_OFFSET, HOLD_TIME, RELEASE_TIME, MAX_LEARN_LAT_ACCEL
+from openpilot.selfdrive.controls.lib.lane_offset import LINES_STEADY_TIME, LaneOffset, MAX_OFFSET, HOLD_TIME, RELEASE_TIME, MAX_LEARN_LAT_ACCEL
 
 LaneChangeState = log.LaneChangeState
 
@@ -113,16 +113,18 @@ class TestLaneOffset:
 
   def test_correction_direction(self):
     lo = LaneOffset()
-    hold(lo, -0.35, HOLD_TIME + 0.1)
+    hold(lo, -0.35, LINES_STEADY_TIME + 0.1)
     # model pulls the car back to center: correction must steer left (negative curvature)
     assert lo.update(True, True, car_state(), model(-0.1)) < 0
     # car went too far left: steer right
-    lo.target = lo.learned
-    assert lo.update(True, True, car_state(), model(-0.5)) > 0
+    for _ in range(200):
+      lo.target = lo.learned
+      correction = lo.update(True, True, car_state(), model(-0.5))
+    assert correction > 0
 
   def test_converges_without_jump(self):
     lo = LaneOffset()
-    hold(lo, -0.35, HOLD_TIME + 0.1)
+    hold(lo, -0.35, LINES_STEADY_TIME + 0.1)
     # right after learning, the car is where the target starts: only the small feedforward that holds it there
     correction = lo.update(True, True, car_state(), model(-0.35))
     assert -5e-4 < correction < 0
@@ -182,14 +184,14 @@ class TestLaneOffset:
 
   def _taught(self):
     lo = LaneOffset()
-    hold(lo, -0.35, HOLD_TIME + 0.1)
+    hold(lo, -0.35, LINES_STEADY_TIME + 0.1)
     return lo, lo.update(True, True, car_state(), model(-0.1))
 
   def test_correction_fades_when_lanes_are_lost(self):
     lo, correction = self._taught()
     faded = lo.update(True, True, car_state(), model(-0.1, prob=0.1))
-    assert abs(faded) == abs(correction) * 0.98
-    for _ in range(300):
+    assert abs(faded) == abs(correction) * 0.995
+    for _ in range(1000):
       faded = lo.update(True, True, car_state(), model(-0.1, prob=0.1))
     assert abs(faded) < abs(correction) * 0.01
 
@@ -293,8 +295,52 @@ class TestClosedLoop:
   def test_steers_back_when_past_the_limit(self):
     for side in (1, -1):
       lo = LaneOffset()
-      hold(lo, side * 0.3, HOLD_TIME + 0.1)
-      assert side * lo.update(True, True, car_state(), model(side * 0.5, lane_width=2.4)) < 0
+      hold(lo, side * 0.3, LINES_STEADY_TIME + 0.1)
+      for _ in range(100):
+        correction = lo.update(True, True, car_state(), model(side * 0.5, lane_width=2.4))
+      assert side * correction < 0
+
+
+class TestFlickeringLines:
+  # route 2b: taught position on 81% of the time, lines flickering 5 times in 5 s, and the car wandering at 0.25 to 1 Hz
+  def taught(self, position=-0.3):
+    lo = LaneOffset()
+    road = Road(position)
+    hold(lo, position, HOLD_TIME + 1.)
+    drive(lo, road, 15.)
+    return lo, road
+
+  def flicker(self, lo, road, seconds, period=.6):
+    corrections, positions = [], []
+    for i in range(int(seconds / DT_CTRL)):
+      good = int(i * DT_CTRL / period) % 2 == 0
+      c = lo.update(True, True, car_state(v_ego=road.v_ego), model(road.position, prob=.9 if good else .1))
+      road.step(c)
+      corrections.append(c)
+      positions.append(road.position)
+    return corrections, positions
+
+  def test_the_correction_never_jumps(self):
+    lo, road = self.taught()
+    corrections, _ = self.flicker(lo, road, 20.)
+    assert max(abs(a - b) for a, b in zip(corrections, corrections[1:], strict=False)) < 1e-4
+
+  def test_flickering_lines_do_not_rock_the_car(self):
+    lo, road = self.taught()
+    self.flicker(lo, road, 30.)
+    _, positions = self.flicker(lo, road, 5.)
+    assert max(positions) - min(positions) < 0.005
+
+  def test_with_lines_that_flicker_it_leaves_the_car_to_the_model(self):
+    lo, road = self.taught()
+    corrections, _ = self.flicker(lo, road, 20.)
+    assert abs(corrections[-1]) < 1e-4
+
+  def test_it_comes_back_once_the_lines_are_steady(self):
+    lo, road = self.taught()
+    self.flicker(lo, road, 10.)
+    drive(lo, road, 20.)
+    assert abs(road.position - -0.3) < 0.05
 
 
 class TestItGoesToTheLog:
