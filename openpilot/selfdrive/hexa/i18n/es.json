@@ -724,5 +724,8 @@
  "Sai das listas do celular. O log continua no comma: dá para mostrar de novo no Início.": "Sale de las listas del celular. El log sigue en el comma: se puede mostrar de nuevo en Inicio.",
  "Ruas ligadas: o OpenStreetMap recebe o IP deste celular e a área de cada viagem aberta. O caminho em si fica no comma.": "Calles encendidas: OpenStreetMap recibe la IP de este celular y la zona de cada viaje abierto. El recorrido en sí queda en el comma.",
  "Ruas desligadas. Ligadas, vêm do OpenStreetMap pela internet, que recebe o IP deste celular e a área de cada viagem aberta.": "Calles apagadas. Encendidas, vienen de OpenStreetMap por internet, que recibe la IP de este celular y la zona de cada viaje abierto.",
- "maior trecho sem intervenção ({m} min)": "tramo más largo sin intervención ({m} min)"
+ "maior trecho sem intervenção ({m} min)": "tramo más largo sin intervención ({m} min)",
+ "freada brusca": "frenada brusca",
+ "(automática)": "(automática)",
+ "automática": "automática"
 }

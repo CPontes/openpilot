@@ -71,7 +71,7 @@ def option_texts() -> set[str]:
     out |= {o.title, o.description, *o.choices}
     if o.blocked:
       out.add(o.blocked)
-  out |= {label for _, label in marks.DEFAULT_REASONS}
+  out |= {label for _, label in marks.DEFAULT_REASONS + marks.AUTO_REASONS}
   out |= comma_ctl_texts()
   out |= set(live.EVENT_TEXT.values())
   return out

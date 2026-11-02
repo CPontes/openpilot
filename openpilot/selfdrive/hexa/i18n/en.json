@@ -724,5 +724,8 @@
  "Sai das listas do celular. O log continua no comma: dá para mostrar de novo no Início.": "It leaves the phone's lists. The log stays on the comma: you can show it again on Home.",
  "Ruas ligadas: o OpenStreetMap recebe o IP deste celular e a área de cada viagem aberta. O caminho em si fica no comma.": "Streets on: OpenStreetMap gets this phone's IP and the area of each drive you open. The path itself stays on the comma.",
  "Ruas desligadas. Ligadas, vêm do OpenStreetMap pela internet, que recebe o IP deste celular e a área de cada viagem aberta.": "Streets off. When on, they come from OpenStreetMap over the internet, which gets this phone's IP and the area of each drive you open.",
- "maior trecho sem intervenção ({m} min)": "longest stretch with no intervention ({m} min)"
+ "maior trecho sem intervenção ({m} min)": "longest stretch with no intervention ({m} min)",
+ "freada brusca": "very hard brake",
+ "(automática)": "(automatic)",
+ "automática": "automatic"
 }

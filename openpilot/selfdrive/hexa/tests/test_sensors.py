@@ -82,3 +82,30 @@ def test_the_force_in_a_curve_comes_from_speed_and_yaw_rate():
 def test_the_phone_gets_no_altitude():
   gps = NS(hasFix=True, altitude=20.)
   assert "alt" not in sensors.live(NS(orientationNED=[0., 0., 0.]), None, gps, None)
+
+
+# ----- automatic marks (owner's decision, 02/11)
+
+def test_a_very_hard_brake_is_one_event():
+  c = sensors.CarSensors()
+  for i in range(40):  # 0.4 s braking at -7 m/s²
+    c.on_car(15. - i * .07, -7., 0., None, .01, 1. + i * .01)
+  assert [k for _, k in c.events] == ["hardbrake"]
+  assert c.result()["se_hard_brakes"] == 1
+
+
+def test_a_normal_hard_brake_is_not():
+  c = sensors.CarSensors()
+  for i in range(100):  # the Haval ACC's hard brakes are about -3
+    c.on_car(15., -4.5, 0., None, .01, i * .01)
+  for i in range(20):  # -7 for 0.2 s only
+    c.on_car(15., -7., 0., None, .01, 2. + i * .01)
+  assert c.events == []
+
+
+def test_the_summary_data_has_no_hit_to_see():
+  # a hit lasts about 0.1 s and the qlog has one IMU sample a second: the mark would be a coin toss, so it doesn't exist
+  from cereal.services import SERVICE_LIST
+  imu = SERVICE_LIST["accelerometer"]
+  assert imu.frequency / imu.decimation <= 1.
+  assert not hasattr(sensors.CarSensors, "on_accel")

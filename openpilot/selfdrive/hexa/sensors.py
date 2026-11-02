@@ -19,8 +19,14 @@ WHEEL_MIN_SPEED = 40 / 3.6
 WHEEL_MAX_STEER_DEG = 3.
 WHEEL_MAX_ACCEL = 0.3  # m/s²
 V12_MIN_OK = 11.8  # V, below this with the engine off the battery is low [hipótese] for a PHEV's 12 V
+# Automatic mark (owner's decision, 02/11): a very hard brake becomes a mark with its video. A hit can't: the summary reads
+# the qlog, where the IMU comes at 1 Hz (cereal/services.py), and a hit is over in a tenth of a second.
+HARD_BRAKE = -6.  # m/s², the car's own deceleration; never held for HARD_BRAKE_S in 130 min of the owner's drives
+HARD_BRAKE_S = .3
+HARD_BRAKE_MIN_SPEED = 3.  # m/s
+AUTO_GAP_S = 10.  # one mark per event, not one per sample
 
-SUM_KEYS = ("se_wheel_s", "se_wheel_t")
+SUM_KEYS = ("se_wheel_s", "se_wheel_t", "se_hard_brakes")
 MAX_KEYS = ("se_grade_up", "se_grade_down", "se_roll", "se_decel", "se_lat")
 MIN_KEYS = ("se_v12_min",)
 KEYS = SUM_KEYS + MAX_KEYS + MIN_KEYS
@@ -38,8 +44,24 @@ class CarSensors:
     self.v = 0.
     self.grade: float | None = None
     self.pitch_t: float | None = None
+    self.events: list[tuple[float, str]] = []  # (t, "hardbrake"): automatic marks
+    self.last_event = -1e9
+    self.brake_since: float | None = None
+    self.t_car = 0.
 
-  def on_car(self, v: float, a: float, steer_deg: float, wheels: tuple[float, float, float, float] | None, dt: float) -> None:
+  def _event(self, t: float, kind: str) -> None:
+    if t - self.last_event > AUTO_GAP_S:
+      self.events.append((round(t, 2), kind))
+      self.t["se_hard_brakes"] += 1
+    self.last_event = t
+
+  def on_car(self, v: float, a: float, steer_deg: float, wheels: tuple[float, float, float, float] | None, dt: float,
+             t: float | None = None) -> None:
+    self.t_car = self.t_car + dt if t is None else t
+    hard = v > HARD_BRAKE_MIN_SPEED and a <= HARD_BRAKE
+    self.brake_since = (self.brake_since if self.brake_since is not None else self.t_car) if hard else None
+    if self.brake_since is not None and self.t_car - self.brake_since >= HARD_BRAKE_S:
+      self._event(self.t_car, "hardbrake")
     self.moving = v > MIN_SPEED
     self.v = v
     if not self.moving:

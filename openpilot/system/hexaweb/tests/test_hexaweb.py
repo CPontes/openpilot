@@ -1164,6 +1164,24 @@ def test_a_red_light_camera_from_the_phone(panel, tmp_path):
   assert mine[0]["kind"] == "sinal"
 
 
+def test_a_very_hard_brake_found_in_a_drive_becomes_a_mark_once(panel, tmp_path):
+  import os
+  trip_logs(panel, tmp_path)
+  f = tmp_path / "0000000f--8784034901--1" / "qlog.zst"
+  os.utime(f, (50_060., 50_060.))  # minute 1 ended at 50 060: it started at 50 000
+  jobs = []
+  panel.backend._spawn = jobs.append
+  panel.backend._summarize = lambda files, stop: {"segments": len(files), "auto_marks": [{"seg": 1, "t": 12.5, "kind": "hardbrake"},
+                                                                                     {"seg": 9, "t": 1., "kind": "hardbrake"}]}
+  token = panel.pair()
+  panel.json("/api/trips", token=token)
+  jobs.pop()()
+  auto = [m for m in panel.store.get(marks.MARKS_PARAM) or [] if m.get("reason") == "brusca"]
+  assert len(auto) == 1 and auto[0]["t"] == 50_012 and auto[0]["label"] == "freada brusca" and auto[0]["source"] == "auto"
+  panel.backend._auto_marks(panel.backend._trips()[0], {"auto_marks": [{"seg": 1, "t": 13., "kind": "hardbrake"}]})  # read again
+  assert len([m for m in panel.store.get(marks.MARKS_PARAM) if m.get("reason") == "brusca"]) == 1
+
+
 def test_each_drive_keeps_its_path_for_the_map(panel, tmp_path):
   logs = tmp_path / "realdata"
   logs.mkdir()

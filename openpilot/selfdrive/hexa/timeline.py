@@ -38,6 +38,8 @@ TRIP_STEP_S = 2.0  # one point of the trip path
 GPS_MAX_AGE_S = 3.0
 DRIVER_MIN_S = 0.5  # on the wheel for at least this long counts as an intervention
 SKIP_ALERTS = ("Bookmark Saved",)  # already a mark event
+AUTO_TEXT = {"hardbrake": "freada brusca"}  # selfdrive/hexa/sensors.py: marks the comma makes by itself
+AUTO_MARKS_MAX = 5  # a drive with more is noise
 PATH_EVERY = 5  # one point of the map every 5 path points (~10 s): a drive of an hour is ~360 points
 PATH_WHO = {"op": 0, "wheel": 1, "gas": 2, "brake": 2, "you": 3}  # the map's colors: openpilot, your hand, a pedal, you
 ALERT_COUNTED = ("userPrompt", "critical")  # an alert that asks something of the driver; "normal" ones only inform
@@ -396,7 +398,7 @@ def trip_segment(events: Iterable) -> dict:
         run_best = max(run_best, run)
         run = [0., 0.]
       ws = getattr(cs, "wheelSpeeds", None)
-      car.on_car(cs.vEgo, getattr(cs, "aEgo", 0.), getattr(cs, "steeringAngleDeg", 0.), (ws.fl, ws.fr, ws.rl, ws.rr) if ws is not None else None, dt)
+      car.on_car(cs.vEgo, getattr(cs, "aEgo", 0.), getattr(cs, "steeringAngleDeg", 0.), (ws.fl, ws.fr, ws.rl, ws.rr) if ws is not None else None, dt, t)
       cruise = getattr(cs, "cruiseState", None)
       shadow.on_car(t, dt, cs.vEgo, getattr(cs, "aEgo", 0.), cs.brakePressed, getattr(cruise, "driving", False), getattr(cruise, "enabled", None))
       for pedal, pressed, was, text in (("brake", cs.brakePressed, brake, "você no freio"), ("gas", cs.gasPressed, gas, "você no acelerador")):
@@ -444,9 +446,12 @@ def trip_segment(events: Iterable) -> dict:
     total[k] = _r(total[k], 3)
   total.update(shadow.result())
   total.update(car.result())
-  # the longest stretch with no intervention; head and tail join with the minutes around it (trip_summary)
+  # the longest stretch without an intervention; head and tail join with the minutes around it (trip_summary)
   total.update({"v_max": _r(v_max * 3.6, 1), "run_best": [_r(x, 3) for x in max(run_best, run)], "run_tail": [_r(x, 3) for x in run],
                 "run_head": [_r(x, 3) for x in (run_head if run_head is not None else run)], "run_whole": run_head is None})
+  for at, kind in car.events:  # automatic marks: a very hard brake
+    out.append({"t": at, "kind": kind, "text": AUTO_TEXT[kind]})
+  out.sort(key=lambda e: e["t"])
   return {"points": points, "events": out, "summary": total, "shadow": shadow.events, "version": version}
 
 
@@ -458,6 +463,7 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
   total: dict = dict.fromkeys(keys, 0.)
   car: dict = {}
   version: dict = {}
+  auto: list[dict] = []
   path: list[list] = []
   first = None
   unread = 0
@@ -472,6 +478,7 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
       continue
     part = seg_data["summary"]
     version = version or seg_data.get("version") or {}
+    auto += [{"seg": seg, "t": e["t"], "kind": e["kind"]} for e in seg_data["events"] if e["kind"] in AUTO_TEXT]
     first = first if first is not None else seg
     for p in seg_data["points"][::PATH_EVERY]:
       if p.get("lat") is not None:
@@ -489,6 +496,8 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
   out = {k: _r(v, 2) for k, v in {**total, **car}.items()}
   for k in ("driver", "gas", "brake", "off", "marks", "alerts", "alerts_crit", "sh_hard", "sh_earlier", "sh_weaker", "sh_fcw"):
     out[k] = int(total[k])
+  if "se_hard_brakes" in out:
+    out["se_hard_brakes"] = int(out["se_hard_brakes"])
   out.update({"v_max": round(v_max), "run_km": _r(run_best[0], 2), "run_s": round(run_best[1])})
   return {**out, "segments": len(files), "unread": unread, "version": version.get("version", ""), "commit": version.get("commit", ""),
-          "path": path}
+          "auto_marks": auto[:AUTO_MARKS_MAX], "path": path}

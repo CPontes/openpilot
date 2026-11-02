@@ -709,6 +709,7 @@ class PanelBackend:
           return
         summary = {**summary, "sv": SUMMARY_VERSION}
         self._keep_path(trip["id"], summary.pop("path", None))
+        self._auto_marks(trip, summary)
         with self.lock:
           kept = self.store.get(SUMMARY_PARAM) or {}
           kept[trip["id"]] = summary
@@ -717,6 +718,20 @@ class PanelBackend:
           self.store.put(SUMMARY_PARAM, kept)
     finally:
       self._summary_busy = False
+
+  def _auto_marks(self, trip: dict, summary: dict) -> None:
+    """Very hard brakes found in a drive become marks. A minute's file is written last at the end of that
+    minute, so its time less SEGMENT_S is when the minute started [hipótese] give or take a second or two."""
+    found = []
+    for a in summary.get("auto_marks") or []:
+      path = trip["files"].get(a.get("seg"))
+      try:
+        found.append((Path(path).stat().st_mtime - SEGMENT_S + float(a["t"]), a["kind"]))
+      except (TypeError, OSError, KeyError, ValueError):
+        continue
+    if found:
+      with self.lock:
+        self.store.put(hexa_marks.MARKS_PARAM, hexa_marks.auto_marks(self._marks(), found))
 
   def _with_reasons(self, events: list[dict]) -> list[dict]:
     with self.lock:

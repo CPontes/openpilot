@@ -31,6 +31,11 @@ DEFAULT_REASONS: tuple[tuple[str, str], ...] = (
   ("outro", "outro"),
 )
 
+# Marks the comma makes by itself from a drive's sensors (selfdrive/hexa/sensors.py). Not offered on the Marcar sheet.
+AUTO_REASONS: tuple[tuple[str, str], ...] = (("brusca", "freada brusca"),)
+AUTO_REASON = {"hardbrake": "brusca"}
+AUTO_SAME_S = 30.  # an automatic mark this close to another of the same kind is the same event
+
 MAX_MARKS = 300
 MAX_CUSTOM_REASONS = 20
 MAX_LABEL = 24
@@ -55,7 +60,18 @@ def reason_label(custom: list[dict] | None, key: str) -> str | None:
   for r in reasons(custom):
     if r["key"] == key:
       return r["label"]
-  return None
+  return dict(AUTO_REASONS).get(key)
+
+
+def auto_marks(marks: list[dict] | None, found: list[tuple[float, str]]) -> list[dict]:
+  """found: (wall time, sensors kind). Adds each as a mark from the comma, once."""
+  marks = list(marks or [])
+  for t, kind in found:
+    reason = AUTO_REASON.get(kind)
+    if reason is None or any(m.get("reason") == reason and abs(m.get("t", 0) - t) < AUTO_SAME_S for m in marks):
+      continue
+    marks = append(marks, new_mark("auto", "comma", reason=reason, label=dict(AUTO_REASONS)[reason], now=t))
+  return marks
 
 
 def add_reason(custom: list[dict] | None, label: str) -> tuple[list[dict], dict]:
@@ -99,7 +115,7 @@ def new_mark(source: str, who: str = "", mono_ns: int | None = None, reason: str
     "id": secrets.token_hex(4),
     "t": int(wall_time() if now is None else now),
     "mono_ns": mono_ns,  # logMonoTime of the bookmark in the log; None until it arrives
-    "source": source,  # "celular" or "comma"
+    "source": source,  # "celular", "comma" (the flag on the comma) or "auto" (found in the drive by the comma)
     "who": who,
     "reason": reason,
     "label": label,
