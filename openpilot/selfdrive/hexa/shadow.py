@@ -22,7 +22,7 @@ END = -0.5  # m/s²: it's over
 EARLY_S = 0.5
 WINDOW_S = 6.  # how far back openpilot's plan is looked at before the Haval started braking
 WEAKER = 1.5  # m/s²
-PLAN_MAX_AGE_S = 0.5
+PLAN_MAX_AGE_S = 1.  # the qlog keeps the plan at 2 Hz
 MIN_GAP_SPEED = 3.  # m/s
 KEYS = ("sh_hard", "sh_earlier", "sh_weaker", "sh_fcw", "sh_gap_s", "sh_gap_t", "sh_on_s")
 
@@ -39,6 +39,10 @@ class ShadowCounter:
     self.episode: dict | None = None  # the Haval braking now
     self.events: list[dict] = []  # every hard brake, for tools/analise/modo_sombra.py and a look at the video
     self.seen_driving = False  # logs from before cruiseState.driving (opendbc 8381d77) only have cruiseState.enabled
+    self.op_long = False  # openpilot on the pedals: cruiseState.driving stays true and its braking would pass for the Haval's
+
+  def on_op_long(self, op_long: bool) -> None:
+    self.op_long = bool(op_long)
 
   def on_selfdrive(self, enabled: bool) -> None:
     self.engaged = bool(enabled)
@@ -59,7 +63,7 @@ class ShadowCounter:
     self.seen_driving = self.seen_driving or acc
     if not self.seen_driving and acc_enabled is not None:
       acc = acc_enabled
-    active = self.engaged and acc and v > 0.5 and t - self.plan_t <= PLAN_MAX_AGE_S
+    active = self.engaged and acc and not self.op_long and v > 0.5 and t - self.plan_t <= PLAN_MAX_AGE_S
     if not active:
       self.episode = None
       return

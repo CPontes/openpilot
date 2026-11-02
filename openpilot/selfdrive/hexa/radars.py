@@ -197,6 +197,7 @@ def taken(rows: np.ndarray, lat: float, lon: float, direction: float | None, kin
   east, north = _meters(rows, lat, lon)
   close = np.hypot(east, north) < MATCH_RADIUS
   close &= (rows[:, 4] == BUMP) == (kind == BUMP)
+  close &= (rows[:, 4] == SIGNAL) == (kind == SIGNAL)  # a red-light camera on a pole the list already has as a speed camera
   if direction is None:
     return bool(close.any())
   return bool((close & (np.isnan(rows[:, 3]) | (angle_diff(rows[:, 3], direction) < DIRECTION_TOLERANCE))).any())

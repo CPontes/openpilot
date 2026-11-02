@@ -41,23 +41,20 @@ ITEMS: tuple[CommaItem, ...] = (
             "Ligado: usa a assistência do openpilot. Desligado: usa a assistência original do carro. Só na tela do comma.", "so"),
   # *** Desenvolvedor: selfdrive/ui/mici/layouts/settings/developer.py ***
   CommaItem("ShowDebugInfo", "dev", "depuração da tela", "Mostra toques e quadros por segundo na tela do comma.", "cel", reboot=True),
-  CommaItem("NavigationEnabled", "dev", "navegação (alfa)", "Rota com mapa. O destino é escolhido no comma connect.", "cel",
-            restart=True, dev_only=True),
+  CommaItem("NavigationEnabled", "dev", "navegação (alfa)", "Rota com mapa. O destino é escolhido no comma connect. Só na tela do comma.", "so",
+            dev_only=True),
   CommaItem("AdbEnabled", "dev", "ADB", "Abre o comma por USB ou pela rede (Android Debug Bridge). Só na tela do comma.", "so"),
   CommaItem("JoystickDebugMode", "dev", "joystick", "Dirigir o carro com um joystick, para depuração. Só na tela do comma.", "so",
             dev_only=True),
-  CommaItem("LongitudinalManeuverMode", "dev", "modo de manobra longitudinal", "Manobras automáticas para testar acelerador e freio.",
-            "trav", dev_only=True, blocked="Precisa do longitudinal do openpilot."),
+  CommaItem("LongitudinalManeuverMode", "dev", "modo de manobra longitudinal", "Manobras automáticas para testar acelerador e freio. Só na tela do comma.",
+            "so", dev_only=True),
   CommaItem("AlphaLongitudinalEnabled", "dev", "longitudinal do openpilot (alfa)",
             "Usar o controle de acelerador e freio do openpilot no lugar do ACC original.", "trav", dev_only=True,
-            warnings=("AVISO: o longitudinal alfa pode desligar a frenagem automática de emergência (AEB).",
-                      "Neste carro, o openpilot usa o ACC original.",
-                      "Ligar troca para o controle de acelerador e freio do openpilot."),
-            blocked="Travado até a LONG-02: frenagem de emergência do Haval provada, acelerador e freio calibrados, testes de segurança e " +
-                    "o seu teste em pista livre."),
+            warnings=("AVISO: o longitudinal alfa pode desligar a frenagem automática de emergência (AEB).",),
+            blocked="O celular não muda isso. Só na tela do comma."),
 )
 
-# What the Velocidade screen lists as missing before the longitudinal can be offered (LONG-02 and the CTO's order).
+# What the Velocidade screen lists as missing before the longitudinal can be trusted (LONG-02 and the CTO's order).
 LONG_STEPS: tuple[tuple[str, str], ...] = (
   ("sombra", "Modo sombra nas suas viagens"),
   ("aeb", "Frenagem de emergência do Haval provada com o openpilot"),

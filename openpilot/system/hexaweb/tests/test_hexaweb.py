@@ -7,7 +7,6 @@ import urllib.request
 
 import pytest
 
-from openpilot.selfdrive.hexa import comma_net as comma_net_mod
 from openpilot.selfdrive.hexa import marks, phone
 from openpilot.selfdrive.hexa.phone import VehicleState
 from openpilot.system.hexaweb import hexaweb
@@ -1141,109 +1140,6 @@ def test_device_actions_only_with_the_car_off(panel):
   panel.vs = VehicleState(onroad=False)
   assert panel.json("/api/comma/action", {"action": "reboot"}, token=token)[0] == 200 and panel.store.get_bool("DoReboot")
   assert panel.json("/api/comma/action", {"action": "uninstall"}, token=token)[0] == 404  # never from the phone
-
-
-class FakeNet:
-  def __init__(self):
-    self.ssid, self.tethering, self.calls = "Casa", False, []
-
-  def state(self):
-    return {"ssid": self.ssid, "connecting": None, "ip": "192.168.1.20", "tethering": self.tethering, "metered": 0,
-            "networks": [{"ssid": "Casa", "strength": 80, "secured": True, "saved": True, "tethering": False},
-                         {"ssid": "weedle-abcd", "strength": 100, "secured": True, "saved": True, "tethering": True}]}
-
-  def snapshot(self):
-    return {"ssid": self.ssid, "tethering": self.tethering}
-
-  def restore(self, snap):
-    self.calls.append(("restore", snap))
-    self.ssid, self.tethering = snap["ssid"], snap["tethering"]
-
-  def connect(self, ssid, password):
-    self.calls.append(("connect", ssid, password))
-    self.ssid = ssid
-
-  def set_tethering(self, on):
-    self.calls.append(("tethering", on))
-    self.tethering = on
-
-  def set_tethering_password(self, pw):
-    self.calls.append(("password", pw))
-
-  def tethering_password(self):
-    return "segredo123"
-
-  def set_metered(self, v):
-    self.calls.append(("metered", v))
-
-  def forget(self, ssid):
-    self.calls.append(("forget", ssid))
-
-
-def test_network_state_hides_the_comma_own_hotspot(panel):
-  token = panel.pair()
-  panel.backend.net = FakeNet()
-  status, body = panel.json("/api/comma/net", token=token)
-  assert status == 200 and [n["ssid"] for n in body["wifi"]["networks"]] == ["Casa"] and body["guard"] == 0
-  assert body["gsm"] == {"roaming": False, "metered": False}
-
-
-def test_a_network_change_goes_back_if_the_phone_doesnt_return(panel):
-  token = panel.pair()
-  net = panel.backend.net = FakeNet()
-  panel.backend.guard_thread = False
-  assert panel.json("/api/comma/net", {"op": "connect", "ssid": "Trabalho", "password": "short"}, token=token)[0] == 400
-  assert panel.json("/api/comma/net", {"op": "connect", "ssid": "Trabalho", "password": "senha-boa"}, token=token)[0] == 200
-  assert net.ssid == "Trabalho" and panel.json("/api/comma/net", token=token)[1]["guard"] == 120
-  panel.now += comma_net_mod.GUARD_S
-  panel.backend.check_net_guard()
-  assert net.calls[-1] == ("restore", {"ssid": "Casa", "tethering": False}) and net.ssid == "Casa"
-  assert panel.store.get(phone.AUDIT_PARAM)[-1]["event"] == "net_restored"
-
-
-def test_the_same_phone_coming_back_keeps_the_new_network(panel):
-  token = panel.pair()
-  other = panel.pair("outro")
-  net = panel.backend.net = FakeNet()
-  panel.backend.guard_thread = False
-  panel.json("/api/comma/net", {"op": "tethering", "on": True}, token=token)
-  panel.json("/api/state", token=token)  # right away, still on the old network: not back yet
-  panel.now += hexaweb.NET_GUARD_MIN_S
-  panel.json("/api/state", token=other)  # another phone doesn't count
-  assert panel.backend._net_guard is not None
-  panel.json("/api/state", token=token)
-  assert panel.backend._net_guard is None
-  panel.now += comma_net_mod.GUARD_S
-  panel.backend.check_net_guard()
-  assert net.tethering is True and not any(c[0] == "restore" for c in net.calls)
-
-
-def test_network_rules(panel):
-  token = panel.pair()
-  net = panel.backend.net = FakeNet()
-  panel.backend.guard_thread = False
-  assert panel.json("/api/comma/net", {"op": "tethering_password", "password": "1234567"}, token=token)[0] == 400
-  assert panel.json("/api/comma/net", {"op": "forget", "ssid": "Casa"}, token=token)[0] == 409  # the one in use
-  assert panel.json("/api/comma/net", {"op": "metered", "value": 3}, token=token)[0] == 400
-  assert panel.json("/api/comma/net", {"op": "metered", "value": 1}, token=token)[0] == 200 and net.calls[-1] == ("metered", 1)
-  assert panel.json("/api/comma/net", {"op": "roaming", "value": True}, token=token)[0] == 200 and panel.store.get_bool("GsmRoaming")
-  assert panel.json("/api/comma/net", {"op": "nope"}, token=token)[0] == 404
-  panel.vs = VehicleState(onroad=True, parked=False, standstill=False, engaged=False)
-  assert panel.json("/api/comma/net", {"op": "tethering", "on": True}, token=token)[0] == 409 and net.tethering is False
-
-
-def test_a_dead_network_service_doesnt_break_the_panel(panel):
-  token = panel.pair()
-  class Dead(FakeNet):
-    def state(self):
-      raise RuntimeError("no dbus")
-    def set_tethering(self, on):
-      raise RuntimeError("no dbus")
-  panel.backend.net = Dead()
-  panel.backend.guard_thread = False
-  status, body = panel.json("/api/comma/net", token=token)
-  assert status == 200 and body["wifi"] is None and body["error"]
-  assert panel.json("/api/comma/net", {"op": "tethering", "on": True}, token=token)[0] == 503
 
 
 def test_a_red_light_camera_from_the_phone(panel, tmp_path):

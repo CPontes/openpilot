@@ -338,3 +338,9 @@ def test_a_red_light_camera_is_a_kind_of_its_own():
   assert radars.alert_lines({"kind": radars.SIGNAL, "distance": 96., "limit": None}) == ("Radar de sinal a 100 m", "")
   assert radars.valid_limit(50, radars.SIGNAL) and not radars.valid_limit(5, radars.SIGNAL)
   assert radars.clean_edits([{"lat": -22.9, "lon": -43.1, "kind": "sinal", "limit": None}])[0]["kind"] == "sinal"
+
+
+def test_a_red_light_camera_can_sit_on_a_speed_camera_of_the_list():
+  rows = np.array([[-22.9, -43.1, 60., np.nan, radars.RADAR]])
+  assert radars.taken(rows, -22.9, -43.1, None, radars.RADAR)
+  assert not radars.taken(rows, -22.9, -43.1, None, radars.SIGNAL)

@@ -9,7 +9,7 @@ import re
 import sys
 from pathlib import Path
 
-from openpilot.selfdrive.hexa import comma_ctl, comma_net, i18n, live, marks, options
+from openpilot.selfdrive.hexa import comma_ctl, i18n, live, marks, options
 
 HEXA = Path(__file__).parent
 ROOT = HEXA.parents[1]  # openpilot/openpilot
@@ -18,7 +18,7 @@ PY_SOURCES = [ROOT / "system/hexaweb/hexaweb.py", HEXA / "phone.py", HEXA / "upd
 PAGES = [ROOT / "system/hexaweb/static" / n for n in ("index.html", "viagens.html", "replay.html", "lp-logic.js")]
 # objects in the pages whose values are passed through t() by name
 PAGE_TABLES = ("UPDATE_ACTIONS", "EVENTS", "RADAR_ACTIONS", "RESUME", "SIDES", "SIDE_CHIPS", "POINT", "KINDS",
-               "COMMA_ACTIONS", "NET_ACTIONS", "LEVEL_TEXT", "SAFETY_TEXT", "SAFETY_NAMES", "ROUGH_WORDS", "MARK_POINTS")
+               "COMMA_ACTIONS", "LEVEL_TEXT", "SAFETY_TEXT", "SAFETY_NAMES", "MARK_POINTS")
 FIELD = re.compile(r"\{[^{}]*\}")
 PT = re.compile(r"[a-zà-ú]", re.I)
 
@@ -79,7 +79,7 @@ def option_texts() -> set[str]:
 
 def comma_ctl_texts() -> set[str]:
   """The comma's own settings as the phone shows them (comma_ctl.py)."""
-  out = {title for _, title in comma_ctl.GROUPS} | {label for _, label in comma_ctl.LONG_STEPS} | set(comma_net.METERED)
+  out = {title for _, title in comma_ctl.GROUPS} | {label for _, label in comma_ctl.LONG_STEPS}
   for it in comma_ctl.ITEMS:
     out |= {it.title, it.description, *it.warnings, comma_ctl.effect(it)}
     if it.blocked:

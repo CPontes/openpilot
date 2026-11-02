@@ -287,6 +287,17 @@ def trip_files(log_root: str, limit: int = 60) -> list[dict]:
   return sorted(trips.values(), key=lambda t: -t["mtime"])[:limit]
 
 
+def _op_long(messages: list) -> bool:
+  """openpilot on the pedals in this minute. carParams can miss a short minute, initData never does."""
+  for m in messages:
+    w = m.which()
+    if w == "carParams":
+      return bool(m.carParams.openpilotLongitudinalControl)
+    if w == "initData" and any(p.key == "AlphaLongitudinalEnabled" and bytes(p.value) == b"1" for p in m.initData.params.entries):
+      return True
+  return False
+
+
 def trip_segment(events: Iterable) -> dict:
   """One minute of a drive for the trip page, from a qlog: much lighter than the replay.
 
@@ -310,15 +321,13 @@ def trip_segment(events: Iterable) -> dict:
   shadow = ShadowCounter()
   car = hexa_sensors.CarSensors()
 
-  for m in sorted(events, key=lambda m: m.logMonoTime):
+  messages = sorted(events, key=lambda m: m.logMonoTime)
+  shadow.on_op_long(_op_long(messages))
+  for m in messages:
     w = m.which()
     t = (m.logMonoTime - t0) / 1e9 if t0 is not None else 0.
-    if w == "accelerometer":
-      v = m.accelerometer.acceleration.v
-      if len(v) == 3:
-        car.on_accel(t, (v[0], v[1], v[2]))
-    elif w == "deviceMotion":
-      car.on_motion(m.deviceMotion.accelerationDevice.y)
+    if w == "deviceMotion":
+      car.on_motion(m.deviceMotion.angularVelocityDevice.z)
     elif w == "peripheralState":
       car.on_voltage(m.peripheralState.voltage / 1000.)
     elif w == "longitudinalPlan":
@@ -428,6 +437,4 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
   out = {k: _r(v, 2) for k, v in {**total, **car}.items()}
   for k in ("driver", "gas", "brake", "off", "marks", "sh_hard", "sh_earlier", "sh_weaker", "sh_fcw"):
     out[k] = int(total[k])
-  if "se_bumps" in out:
-    out["se_bumps"] = int(out["se_bumps"])
   return {**out, "segments": len(files), "unread": unread}

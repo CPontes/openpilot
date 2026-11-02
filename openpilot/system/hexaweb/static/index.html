@@ -390,7 +390,6 @@
           <div id="restoreBox"></div></div>
         <div class="label" data-t>Controle do comma</div>
         <p class="small" style="margin:0 4px 8px" data-t>Só na mesma rede do comma, nunca pela internet. Com o carro andando, tudo aqui fica só leitura.</p>
-        <details class="card" id="ctlNet"><summary data-t>Rede</summary><div id="netBox"><div class="desc" data-t>Carregando…</div></div></details>
         <details class="card" id="ctlDevice"><summary data-t>Aparelho</summary><div id="deviceBox"></div></details>
         <details class="card" id="ctlPrefs"><summary data-t>Preferências do comma</summary><div id="prefsBox"></div></details>
         <details class="card devbox" id="ctlDev"><summary data-t>Desenvolvedor</summary>
@@ -822,8 +821,6 @@ const EVENTS = { paired: "pareou", logout: "desconectou", phone_revoked: "descon
                  profile_saved: "salvou um perfil", profile_removed: "apagou um perfil", profiles_restored: "restaurou perfis" };
 const RADAR_ACTIONS = { edit: "conferiu", removed: "tirou", add: "adicionou", delete: "apagou", import: "restaurou pontos" };
 const COMMA_ACTIONS = { reboot: "reiniciou o comma", poweroff: "desligou o comma", recalibrate: "recalibrou o comma" };
-const NET_ACTIONS = { connect: "conectou na rede", forget: "esqueceu a rede", tethering: "hotspot", tethering_password: "trocou a senha do hotspot",
-                      metered: "uso de dados", roaming: "roaming", gsm_metered: "chip medido" };
 function auditText(a) {
   const head = dayTime(a.t) + " · " + (a.who ? a.who + ": " : "");
   const name = t(titles[a.key] || a.key);
@@ -840,11 +837,6 @@ function auditText(a) {
   if (a.event === "profiles_restored") return head + tf("restaurou os perfis {nomes}", { nomes: a.new });
   if (a.event === "comma_set") return head + tf(a.new ? "ligou {nome}" : "desligou {nome}", { nome: name });
   if (a.event === "comma_action") return head + t(COMMA_ACTIONS[a.new] || a.new);
-  if (a.event === "net") {
-    const what = typeof a.new === "boolean" ? t(a.new ? "ligado" : "desligado") : (a.new || "");
-    return head + t(NET_ACTIONS[a.key] || a.key) + (what ? ": " + what : "");
-  }
-  if (a.event === "net_restored") return head + tf("a rede voltou sozinha para {rede}", { rede: a.new });
   return head + t(EVENTS[a.event] || a.event);
 }
 
@@ -1214,7 +1206,8 @@ function speedCard(list) {
   card.append(tbl);
   const sh = LPL.weekShadow(list, Date.now() / 1000);
   card.append(el("span", "label", t("Modo sombra · últimos 7 dias")));
-  card.append(el("div", "desc", t("Enquanto o Haval dirige, o openpilot calcula o que faria. Nada muda no carro.")));
+  card.append(el("div", "desc", opLong ? t("Só mede com o ACC do Haval no controle. Com o openpilot acelerando e freando, não há o que comparar.")
+                                        : t("Enquanto o Haval dirige, o openpilot calcula o que faria. Nada muda no carro.")));
   if (!sh) card.append(el("div", "small", t("Aparece depois de uma viagem com o openpilot no volante e o ACC do Haval ligado.")));
   else {
     const grid = el("div", "grid2");
@@ -1229,18 +1222,17 @@ function speedCard(list) {
   const ref = sh && sh.gap != null ? sh.gap : null;
   card.append(el("div", "desc", LPL.PERSONALITIES.map(([name, s]) => `${t(name)} ${num(s, 2)} s (${LPL.gapMeters(s, 60)} m)`).join(" · ") + " · " +
                  t("a 60 km/h") + (ref ? " · " + tf("o Haval: {s} s", { s: num(ref, 2) }) : "")));
-  card.append(el("span", "label", t("O que falta para trocar")));
+  card.append(el("span", "label", t("O que falta para confiar no longitudinal")));
   const steps = el("ul", "steps");
   const longSteps = (state && state.long_steps) || [];
   for (const st of longSteps) steps.append(el("li", st.key === "sombra" && sh ? "done" : (st.done ? "done" : ""), t(st.label)));
   card.append(steps);
-  card.append(el("div", "small", t("Até lá, o longitudinal fica travado no celular. Ajustes → Comma → Desenvolvedor mostra os avisos do comma.")));
+  card.append(el("div", "small", t("O longitudinal só muda na tela do comma. Ajustes → Comma → Desenvolvedor mostra os avisos dele.")));
   return card;
 }
 let speedOpen = false;
 
 // ----- O carro nas viagens: what the car went through, from sensors every car has (selfdrive/hexa/sensors.py) -----
-const ROUGH_WORDS = { lisa: "lisa", normal: "normal", irregular: "irregular", ruim: "ruim" };
 let carOpen = false;
 function carReportCard(list) {
   const w = LPL.weekCar(list, Date.now() / 1000);
@@ -1252,8 +1244,6 @@ function carReportCard(list) {
   const grid = el("div", "grid2");
   const tile = (v, label) => { const d = el("div", "tile"); d.append(el("b", "num", v), el("span", "", label)); return d; };
   grid.append(tile(w.up != null ? `+${num(w.up, 1)}%` : "—", t("maior subida")), tile(w.down != null ? `−${num(w.down, 1)}%` : "—", t("maior descida")),
-              tile(w.bumps10 != null ? num(w.bumps10, 1) : "—", t("solavancos a cada 10 km")),
-              tile(w.rough != null ? t(ROUGH_WORDS[w.roughWord]) : "—", w.rough != null ? tf("pista ({v} m/s²)", { v: num(w.rough, 2) }) : t("pista")),
               tile(w.decel != null ? `${num(w.decel, 1)} m/s²` : "—", t("maior freada")), tile(w.lat != null ? `${num(w.lat, 1)} m/s²` : "—", t("maior força na curva")),
               tile(w.roll != null ? `${num(w.roll, 1)}°` : "—", t("maior inclinação lateral")), tile(w.v12 != null ? `${num(w.v12, 1)} V` : "—", t("menor tensão da bateria 12 V")));
   card.append(grid);
@@ -1545,13 +1535,12 @@ function saveFile(name, data) {
 // ----- the comma's own settings, from the phone (UI-09): each says where it can be changed -----
 const LEVEL_TEXT = { cel: "pelo celular", so: "só no comma", trav: "travado" };
 const LEVEL_CLASS = { cel: "tag ok", so: "tag", trav: "tag bad" };
-let commaCtl = null, netState = null, netForm = null;
+let commaCtl = null;
 async function refreshCommaCtl() {
   const r = await api("/api/comma");
   if (r.status !== 200) return;
   commaCtl = r.data;
   renderCommaCtl();
-  if ($("ctlNet").open) refreshNet();
 }
 function levelTag(level) { return el("span", LEVEL_CLASS[level] || "tag", t(LEVEL_TEXT[level] || LEVEL_TEXT.so)); }
 function lockLine(text) { const lk = el("span", "lock"); lk.innerHTML = ICON_LOCK; lk.append(t(text)); return lk; }
@@ -1572,7 +1561,7 @@ function ctlRow(it) {
   row.append(head);
   if (it.warnings && it.warnings.length) { const ul = el("ul", "warnlist"); it.warnings.forEach((w) => ul.append(el("li", "", t(w)))); row.append(ul); }
   if (it.key === "AlphaLongitudinalEnabled" && commaCtl.long) {
-    row.append(el("div", "small", t("Libera aqui quando tudo estiver feito:")));
+    row.append(el("div", "small", t("O que falta para confiar nele:")));
     const ol = el("ul", "steps"); commaCtl.long.steps.forEach((st) => ol.append(el("li", st.done ? "done" : "", t(st.label)))); row.append(ol);
   }
   return row;
@@ -1605,96 +1594,6 @@ async function commaSet(it, value, sw) {
   toast(r.status === 200 ? t(r.data.message) : r.data.error || t("Não foi possível."));
   refreshCommaCtl();
 }
-
-// ----- the comma's network: every change that can take this phone off the comma goes back by itself -----
-async function refreshNet() {
-  const r = await api("/api/comma/net");
-  if (r.status !== 200) return;
-  netState = r.data; renderNet();
-}
-function netRow(title, sub, right) {
-  const row = el("div", "opt"), head = el("div", "head"), text = el("div", "text");
-  text.append(el("span", "title", title));
-  if (sub) text.append(el("span", "sum", sub));
-  head.append(text); if (right) head.append(right); row.append(head); return row;
-}
-function netSwitch(on, label, onClick) {
-  const sw = el("button", "switch"); sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", on ? "true" : "false");
-  sw.setAttribute("aria-label", label); sw.addEventListener("click", onClick); return sw;
-}
-async function netDo(body) {
-  const r = await api("/api/comma/net", body);
-  toast(r.status === 200 ? t(r.data.message || "Vale agora.") : r.data.error || t("Não foi possível."));
-  netForm = null; refreshNet();
-  return r;
-}
-function netFormBox(kind, ssid, saved) {
-  const box = el("div", "ctl-form");
-  if (kind === "other") {
-    const name = el("input"); name.type = "text"; name.maxLength = 32; name.placeholder = t("nome da rede"); name.setAttribute("aria-label", t("nome da rede"));
-    const pw = el("input"); pw.type = "password"; pw.maxLength = 63; pw.placeholder = t("senha (vazia se aberta)"); pw.setAttribute("aria-label", t("senha"));
-    const go = el("button", "btn", t("Conectar")); go.type = "button";
-    go.addEventListener("click", () => netDo({ op: "connect", ssid: name.value, password: pw.value }));
-    box.append(name, pw, go); return box;
-  }
-  if (kind === "join") {
-    const pw = el("input"); pw.type = "password"; pw.maxLength = 63; pw.placeholder = saved ? t("senha (vazia para usar a salva)") : t("senha"); pw.setAttribute("aria-label", t("senha"));
-    const go = el("button", "btn", t("Conectar")); go.type = "button";
-    go.addEventListener("click", () => netDo({ op: "connect", ssid, password: pw.value }));
-    box.append(pw, go);
-    if (saved) { const f = el("button", "link danger", t("Esquecer esta rede")); f.type = "button"; f.addEventListener("click", () => netDo({ op: "forget", ssid })); box.append(f); }
-    return box;
-  }
-  const pw = el("input"); pw.type = "text"; pw.maxLength = 63; pw.placeholder = t("nova senha, 8 a 63 caracteres"); pw.setAttribute("aria-label", t("nova senha"));
-  const go = el("button", "btn", t("Trocar a senha")); go.type = "button";
-  go.addEventListener("click", () => netDo({ op: "tethering_password", password: pw.value }));
-  box.append(pw, go); return box;
-}
-function renderNet() {
-  const n = netState, box = $("netBox"), out = [];
-  if (n.guard > 0) {
-    const g = el("div", "card warn"); g.append(el("div", "desc", tf("Se este celular não falar com o comma em {s} s, ele volta para a rede de antes.", { s: n.guard }))); out.push(g);
-  }
-  if (!n.wifi) out.push(el("div", "desc", t(n.error || "A rede do comma não respondeu agora.")));
-  else {
-    const w = n.wifi;
-    out.push(el("div", "label", t("Wi-Fi")));
-    out.push(netRow(w.ssid || t("sem Wi-Fi"), w.ssid ? tf("conectado · {ip}", { ip: w.ip || "—" }) : (w.connecting ? tf("conectando a {rede}…", { rede: w.connecting }) : "")));
-    for (const net of w.networks.filter((x) => x.ssid !== w.ssid)) {
-      const b = el("button", "link", t("Conectar")); b.type = "button";
-      b.addEventListener("click", () => { netForm = netForm === "join:" + net.ssid ? null : "join:" + net.ssid; renderNet(); });
-      const row = netRow(net.ssid, [net.saved ? t("salva") : "", net.secured ? t("com senha") : t("aberta"), `${net.strength}%`].filter(Boolean).join(" · "), b);
-      if (netForm === "join:" + net.ssid) row.append(netFormBox("join", net.ssid, net.saved));
-      out.push(row);
-    }
-    const other = el("button", "link", t("Outra rede…")); other.type = "button";
-    other.addEventListener("click", () => { netForm = netForm === "other" ? null : "other"; renderNet(); });
-    out.push(other);
-    if (netForm === "other") out.push(netFormBox("other"));
-    out.push(el("div", "label", t("Hotspot do comma")));
-    out.push(netRow(t("Hotspot"), t("O celular entra nele e abre lizpilot.local."),
-      netSwitch(w.tethering, t("Hotspot"), () => netDo({ op: "tethering", on: !w.tethering }))));
-    const pwRow = netRow(t("Senha"), "••••••••");
-    const change = el("button", "link", t("Trocar")); change.type = "button";
-    change.addEventListener("click", () => { netForm = netForm === "password" ? null : "password"; renderNet(); });
-    pwRow.querySelector(".head").append(change);
-    if (netForm === "password") pwRow.append(netFormBox("password"));
-    out.push(pwRow);
-    out.push(el("div", "label", t("Uso de dados")));
-    const pick = el("div", "pick three"); pick.style.margin = "2px 0 8px";
-    (n.metered_choices || []).forEach((c, i) => {
-      const b = el("button", "", t(c)); b.type = "button"; b.setAttribute("aria-pressed", i === w.metered ? "true" : "false");
-      b.addEventListener("click", () => { if (i !== w.metered) netDo({ op: "metered", value: i }); });
-      pick.append(b);
-    });
-    out.push(pick);
-  }
-  out.push(netRow(t("Roaming"), t("Dados do chip fora do país."), netSwitch(n.gsm.roaming, t("Roaming"), () => netDo({ op: "roaming", value: !n.gsm.roaming }))));
-  out.push(netRow(t("Chip medido"), t("Sem envios grandes pelo chip."), netSwitch(n.gsm.metered, t("Chip medido"), () => netDo({ op: "gsm_metered", value: !n.gsm.metered }))));
-  out.push(el("div", "small", t("Só com o carro em P ou desligado. Trocar de rede ou ligar o hotspot pode tirar este celular do comma: se ele não voltar em 2 min, tudo volta como estava.")));
-  box.replaceChildren(...out);
-}
-$("ctlNet").addEventListener("toggle", () => { if ($("ctlNet").open) refreshNet(); });
 
 // ----- the fixed address: lizpilot.local, answered by the comma on the local network -----
 let fixedProbe = null;

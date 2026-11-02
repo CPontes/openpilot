@@ -81,6 +81,29 @@ def test_trip_segment_reads_it_from_real_messages():
   assert abs(s["sh_gap_s"] / s["sh_gap_t"] - 1.5) < 1e-3
 
 
+def test_trip_segment_sees_openpilot_on_the_pedals_from_real_messages():
+  from openpilot.cereal import log
+  NS = 1_000_000_000
+  events = []
+
+  def add(service, t, fill):
+    ev = log.Event.new_message(logMonoTime=int(1_000 * NS + t * NS), valid=True)
+    fill(ev.init(service))
+    events.append(ev.as_reader())
+
+  for i in range(1500):
+    t = i / 100
+    a = haval_brake(t)
+    add("carState", t, lambda c, a=a: (setattr(c, "vEgo", 15.), setattr(c, "aEgo", a), setattr(c.cruiseState, "driving", True)))
+    add("selfdriveState", t, lambda c: setattr(c, "enabled", True))
+    add("carControl", t, lambda c: setattr(c, "latActive", True))
+    if i % 5 == 0:
+      add("longitudinalPlan", t, lambda p, a=a: setattr(p, "aTarget", a))
+  add("carParams", 14., lambda p: setattr(p, "openpilotLongitudinalControl", True))  # late in the minute: it still counts for all of it
+  s = timeline.trip_segment(events)["summary"]
+  assert s["sh_hard"] == 0 and s["sh_on_s"] == 0
+
+
 def test_older_logs_without_the_driving_field_use_enabled():
   sc = shadow.ShadowCounter()
   sc.on_selfdrive(True)
@@ -97,3 +120,23 @@ def test_older_logs_without_the_driving_field_use_enabled():
   sc2.on_car(0., 0.01, 15., 0., False, True, acc_enabled=True)
   sc2.on_car(0.01, 0.01, 15., 0., False, False, acc_enabled=True)
   assert abs(sc2.result()["sh_on_s"] - 0.01) < 1e-9
+
+
+def test_with_openpilot_longitudinal_there_is_nothing_to_compare():
+  s = shadow.ShadowCounter()
+  s.on_op_long(True)
+  s.on_selfdrive(True)
+  for i in range(200):
+    t = i * .05
+    s.on_plan(t, -3., False)
+    s.on_car(t, .05, 15., -3.5 if 50 < i < 100 else 0., False, True)
+  r = s.result()
+  assert r["sh_hard"] == 0 and r["sh_on_s"] == 0 and s.events == []
+
+
+def test_a_plan_from_a_qlog_at_2_hz_still_counts():
+  s = shadow.ShadowCounter()
+  s.on_selfdrive(True)
+  s.on_plan(0., 0., False)
+  s.on_car(.6, .05, 15., 0., False, True)
+  assert s.result()["sh_on_s"] > 0

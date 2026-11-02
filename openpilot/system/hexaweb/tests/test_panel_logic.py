@@ -230,11 +230,11 @@ def test_week_shadow_adds_up_drives_that_have_it():
 
 def test_week_car_takes_maxima_minima_and_rates():
   now = 1_800_000_000
-  a = {**SUMMARY, "km": 20., "se_bumps": 6, "se_rough_ss": 40., "se_rough_t": 1000., "se_grade_up": 8.2, "se_grade_down": 4., "se_v12_min": 12.3,
+  a = {**SUMMARY, "km": 20., "se_grade_up": 8.2, "se_grade_down": 4., "se_v12_min": 12.3,
        "se_decel": 3.1, "se_lat": 2.4, "se_roll": 3., "se_wheel_s": 120., "se_wheel_t": 100.}
-  b = {**SUMMARY, "km": 10., "se_bumps": 3, "se_rough_ss": 50., "se_rough_t": 1000., "se_grade_up": 11.5, "se_grade_down": 6.5, "se_v12_min": 12.6,
+  b = {**SUMMARY, "km": 10., "se_grade_up": 11.5, "se_grade_down": 6.5, "se_v12_min": 12.6,
        "se_decel": 2.0, "se_lat": 1.0, "se_roll": 5., "se_wheel_s": 0., "se_wheel_t": 0.}
   w = run("weekCar", [{"mtime": now - 60, "summary": a}, {"mtime": now - 120, "summary": b}, {"mtime": now - 9 * 86400, "summary": a}], now)
   assert (w["up"], w["down"], w["v12"], w["decel"], w["roll"]) == (11.5, 6.5, 12.3, 3.1, 5)
-  assert abs(w["bumps10"] - 3.0) < 1e-9 and abs(w["rough"] - 0.2121) < 1e-3 and w["roughWord"] == "lisa" and abs(w["wheels"] - 1.2) < 1e-9
+  assert abs(w["wheels"] - 1.2) < 1e-9
   assert run("weekCar", [{"mtime": now, "summary": SUMMARY}], now) is None

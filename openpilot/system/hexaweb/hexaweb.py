@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs
 
-from openpilot.selfdrive.hexa import comma_ctl, comma_net
+from openpilot.selfdrive.hexa import comma_ctl
 from openpilot.selfdrive.hexa import i18n
 from openpilot.selfdrive.hexa import live as hexa_live
 from openpilot.selfdrive.hexa import marks as hexa_marks
@@ -120,9 +120,6 @@ class PanelBackend:
     self._clips: dict[str, dict] = {}  # ticket -> {expires, files, start, name}
     self._fixed_nonces: dict[str, tuple] = {}  # one-time code -> (expiry, answer, phone), to prove lizpilot.local is this comma
     self.fixed_status: Callable[[], dict] = hexa_mdns.status
-    self.net = comma_net.CommaNetwork()
-    self._net_guard: dict | None = None  # {snap, token, start, deadline}: go back if the phone doesn't come back
-    self.guard_thread = True  # tests check the guard by hand
 
   def vehicle_state(self) -> VehicleState:
     with self._vs_lock:
@@ -172,8 +169,6 @@ class PanelBackend:
   def authenticate(self, token: str | None) -> dict | None:
     with self.lock:
       who = phone.find_token(self._tokens(), token)
-    if who is not None and self._net_guard is not None:
-      self._net_back(who)
     return who
 
   def pair(self, pin: str, name: str) -> tuple[int, dict]:
@@ -308,131 +303,6 @@ class PanelBackend:
         self.store.remove(key)
       self.store.put_bool("OnroadCycleRequested", True)
     return 200, {"ok": True, "message": "Calibração apagada. O comma recalibra na próxima viagem."}
-
-  # *** the comma's network, with a way back ***
-
-  def comma_net_state(self) -> tuple[int, dict]:
-    gsm = {"roaming": bool(self.store.get_bool("GsmRoaming")), "metered": bool(self.store.get_bool("GsmMetered"))}
-    guard = self._net_guard
-    left = max(0, int(guard["deadline"] - self.mono())) if guard else 0
-    try:
-      st = self.net.state()
-    except Exception:
-      return 200, {"wifi": None, "gsm": gsm, "guard": left, "error": "A rede do comma não respondeu agora."}
-    st["networks"] = [n for n in st["networks"] if not n["tethering"]]  # the comma's own hotspot isn't a network to join
-    return 200, {"wifi": st, "gsm": gsm, "guard": left, "metered_choices": list(comma_net.METERED)}
-
-  def _net_writable(self) -> tuple[bool, str]:
-    vs = self.vehicle_state()
-    if vs.onroad and not (vs.parked and vs.standstill and not vs.engaged):
-      return False, "Só com o carro em P ou desligado."
-    return True, ""
-
-  def _guard(self, who: dict) -> None:
-    """Before a change that can take this phone off the comma: remember where to go back."""
-    snap = self.net.snapshot()
-    now = self.mono()
-    self._net_guard = {"snap": snap, "token": who.get("id"), "start": now, "deadline": now + comma_net.GUARD_S}
-    if self.guard_thread:
-      threading.Thread(target=self._guard_loop, daemon=True).start()
-
-  def _guard_loop(self) -> None:
-    while self._net_guard is not None:
-      time.sleep(1.)
-      self.check_net_guard()
-
-  def check_net_guard(self) -> None:
-    guard = self._net_guard
-    if guard is None or self.mono() < guard["deadline"]:
-      return
-    self._net_guard = None
-    from openpilot.common.swaglog import cloudlog
-    cloudlog.warning("hexaweb: the phone didn't come back after a network change, going back")
-    try:
-      self.net.restore(guard["snap"])
-    except Exception:
-      cloudlog.exception("hexaweb: going back to the previous network failed")
-    with self.lock:
-      self._audit({"event": "net_restored", "new": guard["snap"].get("ssid") or ("hotspot" if guard["snap"].get("tethering") else "-")})
-
-  def _net_back(self, who: dict) -> None:
-    """The same phone reached the comma after the network changed: keep the new network."""
-    guard = self._net_guard
-    if guard is None or who.get("id") != guard["token"] or self.mono() - guard["start"] < NET_GUARD_MIN_S:
-      return
-    try:
-      changed = self.net.snapshot() != guard["snap"]
-    except Exception:
-      return
-    if changed:
-      self._net_guard = None
-
-  def comma_net(self, who: dict, body: dict) -> tuple[int, dict]:
-    op = str(body.get("op", ""))
-    ok, reason = self._net_writable()
-    if not ok:
-      return 409, {"error": reason}
-    try:
-      if op == "roaming" or op == "gsm_metered":
-        value = body.get("value")
-        if not isinstance(value, bool):
-          return 400, {"error": "Valor inválido."}
-        with self.lock:
-          self.store.put_bool("GsmRoaming" if op == "roaming" else "GsmMetered", value)
-          self._audit({"event": "net", "who": who.get("name", ""), "key": op, "new": value})
-        return 200, {"ok": True, "message": "Vale agora."}
-      if op == "metered":
-        value = body.get("value")
-        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value < len(comma_net.METERED):
-          return 400, {"error": "Valor inválido."}
-        self.net.set_metered(value)
-        return 200, {"ok": True, "message": "Vale agora."}
-      if op == "connect":
-        ssid, password = body.get("ssid"), body.get("password", "")
-        if not isinstance(ssid, str) or not 0 < len(ssid.encode()) <= 32 or not isinstance(password, str) or len(password) > 63 \
-           or (password and len(password) < 8):
-          return 400, {"error": "Nome ou senha da rede inválidos."}
-        self._guard(who)
-        self.net.connect(ssid, password)
-        self._net_audit(who, op, ssid)
-        return 200, {"ok": True, "message": "Conectando. Se este celular não voltar a falar com o comma em 2 min, ele volta para a rede de antes."}
-      if op == "tethering":
-        on = body.get("on")
-        if not isinstance(on, bool):
-          return 400, {"error": "Valor inválido."}
-        self._guard(who)
-        self.net.set_tethering(on)
-        self._net_audit(who, op, on)
-        if on:
-          return 200, {"ok": True, "message": "Hotspot ligado: entre nele com este celular e abra lizpilot.local. " +
-                                              "Se este celular não voltar a falar com o comma em 2 min, tudo volta como estava."}
-        return 200, {"ok": True, "message": "Hotspot desligado. Se este celular não voltar a falar com o comma em 2 min, tudo volta como estava."}
-      if op == "tethering_password":
-        pw = body.get("password")
-        if not isinstance(pw, str) or not 8 <= len(pw) <= 63:
-          return 400, {"error": "A senha precisa de 8 a 63 caracteres."}
-        self._guard(who)
-        self.net.set_tethering_password(pw)
-        self._net_audit(who, op, "")
-        return 200, {"ok": True, "message": "Senha trocada. Quem estiver no hotspot precisa entrar de novo."}
-      if op == "forget":
-        ssid = body.get("ssid")
-        if not isinstance(ssid, str) or not ssid:
-          return 400, {"error": "Nome da rede inválido."}
-        if ssid == self.net.snapshot().get("ssid"):
-          return 409, {"error": "É a rede em uso. Conecte em outra antes de esquecer esta."}
-        self.net.forget(ssid)
-        self._net_audit(who, op, ssid)
-        return 200, {"ok": True, "message": "Rede esquecida."}
-    except Exception:
-      from openpilot.common.swaglog import cloudlog
-      cloudlog.exception("hexaweb: network change failed")
-      return 503, {"error": "A rede do comma não respondeu agora."}
-    return 404, {"error": "Ação desconhecida."}
-
-  def _net_audit(self, who: dict, op: str, new) -> None:
-    with self.lock:
-      self._audit({"event": "net", "who": who.get("name", ""), "key": op, "new": new})
 
   # *** lizpilot.local is this comma: anyone on the network can answer for a name, so the page checks ***
 
@@ -1147,9 +1017,6 @@ def make_handler(backend: PanelBackend):
       elif path == "/api/comma":
         if self._who() is not None:
           self._json(200, backend.comma_state())
-      elif path == "/api/comma/net":
-        if self._who() is not None:
-          self._json(*backend.comma_net_state())
       elif path == "/api/fixed/nonce":  # before pairing: carries no secret and opens nothing
         self._json(200, backend.fixed_nonce(self.client_address[0]))
       elif path == "/api/fixed/check":  # asked by a page served by address: it may read only this yes or no
@@ -1219,7 +1086,6 @@ def make_handler(backend: PanelBackend):
         "/api/phones/revoke": lambda who, b: backend.revoke_phone(who, str(b.get("id", ""))),
         "/api/comma/set": lambda who, b: backend.comma_set(who, str(b.get("key", "")), b.get("value")),
         "/api/comma/action": lambda who, b: backend.comma_action(who, str(b.get("action", ""))),
-        "/api/comma/net": lambda who, b: backend.comma_net(who, b),
       }
       if path not in routes and path != "/api/logout":
         self._json(404, {"error": "Não encontrado."})

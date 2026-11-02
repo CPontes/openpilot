@@ -49,3 +49,14 @@ def test_car_off_or_in_p_and_the_comma_locks():
 def test_release_builds_hide_what_the_comma_hides():
   shown = {i.key for i in comma_ctl.ITEMS if comma_ctl.visible(i, release=True)}
   assert "AlphaLongitudinalEnabled" not in shown and "NavigationEnabled" not in shown and "AdbEnabled" in shown
+
+
+def test_nothing_here_starts_a_process_the_drive_watches():
+  assert comma_ctl.get_item("NavigationEnabled").level == "so"  # navd is in selfdrived's process check
+
+
+def test_the_longitudinal_texts_are_true_with_it_on_or_off():
+  alpha = comma_ctl.get_item("AlphaLongitudinalEnabled")
+  text = " ".join((alpha.description, alpha.blocked, *alpha.warnings))
+  assert "AEB" in text and "ACC original." not in " ".join(alpha.warnings) and "Travado até" not in text
+  assert comma_ctl.get_item("LongitudinalManeuverMode").level == "so"
