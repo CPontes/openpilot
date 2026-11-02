@@ -1306,3 +1306,11 @@ def test_a_dead_network_service_doesnt_break_the_panel(panel):
   status, body = panel.json("/api/comma/net", token=token)
   assert status == 200 and body["wifi"] is None and body["error"]
   assert panel.json("/api/comma/net", {"op": "tethering", "on": True}, token=token)[0] == 503
+
+
+def test_a_red_light_camera_from_the_phone(panel, tmp_path):
+  token, r = radar_panel(panel, tmp_path)
+  assert add_point(panel, token, kind="sinal")[0] == 200  # no limit: just the light
+  assert add_point(panel, token, kind="sinal", limit=10)[0] == 400
+  mine = panel.json("/api/radars/near", token=token)[1]["mine"]
+  assert mine[0]["kind"] == "sinal"

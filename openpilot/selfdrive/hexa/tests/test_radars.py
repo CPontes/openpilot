@@ -329,3 +329,12 @@ def test_a_saved_copy_keeps_only_what_is_valid():
   assert clean[0]["key"] == radars.key(good["lat"], good["lon"])
   assert radars.clean_edits("nada") == [] and radars.clean_edits(None) == []
 
+
+
+def test_a_red_light_camera_is_a_kind_of_its_own():
+  r = radars.merge(np.zeros((0, 4)), [{**edit(), "kind": "sinal", "limit": 50, "direction": None, "both": True, "expires": None}], 0.)
+  assert r[0, 4] == radars.SIGNAL
+  assert radars.alert_lines({"kind": radars.SIGNAL, "distance": 304., "limit": 50.}) == ("Radar de sinal a 300 m", "Limite 50 km/h")
+  assert radars.alert_lines({"kind": radars.SIGNAL, "distance": 96., "limit": None}) == ("Radar de sinal a 100 m", "")
+  assert radars.valid_limit(50, radars.SIGNAL) and not radars.valid_limit(5, radars.SIGNAL)
+  assert radars.clean_edits([{"lat": -22.9, "lon": -43.1, "kind": "sinal", "limit": None}])[0]["kind"] == "sinal"

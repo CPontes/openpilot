@@ -90,6 +90,8 @@
   .reasons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .reasons button { min-height: 58px; text-align: left; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); font-weight: 600; font-size: 16px; line-height: 1.2;
                     display: flex; align-items: center; gap: 10px; }
+  #pointKinds { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #pointKinds button { flex-direction: column; justify-content: center; text-align: center; gap: 6px; padding: 10px 6px; font-size: 15px; }
   .reasons button svg, .mk svg { flex: none; }
   .mk { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
   .mk > span { min-width: 0; overflow-wrap: anywhere; }
@@ -320,10 +322,10 @@
       </div>
       <div class="add3" style="margin-top:12px">
         <button id="addRadar" type="button"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="13" height="9" rx="2"/><circle cx="9.5" cy="12.5" r="2.5"/><path d="M16 11l5-2v8l-5-2"/></svg><span data-t>Radar</span></button>
-        <button id="addBlitz" type="button"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l5.5 17h-11z"/><path d="M8.6 14.5h6.8M10.1 9.5h3.8M4 20.5h16"/></svg><span data-t>Blitz</span></button>
+        <button id="addSignal" type="button"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2.5" width="8" height="16" rx="2.5"/><circle cx="12" cy="6.5" r="1.4"/><circle cx="12" cy="10.5" r="1.4"/><circle cx="12" cy="14.5" r="1.4"/><path d="M12 18.5v3"/></svg><span data-t>Sinal</span></button>
         <button id="addBump" type="button"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 17h4.5c2.2 0 3.2-6 5.5-6s3.3 6 5.5 6H22"/></svg><span data-t>Lombada</span></button>
       </div>
-      <p class="small" style="margin:8px 4px 0" data-t>Toque ao passar pelo ponto: o lugar fica no toque. Nada é salvo sem Salvar. Blitz some sozinha em 12 horas.</p>
+      <p class="small" style="margin:8px 4px 0" data-t>Toque ao passar pelo ponto: o lugar fica no toque. Nada é salvo sem Salvar.</p>
       <div class="card list" id="nearList" style="margin-top:12px;padding:4px 14px"></div>
       <details class="card" id="mineBox">
         <summary id="mineSummary" data-t>Meus pontos</summary>
@@ -424,6 +426,12 @@
 <section class="sheet hidden" id="markSheet" role="dialog" aria-modal="true" aria-labelledby="markTitle">
   <span class="grab"></span>
   <div class="row" style="align-items:baseline"><h2 class="grow" id="markTitle" data-t>Marcar</h2><span class="small num" id="markWhen"></span></div>
+  <div id="markPoints">
+    <div class="label" style="margin:14px 0 6px" data-t>Ponto neste lugar</div>
+    <div class="reasons" id="pointKinds"></div>
+    <div class="small" id="pointKindsNote" style="margin-top:6px"></div>
+    <div class="label" style="margin:14px 0 6px" data-t>Ou uma marca: o que aconteceu?</div>
+  </div>
   <div class="reasons" id="reasons" style="margin-top:14px"></div>
   <label class="field" for="markNote" data-t>Comentário (opcional)</label>
   <textarea id="markNote" rows="2" maxlength="500" data-t-ph="ex.: ponte com junta, volante tremeu" placeholder="ex.: ponte com junta, volante tremeu"></textarea>
@@ -433,7 +441,7 @@
   <div class="small" style="text-align:center" data-t>A marca só vale depois de Salvar e aciona a bandeira do comma.</div>
 </section>
 
-<!-- Ponto: radar, blitz, lombada. Nothing changes before Salvar. -->
+<!-- Ponto: radar, sinal, lombada (a blitz saved before still shows). Nothing changes before Salvar. -->
 <div class="scrim hidden" id="pointScrim"></div>
 <section class="sheet hidden" id="pointSheet" role="dialog" aria-modal="true" aria-labelledby="pointTitle">
   <span class="grab"></span>
@@ -508,7 +516,14 @@ let carStopped = false, carOn = false, driving = false;
 const POLL_MS = 3000, POLL_MAX_MS = 30000, LIVE_MS = 1000;
 let pollTimer = null, liveTimer = null, online = true, lastOk = 0, failures = 0, ticks = 0;
 const EDITOR_MS = 20000;  // moving, a box nobody touched leaves by itself and nothing is marked
-let markTimer = null, editing = null, picked = null;
+let markTimer = null, editing = null, picked = null, markPin = null;
+// From Marcar, a point too: the place is held at the tap (/api/radars/pin), like the Pontos buttons
+const MARK_POINTS = [["radar", "Radar de velocidade"], ["sinal", "Radar de sinal"], ["lombada", "Lombada"]];  // no blitz: owner's call, 01/11 23:24
+const POINT_SVG = {
+  radar: '<rect x="3" y="8" width="13" height="9" rx="2"/><circle cx="9.5" cy="12.5" r="2.5"/><path d="M16 11l5-2v8l-5-2"/>',
+  sinal: '<rect x="8" y="2.5" width="8" height="16" rx="2.5"/><circle cx="12" cy="6.5" r="1.4"/><circle cx="12" cy="10.5" r="1.4"/><circle cx="12" cy="14.5" r="1.4"/><path d="M12 18.5v3"/>',
+  lombada: '<path d="M2 17h4.5c2.2 0 3.2-6 5.5-6s3.3 6 5.5 6H22"/>',
+};
 let trips = null, tripsAt = 0, update = null, health = null, near = null, live = null, liveAt = 0, latSince = null;
 let passengerOk = false, passNext = null;  // the passenger question: page memory only, never stored
 const API_TIMEOUT_MS = 8000;
@@ -531,6 +546,7 @@ const ICON_X = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stro
 const ICON_LOCK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
 const ICON_CHEV = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--dim)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
 const ICON_BUMP = '<svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 17h4.5c2.2 0 3.2-6 5.5-6s3.3 6 5.5 6H22"/></svg>';
+const ICON_SIGNAL = '<svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2.5" width="8" height="16" rx="2.5"/><circle cx="12" cy="6.5" r="1.4"/><circle cx="12" cy="10.5" r="1.4"/><circle cx="12" cy="14.5" r="1.4"/><path d="M12 18.5v3"/></svg>';
 const ICON_BLITZ = '<svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l5.5 17h-11z"/><path d="M8.6 14.5h6.8M10.1 9.5h3.8M4 20.5h16"/></svg>';
 function sign(limit, size) {  // the round speed sign, as on the road
   const s = size || 42, txt = limit ? String(limit) : "?";
@@ -545,6 +561,7 @@ function bumpSign(limit, size) {  // the speed to pass at, with the bump under i
 }
 function pointIcon(p, size) {
   if (p.kind === "lombada") return p.limit ? bumpSign(p.limit, size) : ICON_BUMP.replace(/width="42" height="42"/, `width="${size || 42}" height="${size || 42}"`);
+  if (p.kind === "sinal" && !p.limit) return ICON_SIGNAL.replace(/width="42" height="42"/, `width="${size || 42}" height="${size || 42}"`);
   return p.kind === "blitz" && !p.limit ? ICON_BLITZ : sign(p.limit, size);
 }
 // one icon per mark reason, to read the list at a glance; a reason the owner created gets the flag
@@ -1087,6 +1104,10 @@ function openMarkNow(mark, reason, tapped) {
   $("markTitle").textContent = editing.id ? t("Marca") : t("Marcar");
   $("markWhen").textContent = editing.id ? hhmmss(mark.t) : tf("tocado às {hora}", { hora: new Date(tapped).toLocaleTimeString(L(), { hour: "2-digit", minute: "2-digit", second: "2-digit" }) }) + (live && live.driving ? ` · ${live.v} km/h` : "");
   $("markNote").value = (mark && mark.note) || "";
+  $("markPoints").classList.toggle("hidden", !!editing.id);
+  markPin = editing.id ? null : api("/api/radars/pin", {});  // the place of this tap, before anything is chosen
+  drawPointKinds(null);
+  if (markPin) markPin.then((r) => { if (editing && !editing.id) drawPointKinds(r); });
   drawReasons();
   $("markScrim").classList.remove("hidden"); $("markSheet").classList.remove("hidden");
   if (carStopped) $("markNote").focus({ preventScroll: true });
@@ -1102,6 +1123,23 @@ function drawReasons() {
   }));
   $("markSave").disabled = !picked;
   $("markSave").textContent = picked ? (editing && editing.id ? t("Salvar") : t("Salvar marca")) : t("Escolha um motivo");
+}
+
+function drawPointKinds(pinned) {
+  const ok = pinned && pinned.status === 200;
+  $("pointKinds").replaceChildren(...MARK_POINTS.map(([kind, label]) => {
+    const b = el("button", ""); b.type = "button"; b.disabled = !ok;
+    b.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${POINT_SVG[kind]}</svg>`;
+    b.append(el("span", "", t(label)));
+    b.addEventListener("click", () => {
+      closeMark();
+      moving = !!pinned.data.moving;
+      openPoint({ kind, limit: null, pin: pinned.data.pin, passed: pinned.data.speed });
+    });
+    return b;
+  }));
+  $("pointKindsNote").textContent = !pinned ? t("Guardando o lugar…") : ok ? t("Lombada é o quebra-mola.")
+    : (pinned.data.error || t("Sem GPS agora."));
 }
 
 function closeMark() { clearTimeout(markTimer); editing = null; picked = null; $("markScrim").classList.add("hidden"); $("markSheet").classList.add("hidden"); }
@@ -1286,7 +1324,7 @@ function renderTrips(err) {
 // ----- points: radars, checkpoints, bumps -----
 const SIDES = { mesmo: "no seu sentido", contrario: "no sentido contrário", dois: "nos dois sentidos", "?": "sentido ?" };
 const SIDE_CHIPS = [["mesmo", "Mesmo sentido"], ["contrario", "Sentido oposto"], ["dois", "Dois sentidos"]];
-const POINT = { radar: "Radar", blitz: "Blitz", lombada: "Lombada", edit: "Correção" };
+const POINT = { radar: "Radar", sinal: "Radar de sinal", blitz: "Blitz", lombada: "Lombada", edit: "Correção" };
 const NEAR_BADGE_M = 1000;
 let point = null, pick = {}, moving = false;
 function bumpContext() {
@@ -1325,7 +1363,7 @@ async function refreshNear() {
   if (d.near.length) { const lb = el("div", "label", t("À frente · até 3 km")); lb.style.margin = "10px 0 4px"; list.append(lb); }
   list.append(...ahead.map(pointRow), ...behind.map(pointRow));
   if (!d.near.length) list.append(el("div", "line desc", d.gps ? t("Nenhum ponto a menos de 3 km.") : t("Sem GPS agora.")));
-  $("addRadar").disabled = $("addBlitz").disabled = $("addBump").disabled = !d.gps;
+  $("addRadar").disabled = $("addSignal").disabled = $("addBump").disabled = !d.gps;
   $("tabs").querySelector('[data-go="pontos"]').classList.toggle("near", d.near.some((p) => p.ahead && p.distance < NEAR_BADGE_M));
   $("mineSummary").textContent = d.mine.length ? tf("Meus pontos · {n}", { n: d.mine.length }) : t("Meus pontos · nenhum ainda");
   const mine = $("mineRadars");
@@ -1809,7 +1847,7 @@ $("pendingBtn").addEventListener("click", () => { const p = marksState.marks.fil
 $("installDismiss").addEventListener("click", () => { store("lpInstallOk", "1"); $("installCard").classList.add("hidden"); });
 $("updateCard").addEventListener("click", (e) => { e.preventDefault(); sub = "comma"; showView("ajustes"); });
 $("addRadar").addEventListener("click", () => addPoint("radar"));
-$("addBlitz").addEventListener("click", () => addPoint("blitz"));
+$("addSignal").addEventListener("click", () => addPoint("sinal"));
 $("addBump").addEventListener("click", () => addPoint("lombada"));
 $("pointSave").addEventListener("click", savePoint);
 $("pointCancel").addEventListener("click", closePoint);

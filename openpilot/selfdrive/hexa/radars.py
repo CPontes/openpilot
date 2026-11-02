@@ -25,10 +25,10 @@ out body;"""
 EDITS_PARAM = "HexaRadarEdits"
 MAX_EDITS = 500
 MATCH_RADIUS = 25.  # m, an edit finds its camera again after the list is updated
-RADAR, BLITZ, BUMP = 0, 1, 2
-KINDS = {"radar": RADAR, "blitz": BLITZ, "lombada": BUMP}
+RADAR, BLITZ, BUMP, SIGNAL = 0, 1, 2, 3  # SIGNAL: a red-light camera ("radar de sinal"), often with a speed limit too
+KINDS = {"radar": RADAR, "blitz": BLITZ, "lombada": BUMP, "sinal": SIGNAL}
 KIND_NAMES = {v: k for k, v in KINDS.items()}
-KIND_TEXT = {RADAR: "Radar", BLITZ: "Blitz", BUMP: "Lombada"}
+KIND_TEXT = {RADAR: "Radar", BLITZ: "Blitz", BUMP: "Lombada", SIGNAL: "Radar de sinal"}
 SIDES = ("mesmo", "contrario", "dois")  # as the driver sees it: this way, the other way, both ways
 CAMERA_LIMITS = (20, 130)  # km/h
 BUMP_SPEEDS = (5, 60)  # km/h, the speed the owner wants over a bump
