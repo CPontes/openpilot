@@ -13,10 +13,14 @@ from openpilot.selfdrive.ui.body.layouts.onroad import BodyLayout
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller import Scroller
 from openpilot.system.ui.lib.application import gui_app
+from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationDialog
+from openpilot.selfdrive.hexa import confirm as hexa_confirm
+from openpilot.selfdrive.hexa import i18n as hexa_i18n
 
 
 ONROAD_DELAY = 2.5  # seconds
 HEXA_BOOKMARK_CHECK = 0.5  # seconds between checks for a bookmark asked by the phone panel
+HEXA_CONFIRM_CHECK = 0.5  # seconds between checks for something the phone panel needs confirmed here
 
 
 class MiciMainLayout(Scroller):
@@ -26,6 +30,8 @@ class MiciMainLayout(Scroller):
     self._pm = messaging.PubMaster(['bookmarkButton', 'userBookmark'])
 
     self._last_hexa_check = 0.0
+    self._last_hexa_confirm = 0.0
+    self._hexa_confirm_shown = ""
     self._prev_onroad = False
     self._prev_standstill = False
     self._onroad_time_delay: float | None = None
@@ -59,6 +65,7 @@ class MiciMainLayout(Scroller):
     self._setup_callbacks()
 
     gui_app.add_nav_stack_tick(self._handle_transitions)
+    gui_app.add_nav_stack_tick(self._check_hexa_confirm)  # on any screen, settings included
     gui_app.push_widget(self)
 
     # Start onboarding if terms or training not completed, make sure to push after self
@@ -112,6 +119,32 @@ class MiciMainLayout(Scroller):
         self._on_bookmark_clicked()
     except Exception:
       cloudlog.exception("hexa bookmark request failed")
+
+  def _check_hexa_confirm(self):
+    # The phone panel asks for what only someone at the comma may agree to (selfdrive/hexa/confirm.py): turning SSH on,
+    # turning openpilot off... The same 4 digits show on the phone. Sliding writes the answer; anything else lets it expire.
+    now = time.monotonic()
+    if now - self._last_hexa_confirm < HEXA_CONFIRM_CHECK:
+      return
+    self._last_hexa_confirm = now
+    try:
+      req = hexa_confirm.parse(ui_state.params.get(hexa_confirm.REQUEST_PARAM))
+      if req is None or req["id"] == self._hexa_confirm_shown or not hexa_confirm.fresh(req, now) or ui_state.engaged:
+        return
+      self._hexa_confirm_shown = req["id"]
+      lang = hexa_i18n.comma_lang(ui_state.params)
+      what = str(req.get("what", ""))
+      if req.get("translate", True):
+        what = hexa_i18n.tr(what, lang)
+      title = f"{req['code']}  {hexa_i18n.tr(str(req.get('verb', '')), lang)}\n{what}"
+
+      def accept(req_id=req["id"]):
+        ui_state.params.put(hexa_confirm.ANSWER_PARAM, req_id)
+
+      icon = gui_app.texture("icons_mici/setup/driver_monitoring/dm_check.png", 64, 64)
+      gui_app.push_widget(BigConfirmationDialog(title, icon, accept))
+    except Exception:
+      cloudlog.exception("hexa confirm request failed")
 
   def _render(self, _):
     if not self._setup:

@@ -57,6 +57,16 @@
   .seg button[aria-selected="true"], .seg button[aria-checked="true"] { background: var(--line); color: var(--text); }
   .tag { display: inline-block; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 8px; background: #1F262D; color: var(--muted); vertical-align: 2px; white-space: nowrap; }
   .tag.warn { background: var(--tag-warn); color: var(--warn); }
+  .tag.ok { background: #10261A; color: var(--accent); }
+  .tag.bad { background: #2A1416; color: #FF7A7A; }
+  details.card.devbox { border-color: #4A3A1A; background: #1A1710; }
+  .warnlist { margin: 4px 0 8px; padding-left: 18px; color: #F2C9C9; font-size: 15px; line-height: 1.35; }
+  .steps { list-style: none; margin: 4px 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 15px; }
+  .steps li::before { content: "○ "; color: var(--warn); }
+  .steps li.done::before { content: "✓ "; color: var(--accent); }
+  .ctl-form { display: flex; flex-direction: column; gap: 8px; padding: 6px 0 10px; }
+  .ctl-form input { width: 100%; min-width: 0; box-sizing: border-box; }
+  .bigcode { font-size: 48px; font-weight: 700; letter-spacing: .18em; color: var(--warn); text-align: center; font-variant-numeric: tabular-nums; margin: 10px 0; }
   .pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 700; background: var(--tag-warn); color: var(--warn); }
   .switch { flex: none; position: relative; width: 56px; height: 44px; border: 0; padding: 0; background: none; }
   .switch::before { content: ""; position: absolute; left: 2px; top: 6px; width: 52px; height: 32px; border-radius: 999px; background: var(--switch-off); transition: background .15s; }
@@ -375,7 +385,14 @@
           <div class="chips"><button class="link" id="optExport" type="button" data-t>Guardar uma cópia</button><button class="link" id="optImport" type="button" data-t>Restaurar</button></div>
           <input class="hidden" id="optFile" type="file" accept="application/json,.json">
           <div id="restoreBox"></div></div>
-        <div class="card"><div class="desc" data-t>Reinicia só com o carro desligado.</div><button class="link" id="rebootBtn" type="button" data-t>Reiniciar o comma</button></div>
+        <div class="label" data-t>Controle do comma</div>
+        <p class="small" style="margin:0 4px 8px" data-t>Só na mesma rede do comma, nunca pela internet. Com o carro andando, tudo aqui fica só leitura.</p>
+        <details class="card" id="ctlNet"><summary data-t>Rede</summary><div id="netBox"><div class="desc" data-t>Carregando…</div></div></details>
+        <details class="card" id="ctlDevice"><summary data-t>Aparelho</summary><div id="deviceBox"></div></details>
+        <details class="card" id="ctlPrefs"><summary data-t>Preferências do comma</summary><div id="prefsBox"></div></details>
+        <details class="card devbox" id="ctlDev"><summary data-t>Desenvolvedor</summary>
+          <div class="desc" style="margin-bottom:6px" data-t>Para quem sabe o que está fazendo. Cada item traz o aviso do comma e diz onde pode ser mudado.</div>
+          <div id="devBox"></div></details>
         <div class="label" data-t>Últimas mudanças</div>
         <div class="card list" id="audit"></div>
       </div>
@@ -439,6 +456,18 @@
   <a class="btn" id="clipDownload" href="#" style="margin-top:14px" data-t>Baixar o vídeo para enviar</a>
   <div class="small" style="text-align:center;margin-top:6px" data-t>Arquivo .ts, abre no VLC. Nada sai do comma sozinho.</div>
   <button class="btn ghost" id="clipClose" type="button" data-t>Fechar</button>
+</section>
+
+<!-- Confirmar no comma: the phone asks, the driver slides on the comma's screen, the same 4 digits on both -->
+<div class="scrim hidden" id="confirmScrim"></div>
+<section class="sheet hidden" id="confirmSheet" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+  <span class="grab"></span>
+  <h2 id="confirmTitle" data-t>Confirme no comma</h2>
+  <p class="desc" id="confirmWhat" style="margin:8px 0 0"></p>
+  <div class="bigcode" id="confirmCode">0000</div>
+  <p class="desc" style="margin:0" data-t>Deslize na tela do comma em até 60 s e confira se o número é o mesmo. Assim ninguém muda isso só com um celular pareado.</p>
+  <p class="small" id="confirmLeft" style="text-align:center;margin-top:12px"></p>
+  <button class="btn ghost" id="confirmCancel" type="button" data-t>Cancelar</button>
 </section>
 
 <!-- Passageiro: moving, asked once per trip before Marcar or a point. What was tapped is already kept. -->
@@ -607,7 +636,7 @@ function showSub(name) {
   sub = name; store("lpSub", name);
   document.querySelectorAll("[data-sub]").forEach((b) => b.setAttribute("aria-selected", b.dataset.sub === name ? "true" : "false"));
   document.querySelectorAll("[data-subview]").forEach((e) => e.classList.toggle("hidden", e.dataset.subview !== name));
-  if (name === "comma") { refreshUpdate(); refreshHealth(); }
+  if (name === "comma") { refreshUpdate(); refreshHealth(); refreshCommaCtl(); }
   if (name === "celulares") refreshPhones();
 }
 
@@ -615,7 +644,7 @@ function refreshView() {
   ticks += 1;
   if (view === "inicio") refreshHome(false);
   if (view === "viagens") { refreshMarks(); refreshTrips(false); }
-  if (view === "ajustes" && sub === "comma") { refreshUpdate(); refreshHealth(); }
+  if (view === "ajustes" && sub === "comma") { refreshUpdate(); refreshHealth(); if (ticks % 3 === 0) refreshCommaCtl(); }
   if (view === "ajustes" && sub === "celulares") refreshPhones();
   if (view === "pontos" || (carOn && view !== "inicio" && ticks % 3 === 0)) refreshNear();  // the dot on the tab, while driving
 }
@@ -785,6 +814,9 @@ const UPDATE_ACTIONS = { radars: "atualizou a lista de radares", check: "verific
 const EVENTS = { paired: "pareou", logout: "desconectou", phone_revoked: "desconectou outro celular", pin_locked: "código bloqueado por tentativas erradas", reason_added: "adicionou motivo", reason_removed: "removeu motivo",
                  profile_saved: "salvou um perfil", profile_removed: "apagou um perfil", profiles_restored: "restaurou perfis" };
 const RADAR_ACTIONS = { edit: "conferiu", removed: "tirou", add: "adicionou", delete: "apagou", import: "restaurou pontos" };
+const COMMA_ACTIONS = { reboot: "reiniciou o comma", poweroff: "desligou o comma", recalibrate: "recalibrou o comma" };
+const NET_ACTIONS = { connect: "conectou na rede", forget: "esqueceu a rede", tethering: "hotspot", tethering_password: "trocou a senha do hotspot",
+                      metered: "uso de dados", roaming: "roaming", gsm_metered: "chip medido", reveal: "viu a senha do hotspot" };
 function auditText(a) {
   const head = dayTime(a.t) + " · " + (a.who ? a.who + ": " : "");
   const name = t(titles[a.key] || a.key);
@@ -799,6 +831,15 @@ function auditText(a) {
   if (a.event === "profile_saved") return head + tf("salvou o perfil \"{nome}\"", { nome: a.new });
   if (a.event === "profile_removed") return head + tf("apagou o perfil \"{nome}\"", { nome: a.new });
   if (a.event === "profiles_restored") return head + tf("restaurou os perfis {nomes}", { nomes: a.new });
+  if (a.event === "comma_set") return head + tf(a.new ? "ligou {nome}" : "desligou {nome}", { nome: name }) + (a.confirmed ? " " + t("(confirmado no comma)") : "");
+  if (a.event === "comma_action") return head + t(COMMA_ACTIONS[a.new] || a.new);
+  if (a.event === "net") {
+    const what = typeof a.new === "boolean" ? t(a.new ? "ligado" : "desligado") : (a.new || "");
+    return head + t(NET_ACTIONS[a.key] || a.key) + (what ? ": " + what : "");
+  }
+  if (a.event === "confirm_asked") return head + tf("pediu confirmação no comma: {o_que}", { o_que: confirmText({ what: a.new }) });
+  if (a.event === "ssh_keys") return head + tf("chaves SSH: {usuario}", { usuario: a.new });
+  if (a.event === "net_restored") return head + tf("a rede voltou sozinha para {rede}", { rede: a.new });
   return head + t(EVENTS[a.event] || a.event);
 }
 
@@ -1313,7 +1354,6 @@ async function refreshUpdate() {
   $("updMain").textContent = busy ? t("Atualizando…") : t({ install: "Instalar e reiniciar", download: "Baixar atualização", check: "Verificar atualização" }[updStep]);
   $("updMain").disabled = !u.allowed || busy;
   $("updNote").textContent = u.allowed ? "" : t(u.reason);
-  $("rebootBtn").disabled = !u.allowed;
   if (view === "inicio" && !driving) renderGarage();
 }
 
@@ -1388,6 +1428,220 @@ function saveFile(name, data) {
   a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
+
+// ----- the comma's own settings, from the phone (UI-09): each says where it can be changed -----
+const LEVEL_TEXT = { cel: "pelo celular", conf: "confirma no comma", so: "só no comma", trav: "travado" };
+const LEVEL_CLASS = { cel: "tag ok", conf: "tag warn", so: "tag", trav: "tag bad" };
+let commaCtl = null, netState = null, confirmReq = null, confirmTimer = null, netForm = null, netPassword = null;
+async function refreshCommaCtl() {
+  const r = await api("/api/comma");
+  if (r.status !== 200) return;
+  commaCtl = r.data;
+  renderCommaCtl();
+  if (r.data.confirm && !confirmReq) openConfirm(r.data.confirm);
+  if ($("ctlNet").open) refreshNet();
+}
+function levelTag(level) { return el("span", LEVEL_CLASS[level] || "tag", t(LEVEL_TEXT[level] || LEVEL_TEXT.so)); }
+function lockLine(text) { const lk = el("span", "lock"); lk.innerHTML = ICON_LOCK; lk.append(t(text)); return lk; }
+function ctlRow(it) {
+  const row = el("div", "opt"), head = el("div", "head"), text = el("div", "text");
+  const title = el("span", "title", t(it.title)); title.append(" ", levelTag(it.level));
+  text.append(title, el("span", "sum", t(it.description)));
+  if (it.level === "trav") text.append(lockLine(it.blocked));
+  else if (!it.writable && it.reason && it.level !== "so") text.append(lockLine(it.reason));
+  else if (it.level !== "so") text.append(el("span", "small", t(it.effect)));
+  head.append(text);
+  if (it.level === "cel" || it.level === "conf") {
+    const sw = el("button", "switch"); sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", it.value ? "true" : "false");
+    sw.setAttribute("aria-label", t(it.title)); sw.disabled = !it.writable;
+    sw.addEventListener("click", () => commaSet(it, !it.value, sw));
+    head.append(sw);
+  } else head.append(el("span", "small", it.value ? t("ligado") : t("desligado")));
+  row.append(head);
+  if (it.warnings && it.warnings.length) { const ul = el("ul", "warnlist"); it.warnings.forEach((w) => ul.append(el("li", "", t(w)))); row.append(ul); }
+  if (it.key === "AlphaLongitudinalEnabled" && commaCtl.long) {
+    row.append(el("div", "small", t("Libera aqui quando tudo estiver feito:")));
+    const ol = el("ul", "steps"); commaCtl.long.steps.forEach((st) => ol.append(el("li", st.done ? "done" : "", t(st.label)))); row.append(ol);
+  }
+  return row;
+}
+function renderCommaCtl() {
+  const c = commaCtl;
+  $("prefsBox").replaceChildren(...c.items.filter((i) => i.group === "prefs").map(ctlRow));
+  const dev = c.items.filter((i) => i.group === "dev");
+  dev.sort((a, b) => (b.key === "AlphaLongitudinalEnabled") - (a.key === "AlphaLongitudinalEnabled"));  // the locked one first: the owner looks for it
+  const keysRow = el("div", "opt"), kh = el("div", "head"), kt = el("div", "text");
+  const kTitle = el("span", "title", t("chaves SSH")); kTitle.append(" ", levelTag("conf"));
+  kt.append(kTitle, el("span", "sum", c.ssh.user ? tf("GitHub: {usuario}. Só use o seu próprio usuário.", { usuario: c.ssh.user }) : t("Nenhuma. Só use o seu próprio usuário do GitHub.")));
+  if (c.ssh.busy) kt.append(el("span", "small", t("Buscando as chaves no GitHub.")));
+  else if (c.ssh.error) kt.append(el("span", "small", t(c.ssh.error)));
+  kh.append(kt); keysRow.append(kh);
+  const form = el("div", "row"); form.style.gap = "8px";
+  const inp = el("input"); inp.type = "text"; inp.maxLength = 39; inp.autocomplete = "off"; inp.placeholder = t("usuário do GitHub"); inp.setAttribute("aria-label", t("usuário do GitHub")); inp.style.cssText = "flex:1;min-width:0"; inp.value = c.ssh.user || "";
+  const go = el("button", "btn", t("Usar")); go.type = "button"; go.style.cssText = "width:auto;min-height:48px;padding:0 18px;font-size:17px"; go.disabled = !c.ssh.writable;
+  go.addEventListener("click", async () => { const r = await api("/api/comma/ssh", { username: inp.value.trim() }); afterAsk(r); });
+  form.append(inp, go); keysRow.append(form);
+  const devRows = dev.map(ctlRow);
+  const sshAt = dev.findIndex((i) => i.key === "SshEnabled");
+  devRows.splice(sshAt + 1, 0, keysRow);
+  $("devBox").replaceChildren(...devRows);
+  $("deviceBox").replaceChildren(...c.actions.map((a) => {
+    const row = el("div", "opt"), head = el("div", "head"), text = el("div", "text");
+    const title = el("span", "title", t(a.title)); title.append(" ", levelTag("cel"));
+    text.append(title, el("span", "sum", t(a.description)));
+    if (!a.allowed) text.append(lockLine("Desligue o carro."));
+    const b = el("button", "link" + (a.action === "poweroff" ? " danger" : ""), t(a.title)); b.type = "button"; b.disabled = !a.allowed;
+    b.addEventListener("click", async () => {
+      if (!confirm(t(a.description) + "\n\n" + t("Continuar?"))) return;
+      const r = await api("/api/comma/action", { action: a.action });
+      toast(r.status === 200 ? t(r.data.message) : r.data.error || t("Não foi possível."));
+      refreshCommaCtl();
+    });
+    head.append(text, b); row.append(head); return row;
+  }));
+}
+async function commaSet(it, value, sw) {
+  sw.disabled = true;
+  const r = await api("/api/comma/set", { key: it.key, value });
+  sw.disabled = false;
+  if (r.status === 200) { toast(t(r.data.message)); refreshCommaCtl(); }
+  else afterAsk(r);
+}
+function afterAsk(r) {
+  if (r.status === 202 && r.data.confirm) openConfirm(r.data.confirm);
+  else if (r.status === 200 && r.data.message) { toast(t(r.data.message)); refreshCommaCtl(); }
+  else toast(r.data.error || t("Não foi possível."));
+}
+function confirmText(c) {
+  const [verb, ...rest] = String(c.what || "").split(": ");
+  return rest.length ? `${t(verb)}: ${t(rest.join(": "))}` : t(verb);
+}
+function openConfirm(c) {
+  confirmReq = c;
+  $("confirmWhat").textContent = confirmText(c);
+  $("confirmCode").textContent = c.code;
+  $("confirmLeft").textContent = tf("esperando o comma · {s} s", { s: c.seconds });
+  $("confirmScrim").classList.remove("hidden"); $("confirmSheet").classList.remove("hidden");
+  clearTimeout(confirmTimer);
+  confirmTimer = setTimeout(pollConfirm, 1000);
+}
+function closeConfirm() {
+  clearTimeout(confirmTimer); confirmReq = null;
+  $("confirmScrim").classList.add("hidden"); $("confirmSheet").classList.add("hidden");
+}
+async function pollConfirm() {
+  if (!confirmReq) return;
+  const r = await api("/api/comma/confirm?id=" + encodeURIComponent(confirmReq.id));
+  if (!confirmReq) return;
+  if (r.status === 200 && r.data.state === "waiting") {
+    $("confirmLeft").textContent = tf("esperando o comma · {s} s", { s: r.data.seconds });
+    confirmTimer = setTimeout(pollConfirm, 1000);
+    return;
+  }
+  if (r.status === 0) { confirmTimer = setTimeout(pollConfirm, 2000); return; }
+  closeConfirm();
+  toast(r.data.message ? t(r.data.message) : r.data.error || t("Não foi possível."));
+  refreshCommaCtl();
+}
+$("confirmCancel").addEventListener("click", async () => {
+  const c = confirmReq; closeConfirm();
+  if (c) await api("/api/comma/confirm/cancel", { id: c.id });
+});
+
+// ----- the comma's network: every change that can take this phone off the comma goes back by itself -----
+async function refreshNet() {
+  const r = await api("/api/comma/net");
+  if (r.status !== 200) return;
+  netState = r.data; renderNet();
+}
+function netRow(title, sub, right) {
+  const row = el("div", "opt"), head = el("div", "head"), text = el("div", "text");
+  text.append(el("span", "title", title));
+  if (sub) text.append(el("span", "sum", sub));
+  head.append(text); if (right) head.append(right); row.append(head); return row;
+}
+function netSwitch(on, label, onClick) {
+  const sw = el("button", "switch"); sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", on ? "true" : "false");
+  sw.setAttribute("aria-label", label); sw.addEventListener("click", onClick); return sw;
+}
+async function netDo(body) {
+  const r = await api("/api/comma/net", body);
+  toast(r.status === 200 ? t(r.data.message || "Vale agora.") : r.data.error || t("Não foi possível."));
+  netForm = null; refreshNet();
+  return r;
+}
+function netFormBox(kind, ssid, saved) {
+  const box = el("div", "ctl-form");
+  if (kind === "other") {
+    const name = el("input"); name.type = "text"; name.maxLength = 32; name.placeholder = t("nome da rede"); name.setAttribute("aria-label", t("nome da rede"));
+    const pw = el("input"); pw.type = "password"; pw.maxLength = 63; pw.placeholder = t("senha (vazia se aberta)"); pw.setAttribute("aria-label", t("senha"));
+    const go = el("button", "btn", t("Conectar")); go.type = "button";
+    go.addEventListener("click", () => netDo({ op: "connect", ssid: name.value, password: pw.value }));
+    box.append(name, pw, go); return box;
+  }
+  if (kind === "join") {
+    const pw = el("input"); pw.type = "password"; pw.maxLength = 63; pw.placeholder = saved ? t("senha (vazia para usar a salva)") : t("senha"); pw.setAttribute("aria-label", t("senha"));
+    const go = el("button", "btn", t("Conectar")); go.type = "button";
+    go.addEventListener("click", () => netDo({ op: "connect", ssid, password: pw.value }));
+    box.append(pw, go);
+    if (saved) { const f = el("button", "link danger", t("Esquecer esta rede")); f.type = "button"; f.addEventListener("click", () => netDo({ op: "forget", ssid })); box.append(f); }
+    return box;
+  }
+  const pw = el("input"); pw.type = "text"; pw.maxLength = 63; pw.placeholder = t("nova senha, 8 a 63 caracteres"); pw.setAttribute("aria-label", t("nova senha"));
+  const go = el("button", "btn", t("Trocar a senha")); go.type = "button";
+  go.addEventListener("click", () => netDo({ op: "tethering_password", password: pw.value }));
+  box.append(pw, go); return box;
+}
+function renderNet() {
+  const n = netState, box = $("netBox"), out = [];
+  if (n.guard > 0) {
+    const g = el("div", "card warn"); g.append(el("div", "desc", tf("Se este celular não falar com o comma em {s} s, ele volta para a rede de antes.", { s: n.guard }))); out.push(g);
+  }
+  if (!n.wifi) out.push(el("div", "desc", t(n.error || "A rede do comma não respondeu agora.")));
+  else {
+    const w = n.wifi;
+    out.push(el("div", "label", t("Wi-Fi")));
+    out.push(netRow(w.ssid || t("sem Wi-Fi"), w.ssid ? tf("conectado · {ip}", { ip: w.ip || "—" }) : (w.connecting ? tf("conectando a {rede}…", { rede: w.connecting }) : "")));
+    for (const net of w.networks.filter((x) => x.ssid !== w.ssid)) {
+      const b = el("button", "link", t("Conectar")); b.type = "button";
+      b.addEventListener("click", () => { netForm = netForm === "join:" + net.ssid ? null : "join:" + net.ssid; renderNet(); });
+      const row = netRow(net.ssid, [net.saved ? t("salva") : "", net.secured ? t("com senha") : t("aberta"), `${net.strength}%`].filter(Boolean).join(" · "), b);
+      if (netForm === "join:" + net.ssid) row.append(netFormBox("join", net.ssid, net.saved));
+      out.push(row);
+    }
+    const other = el("button", "link", t("Outra rede…")); other.type = "button";
+    other.addEventListener("click", () => { netForm = netForm === "other" ? null : "other"; renderNet(); });
+    out.push(other);
+    if (netForm === "other") out.push(netFormBox("other"));
+    out.push(el("div", "label", t("Hotspot do comma")));
+    out.push(netRow(t("Hotspot"), t("O celular entra nele e abre lizpilot.local."),
+      netSwitch(w.tethering, t("Hotspot"), () => netDo({ op: "tethering", on: !w.tethering }))));
+    const reveal = el("button", "link", netPassword ? t("Esconder") : t("Mostrar")); reveal.type = "button";
+    reveal.addEventListener("click", async () => {
+      if (netPassword) { netPassword = null; renderNet(); return; }
+      const r = await api("/api/comma/net", { op: "reveal" }); if (r.status === 200) { netPassword = r.data.password; renderNet(); }
+    });
+    const pwRow = netRow(t("Senha"), netPassword || "••••••••", reveal);
+    const change = el("button", "link", t("Trocar")); change.type = "button";
+    change.addEventListener("click", () => { netForm = netForm === "password" ? null : "password"; renderNet(); });
+    pwRow.querySelector(".head").append(change);
+    if (netForm === "password") pwRow.append(netFormBox("password"));
+    out.push(pwRow);
+    out.push(el("div", "label", t("Uso de dados")));
+    const pick = el("div", "pick three"); pick.style.margin = "2px 0 8px";
+    (n.metered_choices || []).forEach((c, i) => {
+      const b = el("button", "", t(c)); b.type = "button"; b.setAttribute("aria-pressed", i === w.metered ? "true" : "false");
+      b.addEventListener("click", () => { if (i !== w.metered) netDo({ op: "metered", value: i }); });
+      pick.append(b);
+    });
+    out.push(pick);
+  }
+  out.push(netRow(t("Roaming"), t("Dados do chip fora do país."), netSwitch(n.gsm.roaming, t("Roaming"), () => netDo({ op: "roaming", value: !n.gsm.roaming }))));
+  out.push(netRow(t("Chip medido"), t("Sem envios grandes pelo chip."), netSwitch(n.gsm.metered, t("Chip medido"), () => netDo({ op: "gsm_metered", value: !n.gsm.metered }))));
+  out.push(el("div", "small", t("Só com o carro em P ou desligado. Trocar de rede ou ligar o hotspot pode tirar este celular do comma: se ele não voltar em 2 min, tudo volta como estava.")));
+  box.replaceChildren(...out);
+}
+$("ctlNet").addEventListener("toggle", () => { if ($("ctlNet").open) refreshNet(); });
 
 // ----- the fixed address: lizpilot.local, answered by the comma on the local network -----
 let fixedProbe = null;
@@ -1548,7 +1802,6 @@ $("addReasonBtn").addEventListener("click", async () => {
   if (res.status === 200) $("newReason").value = "";
   refreshMarks();
 });
-$("rebootBtn").addEventListener("click", () => { if (confirm(t("Reiniciar o comma agora? Leva alguns minutos para voltar."))) updateAction("reboot"); });
 $("updMain").addEventListener("click", () => {
   if (updStep === "install") { if (confirm(t("Instalar agora? O comma reinicia e compila: pode levar alguns minutos."))) updateAction("install"); }
   else if (updStep) updateAction(updStep);

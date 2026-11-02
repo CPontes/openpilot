@@ -6,6 +6,7 @@ openpilot/selfdrive/hexa/phone.py; this file only parses HTTP and calls PanelBac
 """
 import gzip
 import json
+import re
 import math
 import secrets
 import threading
@@ -16,6 +17,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs
 
+from openpilot.selfdrive.hexa import comma_ctl, comma_net
+from openpilot.selfdrive.hexa import confirm as hexa_confirm
 from openpilot.selfdrive.hexa import i18n
 from openpilot.selfdrive.hexa import live as hexa_live
 from openpilot.selfdrive.hexa import marks as hexa_marks
@@ -60,6 +63,9 @@ ERRORS_EVERY_S = 30.
 CLIP_BEFORE_S = 10.  # the clip of a mark starts this long before it
 CLIP_TICKET_S = 600.  # a clip link works this long, for that clip only
 FIXED_NONCE_S = 60.  # a same-comma check for lizpilot.local works this long, once
+NET_GUARD_MIN_S = 10.  # the phone counts as back on the new network only after this long
+GITHUB_USER = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")
+SSH_FETCH_TIMEOUT = 10.
 MAX_FIXED_NONCES = 8
 CLIP_VIDEO = "qcamera.ts"  # the light video loggerd keeps for each minute
 SEGMENT_S = 60.
@@ -77,6 +83,18 @@ SECURITY_HEADERS = {
   "Content-Security-Policy": "; ".join(("default-src 'self'", "script-src 'self' 'unsafe-inline'", "style-src 'self' 'unsafe-inline'",
                                          "img-src 'self' data:", f"connect-src 'self' http://{hexa_mdns.NAME}:{phone.PORT}")),
 }
+
+
+def fetch_github_keys(username: str) -> str:
+  """The public SSH keys of a GitHub user, as the comma screen fetches them (selfdrive/ui/widgets/ssh_key.py)."""
+  import requests
+  r = requests.get(f"https://github.com/{username}.keys", timeout=SSH_FETCH_TIMEOUT)
+  if r.status_code == 404:
+    raise ValueError("Usuário do GitHub não encontrado.")
+  r.raise_for_status()
+  if not r.text.strip():
+    raise ValueError("Esse usuário não tem chaves SSH no GitHub.")
+  return r.text
 
 
 class PanelBackend:
@@ -118,6 +136,11 @@ class PanelBackend:
     self._clips: dict[str, dict] = {}  # ticket -> {expires, files, start, name}
     self._fixed_nonces: dict[str, tuple] = {}  # one-time code -> (expiry, answer, phone), to prove lizpilot.local is this comma
     self.fixed_status: Callable[[], dict] = hexa_mdns.status
+    self.net = comma_net.CommaNetwork()
+    self._net_guard: dict | None = None  # {snap, token, start, deadline}: go back if the phone doesn't come back
+    self.guard_thread = True  # tests check the guard by hand
+    self._ssh_job = {"busy": False, "error": "", "user": ""}
+    self.fetch_ssh_keys: Callable[[str], str] = fetch_github_keys
 
   def vehicle_state(self) -> VehicleState:
     with self._vs_lock:
@@ -166,7 +189,10 @@ class PanelBackend:
 
   def authenticate(self, token: str | None) -> dict | None:
     with self.lock:
-      return phone.find_token(self._tokens(), token)
+      who = phone.find_token(self._tokens(), token)
+    if who is not None and self._net_guard is not None:
+      self._net_back(who)
+    return who
 
   def pair(self, pin: str, name: str) -> tuple[int, dict]:
     with self.lock:
@@ -215,7 +241,7 @@ class PanelBackend:
         "vehicle": {"onroad": vs.onroad, "parked": vs.parked, "standstill": vs.standstill, "engaged": vs.engaged},
         "groups": groups,
         "audit": list(reversed(audit)),
-        "titles": {o.key: o.title for o in OPTIONS},
+        "titles": {**{i.key: i.title for i in comma_ctl.ITEMS}, **{o.key: o.title for o in OPTIONS}},
         "profiles": self.store.get(PROFILES_PARAM) or {},
         # what a speed bump below the Haval ACC's 30 km/h would need: shown in the bump editor, changes nothing
         "longitudinal": {"enabled": bool(self.store.get_bool("AlphaLongitudinalEnabled")), "calibrated": LONG_CALIBRATED},
@@ -245,6 +271,284 @@ class PanelBackend:
       self._audit({"event": "set", "who": who.get("name", ""), "key": key, "old": old, "new": value})
       msg = "Vale na próxima partida do carro." if opt.restart_needed else "Vale no próximo engate."
       return 200, {"ok": True, "message": msg}
+
+  # *** the comma's own settings, from the phone (UI-09) ***
+
+  def _release(self) -> bool:
+    return bool(self.store.get_bool("IsReleaseBranch"))
+
+  def _confirm_pending(self, who: dict) -> dict | None:
+    req = hexa_confirm.parse(self.store.get(hexa_confirm.REQUEST_PARAM))
+    if req is None or req.get("token") != who.get("id") or not hexa_confirm.fresh(req, self.mono()):
+      return None
+    return {"id": req["id"], "code": req["code"], "seconds": hexa_confirm.seconds_left(req, self.mono()), "what": req["label"]}
+
+  def comma_state(self, who: dict) -> dict:
+    vs = self.vehicle_state()
+    release = self._release()
+    items = []
+    for it in comma_ctl.ITEMS:
+      if not comma_ctl.visible(it, release):
+        continue
+      ok, reason = comma_ctl.can_change(it, vs, self.store)
+      items.append({"key": it.key, "group": it.group, "title": it.title, "description": it.description, "level": it.level,
+                    "value": bool(self.store.get_bool(it.key)), "writable": ok, "reason": reason, "effect": comma_ctl.effect(it),
+                    "warnings": list(it.warnings), "blocked": it.blocked})
+    off = not vs.onroad
+    return {"groups": [list(g) for g in comma_ctl.GROUPS], "items": items, "onroad": vs.onroad,
+            "actions": [{"action": a, "title": t, "description": d, "allowed": off} for a, t, d in comma_ctl.DEVICE_ACTIONS],
+            "ssh": {"user": self.store.get(comma_ctl.SSH_USER) or "", "busy": self._ssh_job["busy"], "error": self._ssh_job["error"],
+                    "writable": comma_ctl.can_change(comma_ctl.get_item("SshEnabled"), vs, self.store)[0]},
+            "long": {"steps": [{"key": k, "label": label, "done": k == "calibrado" and LONG_CALIBRATED} for k, label in comma_ctl.LONG_STEPS]},
+            "confirm": self._confirm_pending(who)}
+
+  def _ask_comma(self, who: dict, action: dict, verb: str, what: str, translate: bool = True) -> tuple[int, dict]:
+    req = hexa_confirm.new_request(action, f"{verb}: {what}", who.get("name", ""), now=self.mono())
+    req.update(token=who.get("id"), verb=verb, what=what, translate=translate)
+    with self.lock:
+      self.store.remove(hexa_confirm.ANSWER_PARAM)
+      self.store.put(hexa_confirm.REQUEST_PARAM, req)
+      self._audit({"event": "confirm_asked", "who": who.get("name", ""), "new": req["label"]})
+    return 202, {"confirm": {"id": req["id"], "code": req["code"], "seconds": int(hexa_confirm.CONFIRM_S), "what": req["label"]},
+                 "message": "Confirme na tela do comma."}
+
+  def comma_set(self, who: dict, key: str, value) -> tuple[int, dict]:
+    it = comma_ctl.get_item(key)
+    if it is None or not comma_ctl.visible(it, self._release()):
+      return 404, {"error": "Ajuste desconhecido."}
+    if not isinstance(value, bool):
+      return 400, {"error": "Valor inválido."}
+    ok, reason = comma_ctl.can_change(it, self.vehicle_state(), self.store)
+    if not ok:
+      return 409, {"error": reason}
+    if it.level == "conf":
+      return self._ask_comma(who, {"kind": "set", "key": key, "value": value}, "ligar" if value else "desligar", it.title)
+    with self.lock:
+      old = bool(self.store.get_bool(key))
+      comma_ctl.apply(it, value, self.store)
+      self._audit({"event": "comma_set", "who": who.get("name", ""), "key": key, "old": old, "new": value})
+    return 200, {"ok": True, "message": comma_ctl.effect(it)}
+
+  def comma_ssh(self, who: dict, username: str) -> tuple[int, dict]:
+    username = str(username or "").strip()
+    if username and not GITHUB_USER.match(username):
+      return 400, {"error": "Usuário do GitHub inválido."}
+    if not comma_ctl.can_change(comma_ctl.get_item("SshEnabled"), self.vehicle_state(), self.store)[0]:
+      return 409, {"error": "Só com o carro em P ou desligado."}
+    if username:
+      return self._ask_comma(who, {"kind": "ssh_user", "username": username}, "chaves SSH do GitHub", username, translate=False)
+    return self._ask_comma(who, {"kind": "ssh_user", "username": ""}, "apagar", "chaves SSH")
+
+  def comma_confirm(self, who: dict, req_id: str) -> tuple[int, dict]:
+    """Polled by the phone that asked: waiting, done (and applied now) or expired."""
+    with self.lock:
+      req = hexa_confirm.parse(self.store.get(hexa_confirm.REQUEST_PARAM))
+      if req is None or req.get("id") != req_id or req.get("token") != who.get("id"):
+        return 404, {"state": "gone", "error": "Pedido não encontrado."}
+      answer = self.store.get(hexa_confirm.ANSWER_PARAM)
+      if not hexa_confirm.confirmed(req, answer, self.mono()):
+        if hexa_confirm.fresh(req, self.mono()):
+          return 200, {"state": "waiting", "seconds": hexa_confirm.seconds_left(req, self.mono())}
+        self.store.remove(hexa_confirm.REQUEST_PARAM)
+        self.store.remove(hexa_confirm.ANSWER_PARAM)
+        return 200, {"state": "expired", "message": "Ninguém confirmou no comma. Nada mudou."}
+      self.store.remove(hexa_confirm.REQUEST_PARAM)
+      self.store.remove(hexa_confirm.ANSWER_PARAM)
+    return self._confirmed(who, req["action"])
+
+  def _confirmed(self, who: dict, action: dict) -> tuple[int, dict]:
+    vs = self.vehicle_state()
+    if action.get("kind") == "set":
+      it = comma_ctl.get_item(str(action.get("key", "")))
+      if it is None:
+        return 404, {"state": "gone", "error": "Ajuste desconhecido."}
+      ok, reason = comma_ctl.can_change(it, vs, self.store)  # the car may have moved in the meantime
+      if not ok:
+        return 409, {"state": "refused", "error": reason}
+      with self.lock:
+        old = bool(self.store.get_bool(it.key))
+        comma_ctl.apply(it, bool(action.get("value")), self.store)
+        self._audit({"event": "comma_set", "who": who.get("name", ""), "key": it.key, "old": old, "new": bool(action.get("value")),
+                     "confirmed": True})
+      return 200, {"state": "done", "message": comma_ctl.effect(it)}
+    if action.get("kind") == "ssh_user":
+      username = str(action.get("username", ""))
+      with self.lock:
+        self._audit({"event": "ssh_keys", "who": who.get("name", ""), "new": username or "-", "confirmed": True})
+        if not username:
+          self.store.remove(comma_ctl.SSH_USER)
+          self.store.remove(comma_ctl.SSH_KEYS)
+          return 200, {"state": "done", "message": "Chaves SSH apagadas."}
+        self._ssh_job = {"busy": True, "error": "", "user": username}
+      self._spawn(lambda: self._ssh_fetch(username))
+      return 200, {"state": "done", "message": "Buscando as chaves no GitHub."}
+    return 400, {"state": "gone", "error": "Pedido inválido."}
+
+  def _ssh_fetch(self, username: str) -> None:
+    error = ""
+    try:
+      keys = self.fetch_ssh_keys(username)
+      with self.lock:
+        self.store.put(comma_ctl.SSH_USER, username)
+        self.store.put(comma_ctl.SSH_KEYS, keys)
+    except Exception as e:
+      error = str(e)[:120] or "Não foi possível buscar as chaves."
+    self._ssh_job = {"busy": False, "error": error, "user": username}
+
+  def comma_cancel(self, who: dict, req_id: str) -> tuple[int, dict]:
+    with self.lock:
+      req = hexa_confirm.parse(self.store.get(hexa_confirm.REQUEST_PARAM))
+      if req is not None and req.get("id") == req_id and req.get("token") == who.get("id"):
+        self.store.remove(hexa_confirm.REQUEST_PARAM)
+        self.store.remove(hexa_confirm.ANSWER_PARAM)
+    return 200, {"ok": True}
+
+  def comma_action(self, who: dict, action: str) -> tuple[int, dict]:
+    if action not in {a for a, _, _ in comma_ctl.DEVICE_ACTIONS}:
+      return 404, {"error": "Ação desconhecida."}
+    if self.vehicle_state().onroad:
+      return 409, {"error": "Desligue o carro."}
+    with self.lock:
+      self._audit({"event": "comma_action", "who": who.get("name", ""), "new": action})
+      if action == "reboot":
+        self.store.put_bool("DoReboot", True)
+        return 200, {"ok": True, "message": "Reiniciando. O painel volta sozinho em cerca de 1 minuto."}
+      if action == "poweroff":
+        self.store.put_bool("DoShutdown", True)
+        return 200, {"ok": True, "message": "Desligando o comma."}
+      for key in comma_ctl.RECALIBRATE_REMOVES:
+        self.store.remove(key)
+      self.store.put_bool("OnroadCycleRequested", True)
+    return 200, {"ok": True, "message": "Calibração apagada. O comma recalibra na próxima viagem."}
+
+  # *** the comma's network, with a way back ***
+
+  def comma_net_state(self) -> tuple[int, dict]:
+    gsm = {"roaming": bool(self.store.get_bool("GsmRoaming")), "metered": bool(self.store.get_bool("GsmMetered"))}
+    guard = self._net_guard
+    left = max(0, int(guard["deadline"] - self.mono())) if guard else 0
+    try:
+      st = self.net.state()
+    except Exception:
+      return 200, {"wifi": None, "gsm": gsm, "guard": left, "error": "A rede do comma não respondeu agora."}
+    st["networks"] = [n for n in st["networks"] if not n["tethering"]]  # the comma's own hotspot isn't a network to join
+    return 200, {"wifi": st, "gsm": gsm, "guard": left, "metered_choices": list(comma_net.METERED)}
+
+  def _net_writable(self) -> tuple[bool, str]:
+    vs = self.vehicle_state()
+    if vs.onroad and not (vs.parked and vs.standstill and not vs.engaged):
+      return False, "Só com o carro em P ou desligado."
+    return True, ""
+
+  def _guard(self, who: dict) -> None:
+    """Before a change that can take this phone off the comma: remember where to go back."""
+    snap = self.net.snapshot()
+    now = self.mono()
+    self._net_guard = {"snap": snap, "token": who.get("id"), "start": now, "deadline": now + comma_net.GUARD_S}
+    if self.guard_thread:
+      threading.Thread(target=self._guard_loop, daemon=True).start()
+
+  def _guard_loop(self) -> None:
+    while self._net_guard is not None:
+      time.sleep(1.)
+      self.check_net_guard()
+
+  def check_net_guard(self) -> None:
+    guard = self._net_guard
+    if guard is None or self.mono() < guard["deadline"]:
+      return
+    self._net_guard = None
+    from openpilot.common.swaglog import cloudlog
+    cloudlog.warning("hexaweb: the phone didn't come back after a network change, going back")
+    try:
+      self.net.restore(guard["snap"])
+    except Exception:
+      cloudlog.exception("hexaweb: going back to the previous network failed")
+    with self.lock:
+      self._audit({"event": "net_restored", "new": guard["snap"].get("ssid") or ("hotspot" if guard["snap"].get("tethering") else "-")})
+
+  def _net_back(self, who: dict) -> None:
+    """The same phone reached the comma after the network changed: keep the new network."""
+    guard = self._net_guard
+    if guard is None or who.get("id") != guard["token"] or self.mono() - guard["start"] < NET_GUARD_MIN_S:
+      return
+    try:
+      changed = self.net.snapshot() != guard["snap"]
+    except Exception:
+      return
+    if changed:
+      self._net_guard = None
+
+  def comma_net(self, who: dict, body: dict) -> tuple[int, dict]:
+    op = str(body.get("op", ""))
+    ok, reason = self._net_writable()
+    if not ok:
+      return 409, {"error": reason}
+    try:
+      if op == "roaming" or op == "gsm_metered":
+        value = body.get("value")
+        if not isinstance(value, bool):
+          return 400, {"error": "Valor inválido."}
+        with self.lock:
+          self.store.put_bool("GsmRoaming" if op == "roaming" else "GsmMetered", value)
+          self._audit({"event": "net", "who": who.get("name", ""), "key": op, "new": value})
+        return 200, {"ok": True, "message": "Vale agora."}
+      if op == "metered":
+        value = body.get("value")
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value < len(comma_net.METERED):
+          return 400, {"error": "Valor inválido."}
+        self.net.set_metered(value)
+        return 200, {"ok": True, "message": "Vale agora."}
+      if op == "reveal":
+        with self.lock:
+          self._audit({"event": "net", "who": who.get("name", ""), "key": "reveal"})
+        return 200, {"password": self.net.tethering_password()}
+      if op == "connect":
+        ssid, password = body.get("ssid"), body.get("password", "")
+        if not isinstance(ssid, str) or not 0 < len(ssid.encode()) <= 32 or not isinstance(password, str) or len(password) > 63 \
+           or (password and len(password) < 8):
+          return 400, {"error": "Nome ou senha da rede inválidos."}
+        self._guard(who)
+        self.net.connect(ssid, password)
+        self._net_audit(who, op, ssid)
+        return 200, {"ok": True, "message": "Conectando. Se este celular não voltar a falar com o comma em 2 min, ele volta para a rede de antes."}
+      if op == "tethering":
+        on = body.get("on")
+        if not isinstance(on, bool):
+          return 400, {"error": "Valor inválido."}
+        self._guard(who)
+        self.net.set_tethering(on)
+        self._net_audit(who, op, on)
+        if on:
+          return 200, {"ok": True, "message": "Hotspot ligado: entre nele com este celular e abra lizpilot.local. " +
+                                              "Se este celular não voltar a falar com o comma em 2 min, tudo volta como estava."}
+        return 200, {"ok": True, "message": "Hotspot desligado. Se este celular não voltar a falar com o comma em 2 min, tudo volta como estava."}
+      if op == "tethering_password":
+        pw = body.get("password")
+        if not isinstance(pw, str) or not 8 <= len(pw) <= 63:
+          return 400, {"error": "A senha precisa de 8 a 63 caracteres."}
+        self._guard(who)
+        self.net.set_tethering_password(pw)
+        self._net_audit(who, op, "")
+        return 200, {"ok": True, "message": "Senha trocada. Quem estiver no hotspot precisa entrar de novo."}
+      if op == "forget":
+        ssid = body.get("ssid")
+        if not isinstance(ssid, str) or not ssid:
+          return 400, {"error": "Nome da rede inválido."}
+        if ssid == self.net.snapshot().get("ssid"):
+          return 409, {"error": "É a rede em uso. Conecte em outra antes de esquecer esta."}
+        self.net.forget(ssid)
+        self._net_audit(who, op, ssid)
+        return 200, {"ok": True, "message": "Rede esquecida."}
+    except Exception:
+      from openpilot.common.swaglog import cloudlog
+      cloudlog.exception("hexaweb: network change failed")
+      return 503, {"error": "A rede do comma não respondeu agora."}
+    return 404, {"error": "Ação desconhecida."}
+
+  def _net_audit(self, who: dict, op: str, new) -> None:
+    with self.lock:
+      self._audit({"event": "net", "who": who.get("name", ""), "key": op, "new": new})
 
   # *** lizpilot.local is this comma: anyone on the network can answer for a name, so the page checks ***
 
@@ -956,6 +1260,17 @@ def make_handler(backend: PanelBackend):
       elif path == "/api/radars/export":
         if self._who() is not None:
           self._json(200, backend.radars_export())
+      elif path == "/api/comma":
+        who = self._who()
+        if who is not None:
+          self._json(200, backend.comma_state(who))
+      elif path == "/api/comma/net":
+        if self._who() is not None:
+          self._json(*backend.comma_net_state())
+      elif path == "/api/comma/confirm":
+        who = self._who()
+        if who is not None:
+          self._json(*backend.comma_confirm(who, (parse_qs(query).get("id") or [""])[0]))
       elif path == "/api/fixed/nonce":  # before pairing: carries no secret and opens nothing
         self._json(200, backend.fixed_nonce(self.client_address[0]))
       elif path == "/api/fixed/check":  # asked by a page served by address: it may read only this yes or no
@@ -1023,6 +1338,11 @@ def make_handler(backend: PanelBackend):
         "/api/profiles/delete": lambda who, b: backend.profile_delete(who, str(b.get("name", ""))),
         "/api/update": lambda who, b: backend.update_action(who, str(b.get("action", "")), str(b.get("branch", ""))),
         "/api/phones/revoke": lambda who, b: backend.revoke_phone(who, str(b.get("id", ""))),
+        "/api/comma/set": lambda who, b: backend.comma_set(who, str(b.get("key", "")), b.get("value")),
+        "/api/comma/action": lambda who, b: backend.comma_action(who, str(b.get("action", ""))),
+        "/api/comma/net": lambda who, b: backend.comma_net(who, b),
+        "/api/comma/ssh": lambda who, b: backend.comma_ssh(who, b.get("username", "")),
+        "/api/comma/confirm/cancel": lambda who, b: backend.comma_cancel(who, str(b.get("id", ""))),
       }
       if path not in routes and path != "/api/logout":
         self._json(404, {"error": "Não encontrado."})

@@ -9,15 +9,15 @@ import re
 import sys
 from pathlib import Path
 
-from openpilot.selfdrive.hexa import i18n, live, marks, options
+from openpilot.selfdrive.hexa import comma_ctl, comma_net, i18n, live, marks, options
 
 HEXA = Path(__file__).parent
 ROOT = HEXA.parents[1]  # openpilot/openpilot
-PY_SOURCES = [ROOT / "system/hexaweb/hexaweb.py", HEXA / "phone.py", HEXA / "updates.py", HEXA / "marks.py",
+PY_SOURCES = [ROOT / "system/hexaweb/hexaweb.py", HEXA / "phone.py", HEXA / "updates.py", HEXA / "marks.py", HEXA / "comma_ctl.py",
               ROOT / "selfdrive/ui/mici/layouts/settings/hexa.py"]
 PAGES = [ROOT / "system/hexaweb/static" / n for n in ("index.html", "viagens.html", "replay.html", "lp-logic.js")]
 # objects in the pages whose values are passed through t() by name
-PAGE_TABLES = ("UPDATE_ACTIONS", "EVENTS", "RADAR_ACTIONS", "RESUME", "SIDES", "SIDE_CHIPS", "POINT", "KINDS")
+PAGE_TABLES = ("UPDATE_ACTIONS", "EVENTS", "RADAR_ACTIONS", "RESUME", "SIDES", "SIDE_CHIPS", "POINT", "KINDS", "COMMA_ACTIONS", "NET_ACTIONS", "LEVEL_TEXT")
 FIELD = re.compile(r"\{[^{}]*\}")
 PT = re.compile(r"[a-zà-ú]", re.I)
 
@@ -71,7 +71,21 @@ def option_texts() -> set[str]:
     if o.blocked:
       out.add(o.blocked)
   out |= {label for _, label in marks.DEFAULT_REASONS}
+  out |= comma_ctl_texts()
   out |= set(live.EVENT_TEXT.values())
+  return out
+
+
+def comma_ctl_texts() -> set[str]:
+  """The comma's own settings as the phone and the comma's confirmation show them (comma_ctl.py, confirm on the comma)."""
+  out = {title for _, title in comma_ctl.GROUPS} | {label for _, label in comma_ctl.LONG_STEPS} | set(comma_net.METERED)
+  out |= set(comma_ctl.CONFIRM_VERBS)
+  for it in comma_ctl.ITEMS:
+    out |= {it.title, it.description, *it.warnings, comma_ctl.effect(it)}
+    if it.blocked:
+      out.add(it.blocked)
+  for _, title, text in comma_ctl.DEVICE_ACTIONS:
+    out |= {title, text}
   return out
 
 

@@ -7,6 +7,8 @@ import urllib.request
 
 import pytest
 
+from openpilot.selfdrive.hexa import comma_net as comma_net_mod
+from openpilot.selfdrive.hexa import confirm as confirm_mod
 from openpilot.selfdrive.hexa import marks, phone
 from openpilot.selfdrive.hexa.phone import VehicleState
 from openpilot.system.hexaweb import hexaweb
@@ -1095,3 +1097,212 @@ def test_a_profile_never_changes_anything_with_the_car_moving(panel):
   panel.vs = VehicleState(onroad=True, parked=False, standstill=False, engaged=True)
   status, _ = panel.json("/api/options/import", {"options": profile, "apply": True}, token=token)
   assert status == 409 and panel.store.get_bool("LaneOffsetEnabled") is True
+
+
+# *** the comma's own settings, from the phone (UI-09) ***
+
+def test_comma_state_lists_levels_and_the_locked_longitudinal(panel):
+  token = panel.pair()
+  status, body = panel.json("/api/comma", token=token)
+  assert status == 200 and [g[0] for g in body["groups"]] == ["prefs", "dev"]
+  items = {i["key"]: i for i in body["items"]}
+  assert items["AlphaLongitudinalEnabled"]["level"] == "trav" and items["AlphaLongitudinalEnabled"]["writable"] is False
+  assert items["IsMetric"]["writable"] is True and items["IsMetric"]["effect"] == "Vale agora."
+  assert [s["key"] for s in body["long"]["steps"]] == ["sombra", "aeb", "calibrado", "testes", "pista"]
+  assert {a["action"] for a in body["actions"]} == {"reboot", "poweroff", "recalibrate"}
+  panel.store.put_bool("IsReleaseBranch", True)
+  keys = {i["key"] for i in panel.json("/api/comma", token=token)[1]["items"]}
+  assert "AlphaLongitudinalEnabled" not in keys and "SshEnabled" in keys
+
+
+def test_a_phone_level_setting_applies_at_once_and_is_audited(panel):
+  token = panel.pair()
+  assert panel.json("/api/comma/set", {"key": "IsMetric", "value": True}, token=token) == (200, {"ok": True, "message": "Vale agora."})
+  assert panel.store.get_bool("IsMetric") is True
+  assert panel.store.get(phone.AUDIT_PARAM)[-1]["key"] == "IsMetric"
+  assert panel.json("/api/comma/set", {"key": "IsMetric", "value": "yes"}, token=token)[0] == 400
+  assert panel.json("/api/comma/set", {"key": "AdbEnabled", "value": True}, token=token)[0] == 409  # only on the comma
+  assert panel.json("/api/comma/set", {"key": "AlphaLongitudinalEnabled", "value": True}, token=token)[0] == 409
+  assert panel.json("/api/comma/set", {"key": "Nope", "value": True}, token=token)[0] == 404
+  panel.vs = VehicleState(onroad=True, parked=False, standstill=False, engaged=True)
+  assert panel.json("/api/comma/set", {"key": "IsMetric", "value": False}, token=token)[0] == 409
+  assert panel.store.get_bool("IsMetric") is True
+
+
+def test_ssh_needs_the_driver_at_the_comma(panel):
+  token = panel.pair()
+  status, body = panel.json("/api/comma/set", {"key": "SshEnabled", "value": True}, token=token)
+  assert status == 202 and len(body["confirm"]["code"]) == 4
+  req_id = body["confirm"]["id"]
+  assert not panel.store.get_bool("SshEnabled")
+  stored = panel.store.get(confirm_mod.REQUEST_PARAM)
+  assert stored["code"] == body["confirm"]["code"] and stored["verb"] == "ligar" and stored["what"] == "acesso SSH"
+  assert panel.json(f"/api/comma/confirm?id={req_id}", token=token)[1]["state"] == "waiting"
+  other = panel.pair("outro celular")
+  assert panel.json(f"/api/comma/confirm?id={req_id}", token=other)[0] == 404  # only the phone that asked
+  panel.store.put(confirm_mod.ANSWER_PARAM, "a wrong id")
+  assert panel.json(f"/api/comma/confirm?id={req_id}", token=token)[1]["state"] == "waiting"
+  panel.store.put(confirm_mod.ANSWER_PARAM, req_id)  # the slide on the comma
+  status, body = panel.json(f"/api/comma/confirm?id={req_id}", token=token)
+  assert (status, body["state"]) == (200, "done") and panel.store.get_bool("SshEnabled")
+  assert panel.store.get(confirm_mod.REQUEST_PARAM) is None and panel.store.get(confirm_mod.ANSWER_PARAM) is None
+  assert panel.store.get(phone.AUDIT_PARAM)[-1]["confirmed"] is True
+
+
+def test_a_confirmation_expires_or_is_cancelled(panel):
+  token = panel.pair()
+  req_id = panel.json("/api/comma/set", {"key": "SshEnabled", "value": True}, token=token)[1]["confirm"]["id"]
+  panel.now += confirm_mod.CONFIRM_S + 1
+  panel.store.put(confirm_mod.ANSWER_PARAM, req_id)  # too late
+  assert panel.json(f"/api/comma/confirm?id={req_id}", token=token)[1]["state"] == "expired"
+  assert not panel.store.get_bool("SshEnabled")
+  req_id = panel.json("/api/comma/set", {"key": "SshEnabled", "value": True}, token=token)[1]["confirm"]["id"]
+  assert panel.json("/api/comma/confirm/cancel", {"id": req_id}, token=token)[0] == 200
+  assert panel.store.get(confirm_mod.REQUEST_PARAM) is None
+
+
+def test_a_confirmed_change_is_refused_if_the_car_started_moving(panel):
+  token = panel.pair()
+  req_id = panel.json("/api/comma/set", {"key": "OpenpilotEnabledToggle", "value": False}, token=token)[1]["confirm"]["id"]
+  panel.store.put(confirm_mod.ANSWER_PARAM, req_id)
+  panel.vs = VehicleState(onroad=True, parked=False, standstill=False, engaged=False)
+  status, body = panel.json(f"/api/comma/confirm?id={req_id}", token=token)
+  assert status == 409 and body["state"] == "refused"
+
+
+def test_ssh_keys_from_github_after_the_comma_confirms(panel):
+  token = panel.pair()
+  panel.backend._spawn = lambda job: job()
+  panel.backend.fetch_ssh_keys = lambda user: f"ssh-ed25519 AAAA {user}\n"
+  assert panel.json("/api/comma/ssh", {"username": "bad user!"}, token=token)[0] == 400
+  req_id = panel.json("/api/comma/ssh", {"username": "cpontes"}, token=token)[1]["confirm"]["id"]
+  panel.store.put(confirm_mod.ANSWER_PARAM, req_id)
+  assert panel.json(f"/api/comma/confirm?id={req_id}", token=token)[1]["state"] == "done"
+  assert panel.store.get("GithubUsername") == "cpontes" and "cpontes" in panel.store.get("GithubSshKeys")
+  def fail(user):
+    raise ValueError("Usuário do GitHub não encontrado.")
+  panel.backend.fetch_ssh_keys = fail
+  req_id = panel.json("/api/comma/ssh", {"username": "ghost"}, token=token)[1]["confirm"]["id"]
+  panel.store.put(confirm_mod.ANSWER_PARAM, req_id)
+  panel.json(f"/api/comma/confirm?id={req_id}", token=token)
+  ssh = panel.json("/api/comma", token=token)[1]["ssh"]
+  assert ssh == {"user": "cpontes", "busy": False, "error": "Usuário do GitHub não encontrado.", "writable": True}
+
+
+def test_device_actions_only_with_the_car_off(panel):
+  token = panel.pair()
+  for k in ("CalibrationParams", "LiveTorqueParameters", "LiveParametersV2", "LiveDelay"):
+    panel.store.put(k, "x")
+  assert panel.json("/api/comma/action", {"action": "recalibrate"}, token=token)[0] == 200
+  assert all(panel.store.get(k) is None for k in ("CalibrationParams", "LiveTorqueParameters", "LiveParametersV2", "LiveDelay"))
+  assert panel.store.get_bool("OnroadCycleRequested")
+  panel.vs = VehicleState(onroad=True, parked=True, standstill=True, engaged=False)
+  assert panel.json("/api/comma/action", {"action": "reboot"}, token=token)[0] == 409
+  assert not panel.store.get_bool("DoReboot")
+  panel.vs = VehicleState(onroad=False)
+  assert panel.json("/api/comma/action", {"action": "reboot"}, token=token)[0] == 200 and panel.store.get_bool("DoReboot")
+  assert panel.json("/api/comma/action", {"action": "uninstall"}, token=token)[0] == 404  # never from the phone
+
+
+class FakeNet:
+  def __init__(self):
+    self.ssid, self.tethering, self.calls = "Casa", False, []
+
+  def state(self):
+    return {"ssid": self.ssid, "connecting": None, "ip": "192.168.1.20", "tethering": self.tethering, "metered": 0,
+            "networks": [{"ssid": "Casa", "strength": 80, "secured": True, "saved": True, "tethering": False},
+                         {"ssid": "weedle-abcd", "strength": 100, "secured": True, "saved": True, "tethering": True}]}
+
+  def snapshot(self):
+    return {"ssid": self.ssid, "tethering": self.tethering}
+
+  def restore(self, snap):
+    self.calls.append(("restore", snap))
+    self.ssid, self.tethering = snap["ssid"], snap["tethering"]
+
+  def connect(self, ssid, password):
+    self.calls.append(("connect", ssid, password))
+    self.ssid = ssid
+
+  def set_tethering(self, on):
+    self.calls.append(("tethering", on))
+    self.tethering = on
+
+  def set_tethering_password(self, pw):
+    self.calls.append(("password", pw))
+
+  def tethering_password(self):
+    return "segredo123"
+
+  def set_metered(self, v):
+    self.calls.append(("metered", v))
+
+  def forget(self, ssid):
+    self.calls.append(("forget", ssid))
+
+
+def test_network_state_hides_the_comma_own_hotspot(panel):
+  token = panel.pair()
+  panel.backend.net = FakeNet()
+  status, body = panel.json("/api/comma/net", token=token)
+  assert status == 200 and [n["ssid"] for n in body["wifi"]["networks"]] == ["Casa"] and body["guard"] == 0
+  assert body["gsm"] == {"roaming": False, "metered": False}
+
+
+def test_a_network_change_goes_back_if_the_phone_doesnt_return(panel):
+  token = panel.pair()
+  net = panel.backend.net = FakeNet()
+  panel.backend.guard_thread = False
+  assert panel.json("/api/comma/net", {"op": "connect", "ssid": "Trabalho", "password": "short"}, token=token)[0] == 400
+  assert panel.json("/api/comma/net", {"op": "connect", "ssid": "Trabalho", "password": "senha-boa"}, token=token)[0] == 200
+  assert net.ssid == "Trabalho" and panel.json("/api/comma/net", token=token)[1]["guard"] == 120
+  panel.now += comma_net_mod.GUARD_S
+  panel.backend.check_net_guard()
+  assert net.calls[-1] == ("restore", {"ssid": "Casa", "tethering": False}) and net.ssid == "Casa"
+  assert panel.store.get(phone.AUDIT_PARAM)[-1]["event"] == "net_restored"
+
+
+def test_the_same_phone_coming_back_keeps_the_new_network(panel):
+  token = panel.pair()
+  other = panel.pair("outro")
+  net = panel.backend.net = FakeNet()
+  panel.backend.guard_thread = False
+  panel.json("/api/comma/net", {"op": "tethering", "on": True}, token=token)
+  panel.json("/api/state", token=token)  # right away, still on the old network: not back yet
+  panel.now += hexaweb.NET_GUARD_MIN_S
+  panel.json("/api/state", token=other)  # another phone doesn't count
+  assert panel.backend._net_guard is not None
+  panel.json("/api/state", token=token)
+  assert panel.backend._net_guard is None
+  panel.now += comma_net_mod.GUARD_S
+  panel.backend.check_net_guard()
+  assert net.tethering is True and not any(c[0] == "restore" for c in net.calls)
+
+
+def test_network_rules(panel):
+  token = panel.pair()
+  net = panel.backend.net = FakeNet()
+  panel.backend.guard_thread = False
+  assert panel.json("/api/comma/net", {"op": "reveal"}, token=token) == (200, {"password": "segredo123"})
+  assert panel.json("/api/comma/net", {"op": "tethering_password", "password": "1234567"}, token=token)[0] == 400
+  assert panel.json("/api/comma/net", {"op": "forget", "ssid": "Casa"}, token=token)[0] == 409  # the one in use
+  assert panel.json("/api/comma/net", {"op": "metered", "value": 3}, token=token)[0] == 400
+  assert panel.json("/api/comma/net", {"op": "metered", "value": 1}, token=token)[0] == 200 and net.calls[-1] == ("metered", 1)
+  assert panel.json("/api/comma/net", {"op": "roaming", "value": True}, token=token)[0] == 200 and panel.store.get_bool("GsmRoaming")
+  assert panel.json("/api/comma/net", {"op": "nope"}, token=token)[0] == 404
+  panel.vs = VehicleState(onroad=True, parked=False, standstill=False, engaged=False)
+  assert panel.json("/api/comma/net", {"op": "tethering", "on": True}, token=token)[0] == 409 and net.tethering is False
+
+
+def test_a_dead_network_service_doesnt_break_the_panel(panel):
+  token = panel.pair()
+  class Dead(FakeNet):
+    def state(self):
+      raise RuntimeError("no dbus")
+    def set_tethering(self, on):
+      raise RuntimeError("no dbus")
+  panel.backend.net = Dead()
+  panel.backend.guard_thread = False
+  status, body = panel.json("/api/comma/net", token=token)
+  assert status == 200 and body["wifi"] is None and body["error"]
+  assert panel.json("/api/comma/net", {"op": "tethering", "on": True}, token=token)[0] == 503
