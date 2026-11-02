@@ -720,5 +720,9 @@
  "Últimas mudanças": "Latest changes",
  "Último desengate às {hora}": "Last disengagement at {hora}",
  "Últimos 7 dias": "Last 7 days",
- "Mostrar": "Show"
+ "Mostrar": "Show",
+ "Esta viagem está oculta no celular.": "This drive is hidden on the phone.",
+ "Mostrar de novo nas listas": "Show again in the lists",
+ "Ocultar esta viagem": "Hide this drive",
+ "Sai das listas do celular. O log continua no comma: dá para mostrar de novo no Início.": "It leaves the phone's lists. The log stays on the comma: you can show it again on Home."
 }

@@ -720,5 +720,9 @@
  "Últimas mudanças": "Últimos cambios",
  "Último desengate às {hora}": "Última desactivación a las {hora}",
  "Últimos 7 dias": "Últimos 7 días",
- "Mostrar": "Mostrar"
+ "Mostrar": "Mostrar",
+ "Esta viagem está oculta no celular.": "Este viaje está oculto en el celular.",
+ "Mostrar de novo nas listas": "Mostrar de nuevo en las listas",
+ "Ocultar esta viagem": "Ocultar este viaje",
+ "Sai das listas do celular. O log continua no comma: dá para mostrar de novo no Início.": "Sale de las listas del celular. El log sigue en el comma: se puede mostrar de nuevo en Inicio."
 }

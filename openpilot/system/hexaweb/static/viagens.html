@@ -34,11 +34,14 @@
   button { font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 12px 16px; cursor: pointer;
            background: var(--accent); color: var(--on-accent); width: 100%; margin-top: 10px; min-height: 52px; font-family: var(--font-display); font-size: 19px; }
   .hidden { display: none; }
+  .hidebox { text-align: center; }
+  button.ghost { background: none; color: var(--warn); border: 1px solid var(--warn-line); font-family: var(--font); font-size: 17px; margin-top: 0; }
+  .hidebox .sub { margin: 8px 0 0; }
 </style>
 </head>
 <body>
 <main>
-  <p class="sub"><a href="/" class="back">← LizPilot</a></p>
+  <p class="sub" style="margin:0 0 8px"><a href="/" class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>LizPilot</a></p>
   <h1 data-t>Viagens</h1>
   <p class="sub" id="msg" data-t>Carregando…</p>
   <div id="view" class="hidden">
@@ -70,6 +73,10 @@
       <button id="openReplay" data-t>Ver este momento no replay</button>
     </div>
     <div class="card"><ul id="events"></ul></div>
+    <div class="card hidebox">
+      <button id="hideTrip" class="ghost" data-t>Ocultar esta viagem</button>
+      <p class="sub" id="hideNote" data-t>Sai das listas do celular. O log continua no comma: dá para mostrar de novo no Início.</p>
+    </div>
   </div>
 </main>
 <script src="/i18n.js"></script>
@@ -79,6 +86,8 @@ const T = (x) => LP.t(x), TF = (x, v) => LP.tf(x, v);
 let token = null;
 try { token = localStorage.getItem("hexaToken"); } catch (e) {}
 let points = [], events = [], drawn = [], loading = 0;
+const meta = {};  // route → the drive from the list, with the summary the comma already made
+const CODE_WHO = ["op", "wheel", "gas", "you"];  // the path kept for the map (hexaweb.trip_path): who drove, as a number
 
 async function get(path) {
   const r = await fetch(path, { headers: token ? { Authorization: "Bearer " + token } : {} });
@@ -99,17 +108,34 @@ async function loadTrips() {
   if (r.status !== 200) { $("msg").textContent = T(r.body.error || "Não foi possível listar as viagens."); return; }
   if (!r.body.trips.length) { $("msg").textContent = T("Nenhuma viagem gravada."); return; }
   const sel = $("trip"); sel.replaceChildren();
+  const wanted = new URLSearchParams(location.search).get("trip");  // opened from a trip card on the panel
   for (const t of r.body.trips) {
-    const o = document.createElement("option"); o.value = t.id;
+    if (t.hidden && t.id !== wanted) continue;  // hidden on the phone: only when asked for by name
+    meta[t.id] = t;
+    const o = document.createElement("option"); o.value = t.id; o.dataset.hidden = t.hidden ? "1" : "";
     o.dataset.segments = JSON.stringify(t.segments);
     o.textContent = `${new Date(t.mtime * 1000).toLocaleString(LP.locale, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${t.minutes} min`;
     sel.append(o);
   }
-  const wanted = new URLSearchParams(location.search).get("trip");  // opened from a trip card on the panel
   if (wanted && [...sel.options].some((o) => o.value === wanted)) sel.value = wanted;
   $("view").classList.remove("hidden");
+  hideLabel();
   loadTrip();
 }
+
+function hideLabel() {
+  const hidden = !!$("trip").selectedOptions[0].dataset.hidden;
+  $("hideTrip").textContent = T(hidden ? "Mostrar de novo nas listas" : "Ocultar esta viagem");
+  $("hideNote").textContent = T(hidden ? "Esta viagem está oculta no celular." : "Sai das listas do celular. O log continua no comma: dá para mostrar de novo no Início.");
+}
+$("hideTrip").addEventListener("click", async () => {
+  const o = $("trip").selectedOptions[0], hidden = !o.dataset.hidden;
+  const r = await fetch("/api/trip/hide", { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+                                            body: JSON.stringify({ route: o.value, hidden }) }).catch(() => null);
+  if (!r || r.status !== 200) { $("msg").textContent = T("Não deu para ocultar a viagem."); return; }
+  if (hidden) { location.href = "/"; return; }  // back to the list, without it
+  o.dataset.hidden = ""; hideLabel();
+});
 
 async function loadTrip() {
   const load = ++loading;
@@ -117,17 +143,30 @@ async function loadTrip() {
   const segments = JSON.parse(sel.selectedOptions[0].dataset.segments);
   points = []; events = []; render();
   let sum = { km: 0, s: 0, moving_s: 0, on_s: 0, driver: 0, gas: 0, brake: 0, off: 0, marks: 0 };
+  // At once: the numbers and the path the comma kept when the drive ended. The minutes, read one by one, replace them at the end.
+  const known = meta[route] && meta[route].summary;
+  if (known) summary(Object.fromEntries(Object.keys(sum).map((k) => [k, known[k] || 0])));
+  let preview = false;
+  const pr = await get(`/api/trip/path?route=${encodeURIComponent(route)}`);
+  if (load !== loading) return;
+  if (pr.status === 200 && pr.body.points.length > 1) {
+    points = pr.body.points.map(([lat, lon, w, s]) => ({ lat, lon, who: CODE_WHO[w], on: w < 3, v: null, t: segments[0] * 60 + s,
+                                                         n: segments[0] + Math.floor(s / 60), step: 0, dpsi: 0 }));
+    preview = true; render();
+  }
+  const got = [], evs = [];
   for (const [i, n] of segments.entries()) {
     $("msg").textContent = TF("Lendo minuto {i} de {n}…", { i: i + 1, n: segments.length });
     const r = await get(`/api/trip/segment?route=${encodeURIComponent(route)}&n=${n}`);
     if (load !== loading) return;  // another trip was picked
     if (r.status !== 200) { $("msg").textContent = T(r.body.error || "Não foi possível ler a viagem."); return; }
     const d = r.body, offset = n * 60;
-    for (const p of d.points) points.push({ ...p, t: p.t + offset, n });
-    for (const e of d.events) events.push({ ...e, t: e.t + offset, n });
+    for (const p of d.points) got.push({ ...p, t: p.t + offset, n });
+    for (const e of d.events) evs.push({ ...e, t: e.t + offset, n });
     for (const k of Object.keys(sum)) sum[k] += d.summary[k] || 0;
-    summary(sum); render();
+    if (!preview) { points = got; events = evs; summary(sum); render(); }  // nothing kept yet: draw as it reads
   }
+  if (got.length > 1) { points = got; events = evs; listed = -1; summary(sum); render(); }
   $("msg").textContent = T("Arraste a barra para percorrer o caminho.");
 }
 
@@ -194,7 +233,7 @@ function render() {
   g.fillStyle = color("--text");
   g.beginPath(); g.arc(...drawn[i], 7, 0, 7); g.fill();
   $("whereT").textContent = fmt(p.t);
-  $("whereV").textContent = `${Math.round(p.v)} km/h · ${T(who(p)[1])}`;
+  $("whereV").textContent = `${p.v == null ? "—" : Math.round(p.v)} km/h · ${T(who(p)[1])}`;
   list();
 }
 
@@ -223,7 +262,7 @@ $("map").addEventListener("pointerdown", (ev) => {
   drawn.forEach(([a, b], i) => { const d = (a - x) ** 2 + (b - y) ** 2; if (d < dist) { dist = d; best = i; } });
   $("pos").value = best; render();
 });
-$("trip").addEventListener("change", () => { listed = -1; $("pos").value = 0; loadTrip(); });
+$("trip").addEventListener("change", () => { listed = -1; $("pos").value = 0; hideLabel(); loadTrip(); });
 $("openReplay").addEventListener("click", () => {
   const p = points[$("pos").value * 1];
   if (p) location.href = `/replay?id=${encodeURIComponent($("trip").value + "--" + p.n)}&t=${Math.max(0, p.t - p.n * 60 - 2)}`;
