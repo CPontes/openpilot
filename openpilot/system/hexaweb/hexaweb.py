@@ -61,6 +61,7 @@ SUMMARY_NEWEST = 300  # drives summarized in the background, newest first, with 
 SUMMARY_KEEP = 300
 TRIPS_LISTED = 300
 PATH_DIR = "hexa_trips"  # next to the log folder: each drive's path, for the map on the phone. Never leaves the comma
+PATH_PRUNE_S = 600.  # paths of drives the comma already deleted go too, looked at this often, car off
 HIDDEN_PARAM = "HexaTripsHidden"  # drives the owner hid from the phone's lists: the logs stay on the comma
 HIDDEN_KEEP = 600
 PRESERVE_ATTR = "user.preserve"  # system/loggerd/deleter.py: what keeps a flagged minute from being deleted
@@ -125,6 +126,7 @@ class PanelBackend:
     self._summarize = summarize
     self._spawn = spawn or (lambda job: threading.Thread(target=job, daemon=True).start())
     self._summary_busy = False
+    self._paths_pruned = -1e9
     self._clips: dict[str, dict] = {}  # ticket -> {expires, files, start, name}
     self._fixed_nonces: dict[str, tuple] = {}  # one-time code -> (expiry, answer, phone), to prove lizpilot.local is this comma
     self.fixed_status: Callable[[], dict] = hexa_mdns.status
@@ -634,7 +636,9 @@ class PanelBackend:
     if not self.log_root:
       return 404, {"error": "Sem pasta de logs."}
     with self._replay_lock:
-      trips = self._trips()[:TRIPS_LISTED]
+      every = self._trips()
+    trips = every[:TRIPS_LISTED]
+    self._prune_paths({t["id"] for t in every})
     kept = self.store.get(SUMMARY_PARAM) or {}  # read once: the whole history is in it
     newest = {t["id"] for t in trips[:SUMMARY_NEWEST]}
     summaries = {t["id"]: self._summary_of(t, kept, newest) for t in trips}
@@ -682,17 +686,24 @@ class PanelBackend:
       f.parent.mkdir(parents=True, exist_ok=True)
       tmp = f.with_suffix(".tmp")
       tmp.write_text(json.dumps(path, separators=(",", ":")))
-      os.replace(tmp, f)
-      with self._replay_lock:
-        known = {t["id"] for t in self._trips()} | {route}
-      for old in f.parent.glob("*.json"):  # a path goes away with its logs: the deleter doesn't know this folder
-        if old.stem not in known:
-          old.unlink(missing_ok=True)
+      tmp.replace(f)  # whole or nothing: a cut write never leaves a broken path behind a finished summary
       for old in sorted(f.parent.glob("*.json"))[:-SUMMARY_KEEP]:  # route names grow with each drive
         old.unlink(missing_ok=True)
     except OSError:
       from openpilot.common.swaglog import cloudlog
       cloudlog.exception("hexaweb: trip path not kept")
+
+  def _prune_paths(self, routes: set[str]) -> None:
+    """A path whose drive the comma already deleted (loggerd's deleter) goes too: no location stays behind its log."""
+    if not self.log_root or self.mono() - self._paths_pruned < PATH_PRUNE_S:
+      return
+    self._paths_pruned = self.mono()
+    try:
+      for f in (Path(self.log_root).parent / PATH_DIR).glob("*.json"):
+        if f.stem not in routes:
+          f.unlink(missing_ok=True)
+    except OSError:
+      pass
 
   def trip_path(self, route: str) -> tuple[int, dict]:
     """The drive's path for the map on the phone: [lat, lon, who, s from the start], a point every ~10 s. Car off only."""

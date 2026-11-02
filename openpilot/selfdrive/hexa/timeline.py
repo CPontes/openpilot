@@ -41,7 +41,8 @@ SKIP_ALERTS = ("Bookmark Saved",)  # already a mark event
 AUTO_TEXT = {"hardbrake": "freada brusca"}  # selfdrive/hexa/sensors.py: marks the comma makes by itself
 AUTO_MARKS_MAX = 5  # a drive with more is noise
 PATH_EVERY = 5  # one point of the map every 5 path points (~10 s): a drive of an hour is ~360 points
-PATH_WHO = {"op": 0, "wheel": 1, "gas": 2, "brake": 2, "you": 3}  # the map's colors: openpilot, your hand, a pedal, you
+PATH_WHO = {"op": 0, "wheel": 1, "gas": 2, "brake": 2, "you": 3}  # the map's colors: openpilot, your hand, a pedal, you. The path's
+# seconds count from minute 0 of the route
 ALERT_COUNTED = ("userPrompt", "critical")  # an alert that asks something of the driver; "normal" ones only inform
 TOOK_RANK = {None: 0, "wheel": 1, "gas": 2, "brake": 3}  # a path point covers 2 s: a pedal says more than a hand on the wheel
 # who had the wheel while moving: openpilot alone, openpilot with the driver's hand on it, the driver alone
@@ -328,12 +329,14 @@ def trip_segment(events: Iterable) -> dict:
   pedal_at = {"gas": -1e9, "brake": -1e9}
   shadow = ShadowCounter()
   car = hexa_sensors.CarSensors()
-  run = [0., 0.]  # km and s without an intervention, now: a hand resting on the wheel isn't one, a pedal or a real push is
+  # the stretch with no intervention, now: openpilot engaged (stops included: the GWM drops latActive standing still) and
+  # none of what the page counts as an intervention: a pedal, or the hand on the wheel for DRIVER_MIN_S
+  run = [0., 0.]  # km and s
   run_head: list | None = None  # the run the minute started with, until its first break
   run_best = [0., 0.]
-  wheel_since = None
+  run_hand = None  # since when the wheel is pressed
   v_max = 0.
-  lat_seen = False  # the minute's first carState comes before its first carControl: not a break
+  en_seen = False  # the minute's first carState can come before its first selfdriveState: not a break
 
   messages = sorted(events, key=lambda m: m.logMonoTime)
   shadow.on_op_long(_op_long(messages))
@@ -369,9 +372,9 @@ def trip_segment(events: Iterable) -> dict:
         out.append({"t": _r(t), "kind": "off", "text": "desengatou no freio" if brake else "desengatou"})
         total["off"] += 1
       en = enabled
+      en_seen = True
     elif w == "carControl":
       lat = m.carControl.latActive
-      lat_seen = True
       o = getattr(m.carControl, "orientationNED", ())
       if len(o) == 3:
         car.on_pose(t, o[0], o[1])
@@ -389,12 +392,11 @@ def trip_segment(events: Iterable) -> dict:
       dt = min(t - last, .5) if last is not None else 0.
       last = t
       v_max = max(v_max, cs.vEgo)
-      wheel_since = (t if wheel_since is None else wheel_since) if cs.steeringPressed else None
-      intervened = cs.gasPressed or cs.brakePressed or (wheel_since is not None and t - wheel_since >= DRIVER_MIN_S)
-      if lat and not intervened:
+      run_hand = (run_hand if run_hand is not None else t) if cs.steeringPressed else None
+      if en and not (cs.gasPressed or cs.brakePressed or (run_hand is not None and t - run_hand >= DRIVER_MIN_S)):
         run[0] += cs.vEgo * dt / 1e3
         run[1] += dt
-      elif lat_seen:
+      elif en_seen:
         run_head = run_head if run_head is not None else list(run)
         run_best = max(run_best, run)
         run = [0., 0.]
@@ -466,7 +468,6 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
   version: dict = {}
   auto: list[dict] = []
   path: list[list] = []
-  first = None
   unread = 0
   run_best, run_cur, prev, v_max = [0., 0.], [0., 0.], None, 0.
   for seg in sorted(files):
@@ -481,10 +482,12 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
     version = version or seg_data.get("version") or {}
     # told from the end of the minute: a drive's last minute is short
     auto += [{"seg": seg, "left": _r(part["s"] - e["t"]), "kind": e["kind"]} for e in seg_data["events"] if e["kind"] in AUTO_TEXT]
-    first = first if first is not None else seg
-    for p in seg_data["points"][::PATH_EVERY]:
-      if p.get("lat") is not None:
-        path.append([p["lat"], p["lon"], PATH_WHO.get(p.get("who"), 3), round((seg - first) * 60 + p["t"])])
+    pts = seg_data["points"]
+    for i in range(0, len(pts), PATH_EVERY):  # who drove: the most of the driver in the group (you > a pedal > the hand > openpilot)
+      group = pts[i:i + PATH_EVERY]
+      p = next((q for q in group if q.get("lat") is not None), None)
+      if p is not None:
+        path.append([p["lat"], p["lon"], max(PATH_WHO.get(q.get("who"), 3) for q in group), round(seg * 60 + p["t"])])
     for k in keys:
       total[k] += part.get(k, 0)
     hexa_sensors.merge(car, part)

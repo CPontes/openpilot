@@ -386,7 +386,7 @@ def test_a_hard_brake_shows_on_its_trip_page():
 
 def test_unpairing_leaves_no_list_of_drives_on_the_phone():
   html = (Path(__file__).parents[1] / "static" / "index.html").read_text()
-  assert 'if (v === null) store("lpTrips", null);' in html
+  assert 'if (!v) { store("lpTrips", null); trips = null; }' in html
 
 
 def test_no_path_yet_is_not_no_gps():

@@ -87,7 +87,7 @@ let token = null;
 try { token = localStorage.getItem("hexaToken"); } catch (e) {}
 let points = [], events = [], drawn = [], loading = 0;
 const meta = {};  // route → the drive from the list, with the summary the comma already made
-const CODE_WHO = ["op", "wheel", "gas", "you"];  // the path kept for the map (hexaweb.trip_path): who drove, as a number
+const CODE_WHO = ["op", "wheel", "pedal", "you"];  // the path kept for the map (hexaweb.trip_path): who drove, as a number
 
 async function get(path) {
   const r = await fetch(path, { headers: token ? { Authorization: "Bearer " + token } : {} });
@@ -99,7 +99,7 @@ async function get(path) {
 function fmt(s) { return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`; }
 function color(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 const WHO = { op: ["--accent", "openpilot dirigindo"], you: ["--off", "você dirigindo"], wheel: ["--wheel", "você no volante"],
-              gas: ["--gas", "você no acelerador"], brake: ["--danger", "você no freio"] };
+              gas: ["--gas", "você no acelerador"], brake: ["--danger", "você no freio"], pedal: ["--gas", T("você nos pedais")] };  // T(): so the catalogs find it
 function who(p) { return WHO[p.who] || WHO[p.on ? "op" : "you"]; }
 const SHOWN = ["mark", "off", "hardbrake"];
 
@@ -118,7 +118,7 @@ async function loadTrips() {
     o.textContent = `${new Date(t.mtime * 1000).toLocaleString(LP.locale, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${t.minutes} min`;
     sel.append(o);
   }
-  if (!sel.options.length) { $("msg").textContent = T("Todas as viagens estão ocultas."); return; }
+  if (!sel.options.length) { $("msg").textContent = T("Todas as viagens estão ocultas. Elas aparecem no Início, em “mostrar”."); return; }
   if (wanted && [...sel.options].some((o) => o.value === wanted)) sel.value = wanted;
   $("view").classList.remove("hidden");
   hideLabel();
@@ -152,8 +152,8 @@ async function loadTrip() {
   const pr = await get(`/api/trip/path?route=${encodeURIComponent(route)}`);
   if (load !== loading) return;
   if (pr.status === 200 && pr.body.points.length > 1) {
-    points = pr.body.points.map(([lat, lon, w, s]) => ({ lat, lon, who: CODE_WHO[w], on: w < 3, v: null, t: segments[0] * 60 + s,
-                                                         n: segments[0] + Math.floor(s / 60), step: 0, dpsi: 0 }));
+    points = pr.body.points.map(([lat, lon, w, s]) => ({ lat, lon, who: CODE_WHO[w], on: w < 3, v: null, t: s,  // s from minute 0
+                                                         n: Math.floor(s / 60), step: 0, dpsi: 0 }));
     preview = true; render();
   }
   const got = [], evs = [];

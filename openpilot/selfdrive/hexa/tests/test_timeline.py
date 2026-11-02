@@ -8,7 +8,8 @@ from openpilot.selfdrive.hexa import timeline as tl
 NS = int(1e9)
 
 
-def write_rlog(path, seconds=8.0, bookmark_at=None, mark=None, oscillate=(2.0, 6.0), limit=(6.5, 7.5), pressed=None, acc=None, stop=None, lat_from=0.5):
+def write_rlog(path, seconds=8.0, bookmark_at=None, mark=None, oscillate=(2.0, 6.0), limit=(6.5, 7.5), pressed=None, acc=None, stop=None,
+               lat_from=0.5, lat_off=None, gas=None):
   """A small rlog made of real cereal messages, as the comma would record it."""
   import zstandard
   from openpilot.cereal import log
@@ -31,15 +32,19 @@ def write_rlog(path, seconds=8.0, bookmark_at=None, mark=None, oscillate=(2.0, 6
       c.vEgo = 0. if stop and stop[0] <= s < stop[1] else 10.
       if pressed:
         c.steeringPressed = pressed[0] <= s < pressed[1]
+      if gas:
+        c.gasPressed = gas[0] <= s < gas[1]
       if acc:
         c.cruiseState.driving = acc[0] <= s < acc[1]
       c.steeringAngleDeg = (8. if (int(s * 4) % 2) else -8.) if osc else 1.
       c.steeringTorque = 150 if 1.0 <= s < 1.2 else 0
       c.cruiseState.speed = 20.
     add("carState", t, cs)
-    add("carControl", t, lambda c, tq=tq, s=s: (setattr(c, "latActive", s >= lat_from), setattr(c.actuators, "torque", tq)))
+    lat_on = s >= lat_from and not (lat_off and lat_off[0] <= s < lat_off[1])  # the GWM drops latActive standing still
+    add("carControl", t, lambda c, tq=tq, lat_on=lat_on: (setattr(c, "latActive", lat_on), setattr(c.actuators, "torque", tq)))
     add("carOutput", t, lambda c, tq=tq: setattr(c.actuatorsOutput, "torqueOutputCan", int(tq * 253)))
-    add("selfdriveState", t, lambda c, s=s: (setattr(c, "enabled", s >= 0.5), setattr(c, "alertText1", "TAKE CONTROL" if 7.0 <= s < 7.5 else "")))
+    on = s >= min(lat_from, 0.5)
+    add("selfdriveState", t, lambda c, s=s, on=on: (setattr(c, "enabled", on), setattr(c, "alertText1", "TAKE CONTROL" if 7.0 <= s < 7.5 else "")))
     if i % 5 == 0:
       def model(mv):
         for name, ys in (("laneLines", (-5.4, -1.8, 1.8, 5.4)), ("roadEdges", (-7., 7.))):
@@ -257,7 +262,7 @@ def test_trip_summary_keeps_the_first_version(tmp_path):
 
 def test_trip_summary_keeps_a_light_path_with_who_drove():
   import openpilot.selfdrive.hexa.timeline as t2
-  segs = {0: [{"t": float(i * 2), "lat": -23.5 + i * 1e-4, "lon": -46.6, "who": "op" if i < 20 else "you"} for i in range(30)],
+  segs = {0: [{"t": float(i * 2), "lat": 1.0 + i * 1e-4, "lon": 2.0, "who": "op" if i < 20 else "you"} for i in range(30)],  # made-up place
           1: [{"t": float(i * 2), "lat": None, "lon": None, "who": "op"} for i in range(30)]}
   real = t2.trip_segment, t2.read_rlog
   try:
@@ -271,7 +276,7 @@ def test_trip_summary_keeps_a_light_path_with_who_drove():
 
 
 def test_trip_summary_has_the_numbers_anyone_wants(tmp_path):
-  # top speed, and the longest stretch without an intervention: it goes on into the next minute, and a push on the wheel ends it
+  # top speed, and the longest stretch with no intervention: it goes on into the next minute, and the hand on the wheel ends it
   files = {}
   for n, kw in ((0, {"pressed": (3., 4.)}), (1, {"lat_from": 0.}), (2, {"pressed": (2., 3.), "lat_from": 0.})):
     d = tmp_path / f"00000001--abc--{n}"
@@ -279,31 +284,34 @@ def test_trip_summary_has_the_numbers_anyone_wants(tmp_path):
     files[n] = str(write_rlog(d / "rlog.zst", oscillate=(0., 0.), **kw))
   s = tl.trip_summary(files)
   assert s["v_max"] == 36
-  assert abs(s["run_s"] - 14) < 0.2 and abs(s["run_km"] - 0.14) < 0.01  # 4 s + 8 s + 2 s
+  assert abs(s["run_s"] - 14.5) < 0.6 and abs(s["run_km"] - 0.145) < 0.01  # 4 s + 8 s + 2.5 s: the hand counts from 0.5 s on
   del files[1]  # a minute that is missing breaks the stretch
   assert abs(tl.trip_summary(files)["run_s"] - 5) < 0.2  # the 4 s at the end of minute 0 no longer join the start of minute 2
 
 
-def stretch(*samples):
-  """samples: (seconds, wheel pressed, gas, brake), at 10 Hz with openpilot steering."""
-  msgs = [Msg("carControl", 0., latActive=True, orientationNED=[])]
-  t = .1
-  for seconds, pressed, gas, brake in samples:
-    for _ in range(round(seconds * 10)):
-      msgs.append(Msg("carState", t, vEgo=10., steeringPressed=pressed, gasPressed=gas, brakePressed=brake))
-      t += .1
-  return tl.trip_segment(msgs)["summary"]["run_best"][1]
+def test_the_stretch_breaks_only_on_what_the_page_calls_an_intervention(tmp_path):
+  # engaged at a stop (the GWM drops latActive standing still), a touch shorter than DRIVER_MIN_S: no break. A pedal: break
+  d = tmp_path / "00000001--abc--0"
+  d.mkdir()
+  quiet = tl.trip_summary({0: str(write_rlog(d / "a.zst", seconds=8., oscillate=(0., 0.), lat_from=0., stop=(2., 5.), lat_off=(2., 5.),
+                                              pressed=(6., 6.2)))})
+  assert abs(quiet["run_s"] - 8) < 0.2
+  pedal = tl.trip_summary({0: str(write_rlog(d / "b.zst", seconds=8., oscillate=(0., 0.), lat_from=0., gas=(3., 4.)))})
+  assert abs(pedal["run_s"] - 4) < 0.2  # 0 to 3 s, then 4 to 8 s
 
 
-def test_a_hand_on_the_wheel_is_no_intervention():
-  # owner, 02/11: "pode estar com a mão e não intervir"
-  assert stretch((5., False, False, False), (.3, True, False, False), (5., False, False, False)) > 10.
-
-
-def test_a_real_push_or_a_pedal_ends_the_stretch():
-  assert stretch((5., False, False, False), (1., True, False, False), (3., False, False, False)) < 6.
-  assert stretch((5., False, False, False), (.2, False, True, False), (3., False, False, False)) < 6.
-  assert stretch((5., False, False, False), (.2, False, False, True), (3., False, False, False)) < 6.
+def test_the_map_keeps_the_driver_over_the_whole_group():
+  # a hand on the wheel in the middle of ~10 s still shows on the map; seconds count from minute 0 of the route
+  pts = [{"t": 2. * i, "lat": 1. + i / 1e4, "lon": 2., "who": "wheel" if i == 2 else "op"} for i in range(10)]
+  seg = {"points": pts, "events": [], "summary": {}, "version": {}}
+  orig_read, orig_seg = tl.read_rlog, tl.trip_segment
+  try:
+    tl.read_rlog = lambda f: []
+    tl.trip_segment = lambda events: seg
+    path = tl.trip_summary({3: "x"})["path"]
+  finally:
+    tl.read_rlog, tl.trip_segment = orig_read, orig_seg
+  assert [p[2] for p in path] == [1, 0] and [p[3] for p in path] == [180, 190]
 
 
 def test_a_prompt_with_the_text_of_a_softer_alert_is_counted():

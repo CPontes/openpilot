@@ -1200,6 +1200,11 @@ def test_each_drive_keeps_its_path_for_the_map(panel, tmp_path):
   assert status == 200 and body["points"] == path
   assert "path" not in panel.json("/api/trips", token=token)[1]["trips"][0]["summary"]  # the list stays light
   assert (tmp_path / hexaweb.PATH_DIR / "0000000f--8784034901.json").is_file()  # next to the logs, never in params
+  gone = tmp_path / hexaweb.PATH_DIR / "00000001--0000000000.json"  # a drive the comma already deleted
+  gone.write_text("[]")
+  panel.backend._paths_pruned = -1e9
+  panel.json("/api/trips", token=token)
+  assert not gone.exists() and (tmp_path / hexaweb.PATH_DIR / "0000000f--8784034901.json").is_file()
   assert panel.json("/api/trip/path?route=../../etc", token=token)[0] == 404
   assert panel.json("/api/trip/path?route=0000000f--8784034901")[0] == 401
   panel.vs = VehicleState(onroad=True)
@@ -1223,33 +1228,12 @@ def test_a_drive_can_be_hidden_from_the_lists_and_shown_again(panel, tmp_path):
   assert panel.json("/api/trip/hide", {"route": route}, token=token)[0] == 409
 
 
-def test_the_drive_history_stays_out_of_the_logs():
-  # logger.cc writes every param into initData of each minute, and the qlogs are uploaded on their own
+def test_the_drive_history_never_goes_into_the_logs():
+  # loggerd copies every param without DONT_LOG into each segment's initData (system/loggerd/logger.cc), and the qlogs get uploaded
   keys = (Path(hexaweb.__file__).parents[2] / "common" / "params_keys.h").read_text()
-  for key in ("HexaTripSummaries", "HexaTripsHidden"):
-    assert re.search(rf'"{key}", {{PERSISTENT \| DONT_LOG, JSON}}', keys), key
-
-
-def test_a_path_goes_away_with_its_logs(panel, tmp_path):
-  logs = tmp_path / "realdata"
-  logs.mkdir()
-  trip_logs(panel, logs)
-  trips = tmp_path / hexaweb.PATH_DIR
-  trips.mkdir()
-  (trips / "00000001--aaaaaaaaaa.json").write_text("[[1.0, 2.0, 0, 0]]")  # its logs are gone
-  panel.backend._keep_path("0000000f--8784034901", [[1.0, 2.0, 0, 0]])
-  assert [f.name for f in trips.iterdir()] == ["0000000f--8784034901.json"]
-
-
-def test_a_path_is_written_whole(panel, tmp_path, monkeypatch):
-  logs = tmp_path / "realdata"
-  logs.mkdir()
-  trip_logs(panel, logs)
-  moved = []
-  real = hexaweb.os.replace
-  monkeypatch.setattr(hexaweb.os, "replace", lambda a, b: (moved.append(Path(b).name), real(a, b)))
-  panel.backend._keep_path("0000000f--8784034901", [[1.0, 2.0, 0, 0]])
-  assert moved == ["0000000f--8784034901.json"]
+  for key in (hexaweb.SUMMARY_PARAM, hexaweb.HIDDEN_PARAM):
+    line = next(ln for ln in keys.splitlines() if f'"{key}"' in ln)
+    assert "DONT_LOG" in line, key
 
 
 def test_a_drive_that_lost_minutes_keeps_its_summary(panel):

@@ -163,6 +163,7 @@
           background: var(--card); border: 0; color: inherit; text-align: left; touch-action: pan-y; transition: transform .18s ease-out; }
   .hrow[aria-current="true"] { background: var(--ok-bg); box-shadow: inset 4px 0 0 var(--accent); }
   .hrow .htime { font-family: var(--font-display); font-weight: 700; font-size: 21px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .hrow .htime small { display: block; margin-top: 3px; font-family: var(--font); font-size: 13px; font-weight: 600; color: var(--muted); }
   .hrow .hmid { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .hrow .hmeta { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .hrow .hmeta .w { color: var(--warn); font-weight: 600; }
@@ -594,7 +595,7 @@ const API_TIMEOUT_MS = 8000;
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
 function store(k, v) { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }
 function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
-function saveToken(v) { token = v; store("hexaToken", v); if (v === null) store("lpTrips", null); }
+function saveToken(v) { token = v; store("hexaToken", v); if (!v) { store("lpTrips", null); trips = null; } }  // unpaired: the trip list leaves the phone too
 function toast(msg) { const e = $("toast"); e.textContent = msg; e.classList.add("show"); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove("show"), 2800); }
 const hhmm = (s) => new Date(s * 1000).toLocaleTimeString(L(), { hour: "2-digit", minute: "2-digit" });
 const hhmmss = (s) => new Date(s * 1000).toLocaleTimeString(L(), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -1327,6 +1328,7 @@ function drawTrip(tr) {
   tileFails = 0;
   $("tripTiles").replaceChildren(...tiles.map((tl) => {
     const im = new Image(); im.alt = ""; im.decoding = "async"; im.draggable = false;
+    im.referrerPolicy = "strict-origin";  // the page sends no Referer; the tile servers ask for one: only the panel's name, never a path
     im.style.cssText = `left:${tl.left}px;top:${tl.top}px;width:${tl.size + .5}px;height:${tl.size + .5}px`;  // + .5: no hairline between tiles
     im.onerror = () => { im.remove(); tileFails += 1; if (tileFails === tiles.length) $("tripAttrib").classList.add("hidden"); };
     im.src = `https://tile.openstreetmap.org/${tl.z}/${tl.x}/${tl.y}.png`;
@@ -1337,8 +1339,8 @@ function drawTrip(tr) {
   $("streetsBtn").setAttribute("aria-pressed", streets ? "true" : "false");
   $("streetsNote").classList.toggle("hidden", !fit);
   $("streetsNote").textContent = streets  // what the tiles tell OpenStreetMap, in both states
-    ? t("Ruas ligadas: o OpenStreetMap recebe o IP deste celular e a área de cada viagem aberta. O caminho em si fica no comma.")
-    : t("Ruas desligadas. Ligadas, vêm do OpenStreetMap pela internet, que recebe o IP deste celular e a área de cada viagem aberta.");
+    ? t("Ruas ligadas: o OpenStreetMap recebe o IP deste celular, o nome do painel e a área de cada viagem aberta. O caminho em si fica no comma.")
+    : t("Ruas desligadas. Ligadas, vêm do OpenStreetMap pela internet, que recebe o IP deste celular, o nome do painel e a área de cada viagem aberta.");
   if (!fit) {
     say(got.status === "loading" ? t("Carregando o caminho…") : got.status === "none"
       ? (got.summarized ? t("Sem GPS nesta viagem: sem mapa.") : t("O mapa aparece quando o comma terminar de ler esta viagem."))
@@ -1375,6 +1377,10 @@ async function fetchPath(tr) {
   if (view === "inicio" && !driving && lastHist) { const cur = tripPicked(lastHist); if (cur && cur.id === tr.id) drawTrip(cur); }
 }
 
+function clockParts(s) {  // [time, AM/PM or ""] in the phone's language
+  const parts = new Intl.DateTimeFormat(L(), { hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(s * 1000));
+  return [parts.filter((p) => p.type !== "dayPeriod").map((p) => p.value).join("").trim(), parts.filter((p) => p.type === "dayPeriod").map((p) => p.value).join("")];
+}
 function dayLabel(s) {
   const ago = LPL.daysAgo(s, Date.now() / 1000);
   return ago === 0 ? t("Hoje") : ago === 1 ? t("Ontem") : new Date(s * 1000).toLocaleDateString(L(), { weekday: "short", day: "2-digit", month: "2-digit" });
@@ -1422,7 +1428,9 @@ function histRow(tr, selected) {
   const act = el("div", "hact", tr.hidden ? t("Mostrar") : t("Ocultar")); act.setAttribute("aria-hidden", "true");
   const row = el("button", "hrow" + (tr.hidden || LPL.idle(tr) ? " off" : "")); row.type = "button";
   if (selected) row.setAttribute("aria-current", "true");
-  row.append(el("span", "htime", hhmm(LPL.tripStart(tr))));
+  const [clock, period] = clockParts(LPL.tripStart(tr)), tm = el("span", "htime", clock);
+  if (period) tm.append(el("small", "", period));  // "PM" under the time, so the column stays narrow
+  row.append(tm);
   const mid = el("span", "hmid"), meta = el("span", "hmeta"), sm = tr.summary, split = LPL.tripSplit(sm);
   if (split) { const bar = el("span", "split thin"); splitBar(bar, split); mid.append(bar); }
   meta.append(el("span", "", `${tr.minutes} min`));
@@ -1618,7 +1626,7 @@ function renderTrips(err) {
   if (!trips.length) { box.replaceChildren(el("div", "card desc", t("Nenhuma viagem gravada."))); return; }
   const list = LPL.listed(trips);
   if (!list.length) { box.replaceChildren(el("div", "card desc", t("Todas as viagens estão ocultas."))); return; }
-  const week = LPL.weekTotal(trips, Date.now() / 1000), cards = [];
+  const week = LPL.weekTotal(list, Date.now() / 1000), cards = [];
   if (week) {
     const c = el("section", "card ok stack"); c.style.gap = "4px";
     c.append(el("span", "label", t("Últimos 7 dias"))); c.lastChild.style.margin = "0";
@@ -1627,9 +1635,9 @@ function renderTrips(err) {
     c.append(el("span", "small num", tf(week.trips === 1 ? "{km} km em 1 viagem" : "{km} km em {n} viagens", { km: num(week.km, 0), n: week.trips })));
     cards.push(c);
   }
-  const wk = weekCard(trips);
+  const wk = weekCard(list);
   if (wk) cards.push(wk);
-  const all = LPL.totals(trips, 0), month = LPL.totals(trips, LPL.monthStart(Date.now() / 1000));
+  const all = LPL.totals(list, 0), month = LPL.totals(list, LPL.monthStart(Date.now() / 1000));
   if (all && all.trips > (week ? week.trips : 0)) {  // only when it says more than the last 7 days
     const c = el("section", "card stack"); c.style.gap = "4px";
     c.append(el("span", "label", t("Totais"))); c.lastChild.style.margin = "0";
@@ -1638,7 +1646,7 @@ function renderTrips(err) {
     c.append(el("span", "small", t("Só as viagens com o resumo pronto.")));
     cards.push(c);
   }
-  const versions = LPL.versions(trips);
+  const versions = LPL.versions(list);
   if (versions.length >= 2 || tripVersion) {
     const row = el("div", "chips"); row.setAttribute("aria-label", t("Filtrar por versão"));
     for (const v of [null, ...versions]) {
@@ -1648,10 +1656,10 @@ function renderTrips(err) {
       row.append(b);
     }
     cards.push(row);
-    if (tripVersion) cards.push(versionCard(trips, tripVersion));
+    if (tripVersion) cards.push(versionCard(list, tripVersion));
   }
-  cards.push(speedCard(trips));
-  const carCard = carReportCard(trips);
+  cards.push(speedCard(list));
+  const carCard = carReportCard(list);
   if (carCard) cards.push(carCard);
   const shown = tripVersion ? list.filter((tr) => LPL.versionOf(tr) === tripVersion) : list;
   box.replaceChildren(...cards, ...shown.slice(0, 15).map((tr) => {

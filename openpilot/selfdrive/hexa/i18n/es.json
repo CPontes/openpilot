@@ -721,8 +721,6 @@
  "Mostrar de novo nas listas": "Mostrar de nuevo en las listas",
  "Ocultar esta viagem": "Ocultar este viaje",
  "Sai das listas do celular. O log continua no comma: dá para mostrar de novo no Início.": "Sale de las listas del celular. El log sigue en el comma: se puede mostrar de nuevo en Inicio.",
- "Ruas ligadas: o OpenStreetMap recebe o IP deste celular e a área de cada viagem aberta. O caminho em si fica no comma.": "Calles encendidas: OpenStreetMap recibe la IP de este celular y la zona de cada viaje abierto. El recorrido en sí queda en el comma.",
- "Ruas desligadas. Ligadas, vêm do OpenStreetMap pela internet, que recebe o IP deste celular e a área de cada viagem aberta.": "Calles apagadas. Encendidas, vienen de OpenStreetMap por internet, que recibe la IP de este celular y la zona de cada viaje abierto.",
  "maior trecho sem intervenção ({m} min)": "tramo más largo sin intervención ({m} min)",
  "freada brusca": "frenada brusca",
  "(automática)": "(automática)",
@@ -730,5 +728,9 @@
  "ocultou uma viagem": "ocultó un viaje",
  "mostrou uma viagem de novo": "volvió a mostrar un viaje",
  "Todas as viagens estão ocultas.": "Todos los viajes están ocultos.",
- "Guardadas no comma": "Guardados en el comma"
+ "Guardadas no comma": "Guardados en el comma",
+ "Ruas ligadas: o OpenStreetMap recebe o IP deste celular, o nome do painel e a área de cada viagem aberta. O caminho em si fica no comma.": "Calles encendidas: OpenStreetMap recibe la IP de este celular, el nombre del panel y la zona de cada viaje abierto. El recorrido en sí queda en el comma.",
+ "Ruas desligadas. Ligadas, vêm do OpenStreetMap pela internet, que recebe o IP deste celular, o nome do painel e a área de cada viagem aberta.": "Calles apagadas. Encendidas, vienen de OpenStreetMap por internet, que recibe la IP de este celular, el nombre del panel y la zona de cada viaje abierto.",
+ "Todas as viagens estão ocultas. Elas aparecem no Início, em “mostrar”.": "Todos los viajes están ocultos. Aparecen en Inicio, en “mostrar”.",
+ "você nos pedais": "tú en los pedales"
 }
