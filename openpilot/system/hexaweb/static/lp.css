@@ -15,7 +15,7 @@
   --switch-off: #3A4550;
   --ok-bg: #10201A; --ok-line: #1F4A34; --warn-bg: #1E1A12; --warn-line: #4A3A1A; --tag-warn: #2A2110;
   /* names the trip and replay pages already use */
-  --off: var(--you); --mark: var(--warn);
+  --off: var(--you); --mark: var(--warn); --gas: #B49BFF; --wheel: #FF8FC0;
   --font: "Barlow", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-display: "Barlow Semi Condensed", "Barlow", -apple-system, BlinkMacSystemFont, sans-serif;
 }

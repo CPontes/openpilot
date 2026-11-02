@@ -89,6 +89,15 @@ def test_you_driving_and_why_it_does_not_engage():
   assert run("band", {"driving": False}, NOW)["who"] == "carro desligado"
 
 
+def test_the_band_says_what_the_driver_took():
+  assert run("band", live(acc_active=True, v=60, gas=True), NOW)["sub"] == "você no acelerador"
+  assert run("band", live(acc_active=True, v=60, brake=True), NOW)["sub"] == "você no freio"
+  assert run("band", live(acc_active=True, v=60, driver=True), NOW)["sub"] == "você no volante"
+  assert run("band", live(acc_active=True, v=60, brake=True, gas=True), NOW)["sub"] == "você no freio"
+  assert run("band", live(acc_active=True, v=60), NOW)["sub"] == "volante ativo"
+  assert run("band", live(steering=False, gas=True), NOW)["sub"] == "openpilot desligado"  # nothing to take from
+
+
 # ----- the comma card, car off
 
 HEALTH = {"device": {"temp": 48, "thermal": "ok", "free": 57}, "down": [], "learned": {}, "commit": "abc1234"}

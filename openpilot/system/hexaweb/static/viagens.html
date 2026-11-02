@@ -25,6 +25,7 @@
   .where { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; color: var(--muted); }
   .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--muted); margin-top: 8px; }
   .legend i { display: inline-block; width: 18px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  .legend i.ponto { width: 10px; height: 10px; border-radius: 50%; }
   .warn { color: var(--warn); font-size: 14px; }
   ul { list-style: none; padding: 0; margin: 0; }
   li { padding: 12px 0; min-height: 44px; border-top: 1px solid var(--line); font-size: 15px; cursor: pointer; display: flex; gap: 12px; }
@@ -47,6 +48,8 @@
       <div class="stat"><b id="sMin">—</b><span data-t>minutos</span></div>
       <div class="stat"><b id="sOn">—</b><span data-t>openpilot dirigindo, com o carro andando</span></div>
       <div class="stat"><b id="sDriver">—</b><span data-t>você no volante</span></div>
+      <div class="stat"><b id="sGas">—</b><span data-t>você no acelerador</span></div>
+      <div class="stat"><b id="sBrake">—</b><span data-t>você no freio</span></div>
       <div class="stat"><b id="sOff">—</b><span data-t>desengates</span></div>
       <div class="stat"><b id="sMarks">—</b><span data-t>marcas</span></div>
     </div>
@@ -58,8 +61,11 @@
       <div class="legend">
         <span><i style="background:var(--accent)"></i><b data-t style="font-weight:400">openpilot</b></span>
         <span><i style="background:var(--off)"></i><b data-t style="font-weight:400">você</b></span>
-        <span><i style="background:var(--mark)"></i><b data-t style="font-weight:400">marca</b></span>
-        <span><i style="background:var(--danger)"></i><b data-t style="font-weight:400">desengate</b></span>
+        <span><i style="background:var(--wheel)"></i><b data-t style="font-weight:400">volante</b></span>
+        <span><i style="background:var(--gas)"></i><b data-t style="font-weight:400">acelerador</b></span>
+        <span><i style="background:var(--danger)"></i><b data-t style="font-weight:400">freio</b></span>
+        <span><i class="ponto" style="background:var(--mark)"></i><b data-t style="font-weight:400">marca</b></span>
+        <span><i class="ponto" style="background:var(--danger)"></i><b data-t style="font-weight:400">desengate</b></span>
       </div>
       <button id="openReplay" data-t>Ver este momento no replay</button>
     </div>
@@ -83,6 +89,9 @@ async function get(path) {
 
 function fmt(s) { return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`; }
 function color(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+const WHO = { op: ["--accent", "openpilot dirigindo"], you: ["--off", "você dirigindo"], wheel: ["--wheel", "você no volante"],
+              gas: ["--gas", "você no acelerador"], brake: ["--danger", "você no freio"] };
+function who(p) { return WHO[p.who] || WHO[p.on ? "op" : "you"]; }
 
 async function loadTrips() {
   const r = await get("/api/trips");
@@ -107,7 +116,7 @@ async function loadTrip() {
   const sel = $("trip"), route = sel.value;
   const segments = JSON.parse(sel.selectedOptions[0].dataset.segments);
   points = []; events = []; render();
-  let sum = { km: 0, s: 0, moving_s: 0, on_s: 0, driver: 0, off: 0, marks: 0 };
+  let sum = { km: 0, s: 0, moving_s: 0, on_s: 0, driver: 0, gas: 0, brake: 0, off: 0, marks: 0 };
   for (const [i, n] of segments.entries()) {
     $("msg").textContent = TF("Lendo minuto {i} de {n}…", { i: i + 1, n: segments.length });
     const r = await get(`/api/trip/segment?route=${encodeURIComponent(route)}&n=${n}`);
@@ -127,6 +136,8 @@ function summary(s) {
   $("sMin").textContent = Math.round(s.s / 60);
   $("sOn").textContent = s.moving_s ? Math.round(100 * s.on_s / s.moving_s) + "%" : "—";
   $("sDriver").textContent = s.driver;
+  $("sGas").textContent = s.gas;
+  $("sBrake").textContent = s.brake;
   $("sOff").textContent = s.off;
   $("sMarks").textContent = s.marks;
 }
@@ -169,13 +180,12 @@ function render() {
   if (points.length < 2) return;
   drawn = layout();
   g.lineWidth = 4; g.lineCap = "round";
-  const on = color("--accent"), off = color("--off");
   for (let i = 1; i < drawn.length; i++) {
-    g.strokeStyle = points[i].on ? on : off;
+    g.strokeStyle = color(who(points[i])[0]);
     g.beginPath(); g.moveTo(...drawn[i - 1]); g.lineTo(...drawn[i]); g.stroke();
   }
   for (const e of events) {
-    if (e.kind === "driver") continue;
+    if (e.kind !== "mark" && e.kind !== "off") continue;
     const [x, y] = drawn[nearest(e.t)];
     g.fillStyle = e.kind === "mark" ? color("--mark") : color("--danger");
     g.beginPath(); g.arc(x, y, 5, 0, 7); g.fill();
@@ -184,7 +194,7 @@ function render() {
   g.fillStyle = color("--text");
   g.beginPath(); g.arc(...drawn[i], 7, 0, 7); g.fill();
   $("whereT").textContent = fmt(p.t);
-  $("whereV").textContent = `${Math.round(p.v)} km/h · ${T(p.on ? "openpilot dirigindo" : "você dirigindo")}`;
+  $("whereV").textContent = `${Math.round(p.v)} km/h · ${T(who(p)[1])}`;
   list();
 }
 
@@ -194,7 +204,7 @@ function list() {
   listed = events.length;
   const ul = $("events"); ul.replaceChildren();
   for (const e of [...events].sort((a, b) => a.t - b.t)) {
-    if (e.kind === "driver") continue;
+    if (e.kind !== "mark" && e.kind !== "off") continue;
     const li = document.createElement("li");
     const tm = document.createElement("span"); tm.className = "time"; tm.textContent = fmt(e.t);
     const tx = document.createElement("span"); tx.textContent = T(e.text);

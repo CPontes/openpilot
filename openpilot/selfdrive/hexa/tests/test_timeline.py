@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -89,7 +90,7 @@ def test_events_are_marked(rlog):
 
 
 def _frames(n, **over):
-  base = {"t": 0., "en": True, "lat": True, "brk": False, "alert": "", "drv": 0, "tqc": 0.3, "tq": 0.3, "sat": False, "v": 30., "ang": 0.}
+  base = {"t": 0., "en": True, "lat": True, "brk": False, "gas": False, "alert": "", "drv": 0, "tqc": 0.3, "tq": 0.3, "sat": False, "v": 30., "ang": 0.}
   return [dict(base, t=i / 10, **{k: v(i) if callable(v) else v for k, v in over.items()}) for i in range(n)]
 
 
@@ -132,6 +133,72 @@ def test_trip_segment_sums_the_minute(tmp_path):
   assert s["marks"] == 1 and s["off"] == 0
   assert len(d["points"]) == 4 and all(p["lat"] is None for p in d["points"])
   assert abs(sum(p["step"] for p in d["points"]) - 74) < 21  # the last point's step stays for the next one
+
+
+class Msg:
+  def __init__(self, kind, t, **fields):
+    self.kind, self.logMonoTime = kind, int(t * NS)
+    setattr(self, kind, SimpleNamespace(**fields))
+
+  def which(self):
+    return self.kind
+
+
+def drive(seconds, enabled=True, **pressed):
+  """Ten messages per second: each pressed name is a list of (from, to) in seconds."""
+  msgs = []
+  for i in range(int(seconds * 10)):
+    t = i / 10
+    on = {k: any(a <= t < b for a, b in pressed.get(k, ())) for k in ("gas", "brake", "wheel")}
+    msgs.append(Msg("selfdriveState", 1 + t, enabled=enabled))
+    msgs.append(Msg("carControl", 1 + t, latActive=enabled))
+    msgs.append(Msg("carState", 1 + t + .001, vEgo=10., gasPressed=on["gas"], brakePressed=on["brake"], steeringPressed=on["wheel"]))
+  return tl.trip_segment(msgs)
+
+
+def who(d, t):
+  return next(p["who"] for p in d["points"] if p["t"] >= t)
+
+
+def test_a_trip_tells_the_pedals_from_the_wheel():
+  d = drive(12., brake=[(2.5, 3.)], gas=[(6.5, 7.)], wheel=[(9., 11.)])
+  s = d["summary"]
+  assert (s["brake"], s["gas"], s["driver"]) == (1, 1, 1)
+  assert who(d, 4.) == "brake" and who(d, 8.) == "gas" and who(d, 10.) == "wheel" and who(d, 0.) == "op"
+  assert {e["text"] for e in d["events"]} >= {"você no freio", "você no acelerador", "você no volante"}
+
+
+def test_a_long_hold_paints_every_point_it_covers():
+  d = drive(10., wheel=[(1., 9.)])
+  assert [p["who"] for p in d["points"] if 2.5 <= p["t"] <= 8.5] == ["wheel"] * 3
+  assert d["summary"]["driver"] == 1
+
+
+def test_a_pedal_says_more_than_the_wheel_in_the_same_point():
+  d = drive(6., wheel=[(2.2, 3.5)], gas=[(2.8, 3.2)])
+  assert who(d, 4.) == "gas"
+
+
+def test_a_short_touch_on_the_wheel_is_not_a_takeover():
+  d = drive(6., wheel=[(2.2, 2.5)])
+  assert d["summary"]["driver"] == 0 and who(d, 4.) == "op"
+
+
+def test_a_pedal_tapped_twice_is_one_takeover():
+  d = drive(8., gas=[(2., 2.2), (3., 3.2)])
+  assert d["summary"]["gas"] == 1
+
+
+def test_with_openpilot_off_it_is_all_you():
+  d = drive(6., enabled=False, brake=[(2., 3.)], gas=[(4., 5.)])
+  assert {p["who"] for p in d["points"]} == {"you"}
+  assert (d["summary"]["brake"], d["summary"]["gas"]) == (0, 0)
+
+
+def test_detect_marks_the_gas_only_when_engaged():
+  base = {"v": 10, "en": True, "lat": True, "alert": "", "drv": 0, "tqc": 0., "tq": 0., "sat": False, "brk": False, "gas": False, "ang": 0., "press": False}
+  frames = [{**base, "t": 0.}, {**base, "t": .1, "gas": True}, {**base, "t": .2}, {**base, "t": 5., "en": False}, {**base, "t": 5.1, "en": False, "gas": True}]
+  assert [e["t"] for e in tl.detect(frames) if e["kind"] == "gas"] == [.1]
 
 
 def test_trip_files_groups_by_route(tmp_path):

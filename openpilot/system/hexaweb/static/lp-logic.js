@@ -43,7 +43,8 @@
     let cls = steer ? (lat ? "lat" : "op") : "you";
     if (status === "userPrompt" || (status == null && l.alert)) cls = "warn";
     const why = !l.engaged && l.why && l.why.length ? l.why : null;
-    const sub = why ? T("não engata: {motivos}") : lat ? T("ACC desligado") : steer ? T("volante ativo") : T("openpilot desligado");
+    const took = !steer ? null : l.brake ? T("você no freio") : l.gas ? T("você no acelerador") : l.driver ? T("você no volante") : null;
+    const sub = why ? T("não engata: {motivos}") : took || (lat ? T("ACC desligado") : steer ? T("volante ativo") : T("openpilot desligado"));
     return { cls, who, sub, why, acc, stale: false, latSince: since };
   }
 

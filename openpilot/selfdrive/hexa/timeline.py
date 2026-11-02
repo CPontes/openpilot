@@ -35,6 +35,7 @@ TRIP_STEP_S = 2.0  # one point of the trip path
 GPS_MAX_AGE_S = 3.0
 DRIVER_MIN_S = 0.5  # on the wheel for at least this long counts as an intervention
 SKIP_ALERTS = ("Bookmark Saved",)  # already a mark event
+TOOK_RANK = {None: 0, "wheel": 1, "gas": 2, "brake": 3}  # a path point covers 2 s: a pedal says more than a hand on the wheel
 
 
 def read_rlog(path) -> list:
@@ -170,6 +171,10 @@ def detect(frames: list[dict], marks: list[tuple[float, dict | None]] | None = N
         ev.append({"t": t, "kind": "disengage", "text": "desengatou" + (" (freio)" if f["brk"] or prev["brk"] else "")})
       if f["brk"] and not prev["brk"] and (f["en"] or prev["en"]):
         ev.append({"t": t, "kind": "brake", "text": "freio"})
+      if f["gas"] and not prev["gas"] and f["en"]:
+        if t - last_driver.get("gas", -1e9) > DRIVER_REPEAT_S:
+          ev.append({"t": t, "kind": "gas", "text": "acelerador"})
+        last_driver["gas"] = t
       if f["alert"] and f["alert"] != prev["alert"] and f["alert"] not in SKIP_ALERTS \
          and t - last_alert.get(f["alert"], -1e9) > ALERT_REPEAT_S:
         ev.append({"t": t, "kind": "alert", "text": f["alert"]})
@@ -286,13 +291,16 @@ def trip_segment(events: Iterable) -> dict:
   out: list[dict] = []
   t0 = last = None
   next_point = 0.
-  en = lat = brake = False
+  en = lat = brake = gas = False
   curvature = 0.
   step = dpsi = 0.
   fix = None
   fix_t = -1e9
-  total = {"s": 0., "km": 0., "moving_s": 0., "on_s": 0., "driver": 0, "off": 0, "marks": 0}
+  total = {"s": 0., "km": 0., "moving_s": 0., "on_s": 0., "driver": 0, "gas": 0, "brake": 0, "off": 0, "marks": 0}
   driver_since = None
+  driver_told = False
+  took = None  # what the driver took from openpilot since the last path point
+  pedal_at = {"gas": -1e9, "brake": -1e9}
 
   for m in sorted(events, key=lambda m: m.logMonoTime):
     w = m.which()
@@ -321,7 +329,15 @@ def trip_segment(events: Iterable) -> dict:
         t = 0.
       dt = min(t - last, .5) if last is not None else 0.
       last = t
-      brake = cs.brakePressed
+      for pedal, pressed, was, text in (("brake", cs.brakePressed, brake, "você no freio"), ("gas", cs.gasPressed, gas, "você no acelerador")):
+        if en and pressed:
+          took = max(took, pedal, key=TOOK_RANK.__getitem__)
+          if not was:
+            if t - pedal_at[pedal] > DRIVER_REPEAT_S:
+              out.append({"t": _r(t), "kind": pedal, "text": text})
+              total[pedal] += 1
+            pedal_at[pedal] = t
+      brake, gas = cs.brakePressed, cs.gasPressed
       total["s"] += dt
       total["km"] += cs.vEgo * dt / 1e3
       step += cs.vEgo * dt
@@ -332,15 +348,19 @@ def trip_segment(events: Iterable) -> dict:
       if en and cs.steeringPressed:
         driver_since = t if driver_since is None else driver_since
         if t - driver_since >= DRIVER_MIN_S:
-          out.append({"t": _r(driver_since), "kind": "driver", "text": "você no volante"})
-          total["driver"] += 1
-          driver_since = float("inf")
+          took = max(took, "wheel", key=TOOK_RANK.__getitem__)
+          if not driver_told:
+            out.append({"t": _r(driver_since), "kind": "driver", "text": "você no volante"})
+            total["driver"] += 1
+            driver_told = True
       elif not cs.steeringPressed:
         driver_since = None
+        driver_told = False
       if t >= next_point:
         fresh = fix is not None and t - fix_t <= GPS_MAX_AGE_S
-        points.append({"t": _r(t), "v": _r(cs.vEgo * 3.6), "on": bool(lat), "step": _r(step), "dpsi": _r(dpsi, 4),
+        points.append({"t": _r(t), "v": _r(cs.vEgo * 3.6), "on": bool(lat), "who": took or ("op" if lat else "you"), "step": _r(step), "dpsi": _r(dpsi, 4),
                        "lat": fix[0] if fresh else None, "lon": fix[1] if fresh else None})
+        took = None
         step = dpsi = 0.
         next_point += TRIP_STEP_S
 
