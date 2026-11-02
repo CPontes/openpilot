@@ -65,7 +65,8 @@ PATH_PRUNE_S = 600.  # paths of drives the comma already deleted go too, looked 
 HIDDEN_PARAM = "HexaTripsHidden"  # drives the owner hid from the phone's lists: the logs stay on the comma
 HIDDEN_KEEP = 600
 PRESERVE_ATTR = "user.preserve"  # system/loggerd/deleter.py: what keeps a flagged minute from being deleted
-SUMMARY_VERSION = 3  # 2: version, alerts. 3: the path for the map. An older summary is read again, the newest SUMMARY_NEWEST only
+SUMMARY_VERSION = 4  # 2: version, alerts. 3: the path. 4: the KPIs (wobble, lane seen, where it let go).
+# An older summary is read again, the newest SUMMARY_NEWEST only
 ERRORS_EVERY_S = 30.
 CLIP_BEFORE_S = 10.  # the clip of a mark starts this long before it
 CLIP_TICKET_S = 600.  # a clip link works this long, for that clip only

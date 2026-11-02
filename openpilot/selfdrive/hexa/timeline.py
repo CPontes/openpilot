@@ -47,6 +47,15 @@ ALERT_COUNTED = ("userPrompt", "critical")  # an alert that asks something of th
 TOOK_RANK = {None: 0, "wheel": 1, "gas": 2, "brake": 3}  # a path point covers 2 s: a pedal says more than a hand on the wheel
 # who had the wheel while moving: openpilot alone, openpilot with the driver's hand on it, the driver alone
 SPLIT_KEYS = ("op_s", "help_s", "you_s", "stop_s", "op_km", "help_km", "you_km", "acc_s")
+# the panel's KPIs (owner, 02/11 14:54), summed minute by minute so a drive and a month add up the same way:
+#   wob_ss, wob_n  the wheel going back and forth: steering angle around its own 1 s average, openpilot steering above 20 km/h
+#                  (RMS = sqrt(ss / n), degrees). [hipótese] at the qlog's 10 Hz it tells the same as the 100 Hz measured on 02/11
+#   lane_n, lane_ok  drivingModelData samples, openpilot steering above 20 km/h, and how many saw both lines at 0.5 or more
+KPI_KEYS = ("wob_ss", "wob_n", "lane_n", "lane_ok")
+WOBBLE_MIN_SPEED = 20 / 3.6
+WOBBLE_WINDOW_S = 1.
+LANE_OK = 0.5
+OFF_AT_MAX = 50
 
 
 def read_rlog(path) -> list:
@@ -318,6 +327,7 @@ def trip_segment(events: Iterable) -> dict:
   step = dpsi = 0.
   fix = None
   fix_t = -1e9
+  speed = 0.
   total = {"s": 0., "km": 0., "moving_s": 0., "on_s": 0., "driver": 0, "gas": 0, "brake": 0, "off": 0, "marks": 0, "alerts": 0, "alerts_crit": 0,
            **dict.fromkeys(SPLIT_KEYS, 0.)}
   alert_text: str | None = None  # the alert on screen now; None until the minute's first message, which may carry one from the minute before
@@ -336,6 +346,8 @@ def trip_segment(events: Iterable) -> dict:
   run_best = [0., 0.]
   run_hand = None  # since when the wheel is pressed
   v_max = 0.
+  kpi = dict.fromkeys(KPI_KEYS, 0.)
+  angles: list[tuple[float, float]] = []  # the last second of steering angle, for the wobble
   en_seen = False  # the minute's first carState can come before its first selfdriveState: not a break
 
   messages = sorted(events, key=lambda m: m.logMonoTime)
@@ -343,7 +355,12 @@ def trip_segment(events: Iterable) -> dict:
   for m in messages:
     w = m.which()
     t = (m.logMonoTime - t0) / 1e9 if t0 is not None else 0.
-    if w == "deviceMotion":
+    if w == "drivingModelData":
+      if en and lat and last is not None and speed > WOBBLE_MIN_SPEED:
+        meta = m.drivingModelData.laneLineMeta
+        kpi["lane_n"] += 1
+        kpi["lane_ok"] += min(meta.leftProb, meta.rightProb) >= LANE_OK
+    elif w == "deviceMotion":
       car.on_motion(m.deviceMotion.angularVelocityDevice.z)
     elif w == "peripheralState":
       car.on_voltage(m.peripheralState.voltage / 1000.)
@@ -392,6 +409,13 @@ def trip_segment(events: Iterable) -> dict:
       dt = min(t - last, .5) if last is not None else 0.
       last = t
       v_max = max(v_max, cs.vEgo)
+      speed = cs.vEgo
+      angle = getattr(cs, "steeringAngleDeg", 0.)
+      angles = [(ta, a) for ta, a in angles if t - ta < WOBBLE_WINDOW_S] + [(t, angle)]
+      if en and lat and cs.vEgo > WOBBLE_MIN_SPEED and not cs.steeringPressed and len(angles) >= 3:
+        mean = sum(a for _, a in angles) / len(angles)
+        kpi["wob_ss"] += (angle - mean) ** 2
+        kpi["wob_n"] += 1
       run_hand = (run_hand if run_hand is not None else t) if cs.steeringPressed else None
       if en and not (cs.gasPressed or cs.brakePressed or (run_hand is not None and t - run_hand >= DRIVER_MIN_S)):
         run[0] += cs.vEgo * dt / 1e3
@@ -449,6 +473,7 @@ def trip_segment(events: Iterable) -> dict:
     total[k] = _r(total[k], 3)
   total.update(shadow.result())
   total.update(car.result())
+  total.update({k: _r(v, 3) for k, v in kpi.items()})
   # the longest stretch without an intervention; head and tail join with the minutes around it (trip_summary)
   total.update({"v_max": _r(v_max * 3.6, 1), "run_best": [_r(x, 3) for x in max(run_best, run)], "run_tail": [_r(x, 3) for x in run],
                 "run_head": [_r(x, 3) for x in (run_head if run_head is not None else run)], "run_whole": run_head is None})
@@ -462,12 +487,13 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
   """The whole drive in numbers, for the trip list: who had the wheel, for how long and how far, minute by minute.
   A minute that can't be read is left out and counted, so a broken file doesn't lose the drive. A long drive takes a
   while: stop is asked before each minute, and None means it gave up (the car turned on)."""
-  keys = ("s", "km", "moving_s", "on_s", "driver", "gas", "brake", "off", "marks", "alerts", "alerts_crit", *SPLIT_KEYS, *SHADOW_KEYS)
+  keys = ("s", "km", "moving_s", "on_s", "driver", "gas", "brake", "off", "marks", "alerts", "alerts_crit", *SPLIT_KEYS, *SHADOW_KEYS, *KPI_KEYS)
   total: dict = dict.fromkeys(keys, 0.)
   car: dict = {}
   version: dict = {}
   auto: list[dict] = []
   path: list[list] = []
+  off_at: list[int] = []  # seconds from minute 0 where openpilot let go: the map's red pins
   unread = 0
   run_best, run_cur, prev, v_max = [0., 0.], [0., 0.], None, 0.
   for seg in sorted(files):
@@ -482,6 +508,7 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
     version = version or seg_data.get("version") or {}
     # told from the end of the minute: a drive's last minute is short
     auto += [{"seg": seg, "left": _r(part["s"] - e["t"]), "kind": e["kind"]} for e in seg_data["events"] if e["kind"] in AUTO_TEXT]
+    off_at += [round(seg * 60 + e["t"]) for e in seg_data["events"] if e["kind"] == "off"]
     pts = seg_data["points"]
     for i in range(0, len(pts), PATH_EVERY):  # who drove: the most of the driver in the group (you > a pedal > the hand > openpilot)
       group = pts[i:i + PATH_EVERY]
@@ -499,10 +526,10 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
       run_best = max(run_best, joined, list(part["run_best"]), run_cur)
     prev = seg
   out = {k: _r(v, 2) for k, v in {**total, **car}.items()}
-  for k in ("driver", "gas", "brake", "off", "marks", "alerts", "alerts_crit", "sh_hard", "sh_earlier", "sh_weaker", "sh_fcw"):
+  for k in ("driver", "gas", "brake", "off", "marks", "alerts", "alerts_crit", "sh_hard", "sh_earlier", "sh_weaker", "sh_fcw", "wob_n", "lane_n", "lane_ok"):
     out[k] = int(total[k])
   if "se_hard_brakes" in out:
     out["se_hard_brakes"] = int(out["se_hard_brakes"])
   out.update({"v_max": round(v_max), "run_km": _r(run_best[0], 2), "run_s": round(run_best[1])})
   return {**out, "segments": len(files), "unread": unread, "version": version.get("version", ""), "commit": version.get("commit", ""),
-          "auto_marks": auto[:AUTO_MARKS_MAX], "path": path}
+          "auto_marks": auto[:AUTO_MARKS_MAX], "path": path, "off_at": off_at[:OFF_AT_MAX]}

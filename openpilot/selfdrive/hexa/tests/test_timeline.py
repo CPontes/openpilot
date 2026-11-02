@@ -9,7 +9,7 @@ NS = int(1e9)
 
 
 def write_rlog(path, seconds=8.0, bookmark_at=None, mark=None, oscillate=(2.0, 6.0), limit=(6.5, 7.5), pressed=None, acc=None, stop=None,
-               lat_from=0.5, lat_off=None, gas=None):
+               lat_from=0.5, lat_off=None, gas=None, lanes=None):
   """A small rlog made of real cereal messages, as the comma would record it."""
   import zstandard
   from openpilot.cereal import log
@@ -56,6 +56,8 @@ def write_rlog(path, seconds=8.0, bookmark_at=None, mark=None, oscillate=(2.0, 6
         mv.position.y = [0.] * 33
         mv.laneLineProbs = [0.1, 0.9, 0.9, 0.1]
       add("modelV2", t, model)
+      if lanes and i % 50 == 0:  # drivingModelData, as the qlog keeps it (2 Hz)
+        add("drivingModelData", t, lambda d, s=s: (setattr(d.laneLineMeta, "leftProb", lanes(s)[0]), setattr(d.laneLineMeta, "rightProb", lanes(s)[1])))
       add("radarState", t, lambda r: (setattr(r.leadOne, "present", True), setattr(r.leadOne, "dRel", 25.), setattr(r.leadOne, "vRel", -1.)))
   if bookmark_at is not None:
     bt = t0 + int(bookmark_at * NS)
@@ -333,3 +335,20 @@ def test_a_hard_brake_is_told_from_the_end_of_its_minute(monkeypatch):
   monkeypatch.setattr(tl, "read_rlog", lambda path: msgs)
   found = tl.trip_summary({0: "x"})["auto_marks"]
   assert len(found) == 1 and found[0]["kind"] == "hardbrake" and 4. < found[0]["left"] < 5.
+
+
+def test_the_kpis_wobble_lane_seen_and_where_it_let_go(tmp_path):
+  # the wheel going back and forth only counts with openpilot steering; lane seen is both lines at 0.5 or more; off_at in s from minute 0
+  d = tmp_path / "00000001--abc--2"
+  d.mkdir()
+  calm = tl.trip_summary({2: str(write_rlog(d / "a.zst", seconds=8., oscillate=(0., 0.), lat_from=0., lanes=lambda s: (.9, .9)))})
+  wavy = tl.trip_summary({2: str(write_rlog(d / "b.zst", seconds=8., oscillate=(1., 7.), lat_from=0., lanes=lambda s: (.9, .2 if s < 4 else .9)))})
+  def rms(s):
+    return (s["wob_ss"] / s["wob_n"]) ** .5
+
+  assert calm["wob_n"] > 500 and rms(calm) < .1
+  assert rms(wavy) > 4  # ±8° every quarter second
+  assert calm["lane_n"] == wavy["lane_n"] > 10 and calm["lane_ok"] == calm["lane_n"]
+  assert abs(wavy["lane_ok"] / wavy["lane_n"] - .5) < .1
+  off = tl.trip_summary({2: str(write_rlog(d / "c.zst", seconds=8., oscillate=(0., 0.)))})  # write_rlog's TAKE CONTROL; enabled from 0.5 s
+  assert off["off_at"] == [] and calm["off_at"] == []

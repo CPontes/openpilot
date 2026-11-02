@@ -314,6 +314,73 @@
     return best;
   }
 
+  // ----- the panel's KPIs (owner, 02/11 14:54): every number with its context, never a score or a streak
+  // A set of drives in four numbers. Intervention = openpilot let go, or the hand on the wheel for 0.5 s (timeline.py).
+  // Each is null without enough under it: 1 km for a rate, 30 s of steering for the wobble, 20 samples for the lane.
+  function kpiOf(trips) {
+    const ts = (trips || []).filter((t) => t.summary && !t.hidden && !idle(t));
+    const sum = (k) => ts.reduce((a, t) => a + (t.summary[k] || 0), 0);
+    const km = sum("km"), moving = sum("moving_s"), ints = sum("off") + sum("driver"), wobN = sum("wob_n"), laneN = sum("lane_n");
+    return { trips: ts.length, km,
+             kmPerInt: km >= 1 ? km / Math.max(1, ints) : null,
+             opPct: moving >= 60 ? 100 * sum("op_s") / moving : null,
+             wobble: wobN >= 300 ? Math.sqrt(sum("wob_ss") / wobN) : null,
+             lanePct: laneN >= 20 ? 100 * sum("lane_ok") / laneN : null,
+             alerts100: km >= 1 ? 100 * sum("alerts") / km : null,
+             off100: km >= 1 ? 100 * sum("off") / km : null };
+  }
+  // Which way is better for each KPI, and how big a change counts (relative, or points for a percent)
+  const KPI_BETTER = { kmPerInt: 1, opPct: 1, lanePct: 1, wobble: -1, alerts100: -1, off100: -1 };
+  function kpiDelta(key, now, before) {
+    if (now == null || before == null) return null;
+    const pts = key === "opPct" || key === "lanePct";
+    const d = pts ? now - before : (before > 0 ? (now - before) / before : null);
+    if (d == null) return null;
+    const small = pts ? Math.abs(d) < 2 : Math.abs(d) < 0.1;
+    return { d, pts, trend: small ? 0 : Math.sign(d) * KPI_BETTER[key] };  // trend: 1 better, -1 worse, 0 about the same
+  }
+  // The last `days` against the `days` before: the four numbers of Início, with their trend
+  function kpis(trips, nowS, days) {
+    const span = (days || 28) * 86400;
+    const now = kpiOf((trips || []).filter((t) => tripStart(t) >= nowS - span));
+    const before = kpiOf((trips || []).filter((t) => tripStart(t) >= nowS - 2 * span && tripStart(t) < nowS - span));
+    const out = { now, before };
+    for (const k of Object.keys(KPI_BETTER)) out[k] = kpiDelta(k, now[k], before[k]);
+    return out;
+  }
+  // One drive against the average of the last 4 weeks: "acima da média", "na média", "abaixo da média"
+  function tripVsAverage(t, trips, nowS) {
+    const mine = kpiOf([t]), avg = kpiOf((trips || []).filter((x) => x.id !== t.id && tripStart(x) >= nowS - 28 * 86400));
+    const out = {};
+    for (const k of ["kmPerInt", "opPct", "wobble"]) {
+      const d = kpiDelta(k, mine[k], avg[k]);
+      out[k] = { value: mine[k], word: d == null ? null : d.trend > 0 ? T("melhor que a sua média") : d.trend < 0 ? T("pior que a sua média") : T("na sua média") };
+    }
+    return out;
+  }
+  // The version now against the one before it, in the order the drives happened. Fewer than 200 km on a side: a warning
+  const VERSION_MIN_KM = 200;
+  function versionCompare(trips) {
+    const ts = (trips || []).filter((t) => t.summary && !t.hidden && !idle(t) && versionOf(t)).sort((a, b) => b.mtime - a.mtime);
+    if (!ts.length) return null;
+    const now = versionOf(ts[0]), prev = (ts.find((t) => versionOf(t) !== now) || null);
+    if (!prev) return null;
+    const a = kpiOf(ts.filter((t) => versionOf(t) === now)), b = kpiOf(ts.filter((t) => versionOf(t) === versionOf(prev)));
+    const rows = ["kmPerInt", "opPct", "wobble", "alerts100"].map((k) => ({ key: k, now: a[k], before: b[k], delta: kpiDelta(k, a[k], b[k]) }));
+    const judged = rows.filter((r) => r.delta);
+    return { now, before: versionOf(prev), a, b, rows, better: judged.filter((r) => r.delta.trend > 0).length, judged: judged.length,
+             few: a.km < VERSION_MIN_KM || b.km < VERSION_MIN_KM };
+  }
+  // Week by week of one KPI, oldest first, for a sparkline (null weeks stay null: a gap reads as a gap)
+  function kpiWeeks(trips, nowS, key, n) {
+    const out = [];
+    for (let i = (n || 8) - 1; i >= 0; i--) {
+      const end = nowS - i * 7 * 86400, start = end - 7 * 86400;
+      out.push(kpiOf((trips || []).filter((t) => tripStart(t) >= start && tripStart(t) < end))[key]);
+    }
+    return out;
+  }
+
   // Shadow mode (selfdrive/hexa/shadow.py), added up over the last 7 days: what openpilot's longitudinal would have done
   // while the Haval ACC drove. Null until a drive has it (openpilot engaged with the ACC driving).
   function weekShadow(trips, nowS) {
@@ -347,7 +414,7 @@
     return { ok, ask: !!car.on && !!car.moving && !ok };
   }
 
-  root.LPL = { FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
+  root.LPL = { kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
                tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

@@ -133,6 +133,25 @@
   .split .op, .sw.op { background: var(--accent); }
   .split .help, .sw.help { background: repeating-linear-gradient(135deg, var(--accent) 0 5px, var(--you) 5px 10px); }
   .split .you, .sw.you { background: var(--you); }
+  .kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .kpi.worse { border-color: var(--warn-line); }
+  .kpi .k { font-size: 13px; color: var(--muted); }
+  .kpi .v { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .kpi .v b { font-family: var(--font-display); font-size: 32px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .kpi .d { font-size: 14px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+  .kpi .d.up { color: var(--accent); } .kpi .d.down { color: var(--warn); }
+  .kpi svg { display: block; width: 100%; height: 22px; }
+  .vsavg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; text-align: center; }
+  .vsavg > span { display: flex; flex-direction: column; min-width: 0; }
+  .vsavg b { font-family: var(--font-display); font-size: 22px; font-variant-numeric: tabular-nums; }
+  .vsavg small { font-size: 12px; color: var(--muted); }
+  .vsavg .up { color: var(--accent); } .vsavg .down { color: var(--warn); }
+  .vtable { display: grid; grid-template-columns: minmax(0, 1fr) 64px 64px 72px; gap: 8px 6px; font-size: 15px; align-items: baseline; }
+  .card.ok.compact { padding: 10px 14px; }
+  .card.ok.compact #readyIcon { width: 28px; height: 28px; }
+  .card.ok.compact .big { font-size: 18px; }
+  .card.ok.compact #readySub, .card.ok.compact #readyChecks { display: none; }
   .navbtn { flex: none; width: 48px; height: 48px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); display: inline-flex; align-items: center; justify-content: center; padding: 0; }
   .navbtn:disabled { opacity: .3; }
   .map { position: relative; height: 240px; margin: 0 -16px; overflow: hidden; background: var(--card-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); cursor: pointer; }
@@ -269,6 +288,11 @@
           </div>
           <div class="checks" id="readyChecks"></div>
         </section>
+        <section class="hidden" id="kpiBox">
+          <div class="row" style="margin:6px 4px 8px;align-items:baseline"><span class="label grow" style="margin:0" data-t>Últimas 4 semanas</span><span class="small" data-t>contra as 4 antes</span></div>
+          <div class="kpis" id="kpiGrid"></div>
+          <button class="link hidden" id="kpiVersion" type="button" style="margin:2px 4px 0"></button>
+        </section>
         <a class="card att row hidden" id="updateCard" href="#" style="text-decoration:none;color:inherit">
           <span class="grow"><span class="title" data-t>Versão nova pronta</span><br><span class="desc" id="updateCardDesc"></span></span>
           <span class="link" data-t>Ver</span>
@@ -305,6 +329,7 @@
             <div class="legend3" id="tripLegend"></div>
           </div>
           <div class="row" style="gap:20px;flex-wrap:wrap" id="tripNums"></div>
+          <div class="vsavg hidden" id="tripVs"></div>
           <div class="grid2 hidden" id="tripFigures"></div>
           <div class="row" style="justify-content:space-between;flex-wrap:wrap">
             <a class="link" id="tripOpen" href="/viagens"><span data-t>Rever viagem</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
@@ -930,11 +955,52 @@ function refreshHome(full) {
   renderGarage();
 }
 
+let readyOpen = false;
+const KPI_SHOWN = [["kmPerInt", () => t("km por intervenção"), (v) => num(v, 1)], ["opPct", () => t("openpilot no volante"), (v) => `${Math.round(v)}%`],
+                   ["wobble", () => t("balanço do volante"), (v) => `${num(v, 2)}°`], ["alerts100", () => t("alertas a cada 100 km"), (v) => num(v, 0)]];
+// A line for 8 weeks, null weeks left out; the color says if the last week is on the good side
+function sparkline(values, good) {
+  const pts = values.map((v, i) => [i, v]).filter((p) => p[1] != null);
+  if (pts.length < 2) return "";
+  const ys = pts.map((p) => p[1]), lo = Math.min(...ys), hi = Math.max(...ys), span = hi - lo || 1;
+  const d = pts.map(([i, v]) => `${(i / (values.length - 1) * 140).toFixed(1)},${(19 - (v - lo) / span * 16).toFixed(1)}`).join(" ");
+  const color = good === 1 ? "var(--accent)" : good === -1 ? "var(--warn)" : "var(--dim)";
+  return `<svg viewBox="0 0 140 22" preserveAspectRatio="none" aria-hidden="true"><polyline points="${d}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`;
+}
+let kpiSig = "";
+function renderKpis() {
+  const nowS = Date.now() / 1000, list = trips ? LPL.listed(trips) : [];
+  const k = LPL.kpis(list, nowS, 28);
+  const show = k.now.trips >= 2;
+  $("kpiBox").classList.toggle("hidden", !show);
+  if (!show) return;
+  const sig = JSON.stringify([list.length, list[0] && list[0].id, Math.floor(nowS / 3600), L()]);
+  if (sig === kpiSig) return;
+  kpiSig = sig;
+  $("kpiGrid").replaceChildren(...KPI_SHOWN.map(([key, label, fmt]) => {
+    const v = k.now[key], d = k[key], box = el("div", "kpi" + (d && d.trend < 0 ? " worse" : ""));
+    box.append(el("span", "k", label()));
+    const line = el("span", "v"); line.append(el("b", "", v == null ? "—" : fmt(v)));
+    if (d) {
+      const arrow = d.d > 0 ? "▲" : d.d < 0 ? "▼" : "=";
+      const size = d.pts ? tf("{n} pts", { n: num(Math.abs(d.d), 0) }) : `${num(Math.abs(d.d) * 100, 0)}%`;
+      line.append(el("span", "d " + (d.trend > 0 ? "up" : d.trend < 0 ? "down" : ""), d.trend === 0 ? t("estável") : `${arrow} ${size}`));
+    } else if (v != null) line.append(el("span", "d", t("sem comparação")));
+    box.append(line);
+    box.insertAdjacentHTML("beforeend", sparkline(LPL.kpiWeeks(list, nowS, key, 8), d ? d.trend : 0));
+    box.setAttribute("aria-label", `${label()}: ${v == null ? "—" : fmt(v)}`);
+    return box;
+  }));
+  const vc = LPL.versionCompare(list);
+  $("kpiVersion").classList.toggle("hidden", !vc);
+  if (vc) $("kpiVersion").textContent = tf("A versão {v} valeu? Ver a comparação", { v: vc.now });
+}
+
 function renderGarage() {
   const s = state;
   if (!s) return;
   const c = LPL.commaChecks(online, health && { ...health, commit: s.device.commit });
-  $("readyCard").className = "card stack " + c.cls;
+  $("readyCard").className = "card stack " + c.cls + (c.cls === "ok" && !readyOpen ? " compact" : "");  // all well: one line, a tap opens it
   $("readyIcon").style.color = c.cls === "ok" ? "var(--accent)" : c.cls === "att" ? "var(--warn)" : "var(--dim)";
   $("readyMark").setAttribute("d", c.cls === "ok" ? "M7.8 12.3l2.8 2.8 5.6-5.8" : c.cls === "att" ? "M12 7.5v5.2M12 16.4v.1" : "M8.5 12h7");
   $("readyTitle").textContent = t(c.title);
@@ -946,6 +1012,7 @@ function renderGarage() {
     row.append(el("span", "", i.vars ? tf(i.text, i.vars) : t(i.text)));
     return row;
   }));
+  renderKpis();
   // a new version waiting
   const u = update;
   $("updateCard").classList.toggle("hidden", !(u && (u.ready || u.fetch_available)));
@@ -1294,6 +1361,19 @@ function renderTripCard(h) {
   if (sm) nums.push(big(sm.off || 0, sm.off === 1 ? t("desengate") : t("desengates")), big(sm.alerts || 0, sm.alerts === 1 ? t("alerta") : t("alertas"), sm.alerts ? "var(--warn)" : ""));
   else nums.push(el("span", "small", t("Calculando quem dirigiu…")));
   $("tripNums").replaceChildren(...nums);
+  const vs = sm ? LPL.tripVsAverage(tr, LPL.listed(trips || []), Date.now() / 1000) : null;
+  const vsShown = vs && ["kmPerInt", "opPct", "wobble"].some((k2) => vs[k2].value != null);
+  $("tripVs").classList.toggle("hidden", !vsShown);
+  if (vsShown) {
+    const cell = (key, label, fmt) => {
+      const x = vs[key], c2 = el("span", "");
+      c2.append(el("b", x.word === "pior que a sua média" ? "down" : "", x.value == null ? "—" : fmt(x.value)));
+      c2.append(el("small", "", label), el("small", x.word === "melhor que a sua média" ? "up" : x.word === "pior que a sua média" ? "down" : "", x.word ? t(x.word) : ""));
+      return c2;
+    };
+    $("tripVs").replaceChildren(cell("kmPerInt", t("km por intervenção"), (v) => num(v, 1)), cell("opPct", "openpilot", (v) => `${Math.round(v)}%`),
+                                cell("wobble", t("balanço"), (v) => `${num(v, 2)}°`));
+  }
   const f = LPL.tripNumbers(sm);  // what a trip computer shows
   $("tripFigures").classList.toggle("hidden", !f);
   if (f) {
@@ -1364,6 +1444,10 @@ function drawTrip(tr) {
   const dot = ([x, y], r, fill, ring) => { g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = fill; g.fill(); if (ring) { g.lineWidth = 3; g.strokeStyle = ring; g.stroke(); } };
   dot(fit.xy[0], 7, css("--bg"), css("--text"));  // start: a ring
   dot(fit.xy[fit.xy.length - 1], 7, css("--text"), css("--bg"));  // end: filled
+  for (const at of (tr.summary && tr.summary.off_at) || []) {  // where openpilot let go: seconds from minute 0, like the path
+    const k = LPL.nearestAt(pts, at);
+    if (k >= 0) dot(fit.xy[k], 7, css("--danger"), css("--bg"));
+  }
   for (const m of marks) {
     const k = LPL.nearestAt(pts, LPL.pathSecond(tr, m.t));
     if (k >= 0) dot(fit.xy[k], 8, css("--warn"), css("--bg"));
@@ -1618,6 +1702,34 @@ function weekCard(all) {
   return c;
 }
 function dayMonth(s) { return new Date(s * 1000).toLocaleDateString(L(), { day: "2-digit", month: "2-digit" }); }
+// The version now against the one before: the KPIs side by side, the difference colored, and a warning when there's little to go on
+const VERSION_ROWS = { kmPerInt: [() => t("km por intervenção"), (v) => num(v, 1)], opPct: [() => t("openpilot no volante"), (v) => `${Math.round(v)}%`],
+                       wobble: [() => t("balanço do volante"), (v) => `${num(v, 2)}°`], alerts100: [() => t("alertas a cada 100 km"), (v) => num(v, 0)] };
+function versionVerdict(list) {
+  const vc = LPL.versionCompare(list);
+  if (!vc) return null;
+  const c = el("section", "card stack"); c.id = "versionVerdict"; c.style.gap = "8px";
+  c.append(el("span", "label", t("A atualização valeu?"))); c.lastChild.style.margin = "0";
+  c.append(el("span", "title num", tf("{antes} → {agora}", { antes: vc.before, agora: vc.now })));
+  const head = el("div", "small num", tf("{a} km nesta versão · {b} km na anterior", { a: num(vc.a.km, 0), b: num(vc.b.km, 0) }));
+  c.append(head);
+  if (vc.judged) {
+    const v = el("div", "big"); v.style.color = vc.better * 2 > vc.judged ? "var(--accent)" : vc.better * 2 === vc.judged ? "var(--text)" : "var(--warn)";
+    v.textContent = tf("Melhor em {n} de {m}", { n: vc.better, m: vc.judged }); c.append(v);
+  }
+  const tbl = el("div", "vtable");
+  tbl.append(el("span", "small", ""), el("span", "small", t("antes")), el("span", "small", t("agora")), el("span", "small", t("diferença")));
+  for (const r of vc.rows) {
+    const [label, fmt] = VERSION_ROWS[r.key];
+    tbl.append(el("span", "", label()), el("span", "num", r.before == null ? "—" : fmt(r.before)), el("b", "num", r.now == null ? "—" : fmt(r.now)));
+    const d = r.delta, cell = el("b", "num", d ? (d.trend === 0 ? t("igual") : (d.d > 0 ? "+" : "−") + (d.pts ? tf("{n} pts", { n: num(Math.abs(d.d), 0) }) : `${num(Math.abs(d.d) * 100, 0)}%`)) : "—");
+    cell.style.color = d && d.trend > 0 ? "var(--accent)" : d && d.trend < 0 ? "var(--warn)" : "var(--muted)";
+    tbl.append(cell);
+  }
+  c.append(tbl);
+  if (vc.few) c.append(el("div", "small", tf("Pouca estrada ainda: com menos de {km} km de cada lado, trânsito e caminho mudam mais que a versão.", { km: LPL.VERSION_MIN_KM })));
+  return c;
+}
 function renderTrips(err) {
   const box = $("tripsList");
   if (carOn) { box.replaceChildren(el("div", "card desc", t("As viagens só abrem com o carro desligado."))); return; }
@@ -1634,6 +1746,8 @@ function renderTrips(err) {
     c.append(el("span", "small num", tf(week.trips === 1 ? "{km} km em 1 viagem" : "{km} km em {n} viagens", { km: num(week.km, 0), n: week.trips })));
     cards.push(c);
   }
+  const vcard = versionVerdict(list);
+  if (vcard) cards.push(vcard);
   const wk = weekCard(list);
   if (wk) cards.push(wk);
   const all = LPL.totals(list, 0), month = LPL.totals(list, LPL.monthStart(Date.now() / 1000));
@@ -2061,6 +2175,8 @@ $("markCancel").addEventListener("click", closeMark);
 $("markScrim").addEventListener("click", closeMark);
 $("markNote").addEventListener("focus", () => clearTimeout(markTimer));
 $("pendingBtn").addEventListener("click", () => { const p = marksState.marks.filter((m) => !m.reason).pop(); if (p) openMark(p, null); });
+$("readyCard").addEventListener("click", () => { readyOpen = !readyOpen; renderGarage(); });
+$("kpiVersion").addEventListener("click", () => { showView("viagens"); setTimeout(() => { const v = document.getElementById("versionVerdict"); if (v) v.scrollIntoView({ behavior: "smooth", block: "start" }); }, 300); });
 $("tripOlder").addEventListener("click", () => { const h = lastHist, tr = h && tripPicked(h); if (tr) { const o = h.list[h.list.indexOf(tr) + 1]; if (o) { tripSel = o.id; renderGarage(); } } });
 $("tripNewer").addEventListener("click", () => { const h = lastHist, tr = h && tripPicked(h); if (tr) { const o = h.list[h.list.indexOf(tr) - 1]; if (o) { tripSel = o.id; renderGarage(); } } });
 $("tripHide").addEventListener("click", () => { const tr = lastHist && tripPicked(lastHist); if (tr) hideTrip(tr, !tr.hidden); });
