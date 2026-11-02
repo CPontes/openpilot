@@ -3,6 +3,7 @@
 Positions never leave this function: the GPS shows up only as working or not.
 """
 from openpilot.selfdrive.selfdrived.traffic_alerts import driver_attentive
+from openpilot.selfdrive.hexa import sensors as hexa_sensors
 
 STEER_MAX = 253
 GAP_MIN_SPEED = 3.  # m/s: slower than this, a time gap means little
@@ -144,7 +145,7 @@ def learned(torque, vehicle, delay) -> dict:
   return out
 
 
-def snapshot(cs, sd, cc, out, lead, gps, gps_age: float, ds, car_fresh: bool, events=(), model=None, monitoring=None) -> dict:
+def snapshot(cs, sd, cc, out, lead, gps, gps_age: float, ds, car_fresh: bool, events=(), model=None, monitoring=None, peripheral=None) -> dict:
   gps_ok = bool(gps.hasFix) and gps_age < GPS_MAX_AGE_S
   live = {"device": device_state(ds), "gps": {"ok": gps_ok, "accuracy": round(float(gps.horizontalAccuracy), 1) if gps_ok else None}}
   if not ds.started or not car_fresh:
@@ -173,4 +174,5 @@ def snapshot(cs, sd, cc, out, lead, gps, gps_age: float, ds, car_fresh: bool, ev
     "why": why_not(events),
     "lane": lane(model) if model is not None else None,
     "resume": resume_checks(cs, sd, lead, monitoring) if monitoring is not None else None,
+    "car": hexa_sensors.live(cc, peripheral, gps if gps_ok else None, cs),  # grade, lean, 12 V, altitude, wheel spread
   }

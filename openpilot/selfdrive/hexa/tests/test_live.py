@@ -165,3 +165,10 @@ def test_no_time_gap_when_almost_stopped():
   cs, sd, cc, out, lead = parts()
   cs.vEgo = 2.
   assert live.snapshot(cs, sd, cc, out, lead, gps(), 1., device(), True)["lead"]["gap"] is None
+
+
+def test_the_car_right_now():
+  cs, sd, cc, out, lead = parts()
+  cc.orientationNED = [0., 0.05, 0.]
+  car = live.snapshot(cs, sd, cc, out, lead, gps(), 1., device(), True, peripheral=NS(voltage=12480))["car"]
+  assert car["grade"] == 5.0 and car["v12"] == 12.5 and car["roll"] == 0.0

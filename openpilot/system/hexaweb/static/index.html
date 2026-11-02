@@ -949,7 +949,10 @@ function renderDrive() {
                                     tf("até o carro à frente: {d} m, ele a {v} km/h", { d: l.lead.d, v: l.lead.v }).replace(/(\d) (m|km\/h)/g, "$1\u00a0$2"))
       : tileOf(l.lead.d, "m", tf("carro à frente, {v} km/h", { v: l.lead.v })),
   );
-  $("driveDetails").replaceChildren(tileOf(wheelText(l.wheel), "", t("volante")), tileOf(l.torque + "%", "", t("força do openpilot")));
+  const car = l.car || {};
+  $("driveDetails").replaceChildren(tileOf(wheelText(l.wheel), "", t("volante")), tileOf(l.torque + "%", "", t("força do openpilot")),
+    ...(car.grade != null ? [tileOf((car.grade > 0 ? "+" : "") + num(car.grade, 1), "%", car.grade >= 0 ? t("subida") : t("descida"))] : []),
+    ...(car.roll != null ? [tileOf(num(Math.abs(car.roll), 1), "°", t("inclinação lateral"))] : []));
   renderLane(l);
   renderResume(l.resume);
   const off = l.last_off;
@@ -1212,6 +1215,33 @@ function speedCard(list) {
 }
 let speedOpen = false;
 
+// ----- O carro nas viagens: what the car went through, from sensors every car has (selfdrive/hexa/sensors.py) -----
+const ROUGH_WORDS = { lisa: "lisa", normal: "normal", irregular: "irregular", ruim: "ruim" };
+let carOpen = false;
+function carReportCard(list) {
+  const w = LPL.weekCar(list, Date.now() / 1000);
+  if (!w) return null;
+  const card = el("details", "card stack");
+  if (carOpen) card.open = true;
+  card.addEventListener("toggle", () => { carOpen = card.open; });
+  card.append(el("summary", "", t("O carro nas viagens · últimos 7 dias")));
+  const grid = el("div", "grid2");
+  const tile = (v, label) => { const d = el("div", "tile"); d.append(el("b", "num", v), el("span", "", label)); return d; };
+  grid.append(tile(w.up != null ? `+${num(w.up, 1)}%` : "—", t("maior subida")), tile(w.down != null ? `−${num(w.down, 1)}%` : "—", t("maior descida")),
+              tile(w.bumps10 != null ? num(w.bumps10, 1) : "—", t("solavancos a cada 10 km")),
+              tile(w.rough != null ? t(ROUGH_WORDS[w.roughWord]) : "—", w.rough != null ? tf("pista ({v} m/s²)", { v: num(w.rough, 2) }) : t("pista")),
+              tile(w.decel != null ? `${num(w.decel, 1)} m/s²` : "—", t("maior freada")), tile(w.lat != null ? `${num(w.lat, 1)} m/s²` : "—", t("maior força na curva")),
+              tile(w.roll != null ? `${num(w.roll, 1)}°` : "—", t("maior inclinação lateral")), tile(w.v12 != null ? `${num(w.v12, 1)} V` : "—", t("menor tensão da bateria 12 V")));
+  card.append(grid);
+  if (w.wheels != null) {
+    card.append(el("div", w.wheels >= 1 ? "desc" : "small", w.wheels >= 1
+      ? tf("Uma roda girou {p}% diferente das outras em reta. Pode ser um pneu com menos ar: confira a calibragem.", { p: num(w.wheels, 1) })
+      : tf("Rodas iguais em reta (diferença de {p}%).", { p: num(w.wheels, 1) })));
+  }
+  card.append(el("div", "small", t("Medido pelo próprio comma (acelerômetro, câmera, GPS) e pela velocidade das rodas: funciona em qualquer carro.")));
+  return card;
+}
+
 function renderTrips(err) {
   const box = $("tripsList");
   if (carOn) { box.replaceChildren(el("div", "card desc", t("As viagens só abrem com o carro desligado."))); return; }
@@ -1227,6 +1257,8 @@ function renderTrips(err) {
     cards.push(c);
   }
   cards.push(speedCard(trips));
+  const carCard = carReportCard(trips);
+  if (carCard) cards.push(carCard);
   box.replaceChildren(...cards, ...trips.slice(0, 15).map((tr) => {
     const start = tr.mtime - tr.minutes * 60;
     const a = el("a", "card stack"); a.href = "/viagens?trip=" + encodeURIComponent(tr.id); a.style.cssText = "text-decoration:none;color:inherit;gap:8px";
@@ -1430,7 +1462,8 @@ async function refreshHealth() {
   const off = h.last_off;
   $("healthDesc").textContent = off ? tf("Último desengate às {hora}", { hora: hhmm(off.t) }) + (off.why.length ? ": " + off.why.map(t).join(", ") : "") : "";
   $("healthTiles").replaceChildren(tileOf(t("temperatura"), d.temp !== undefined ? `${d.temp} °C` : "—"), tileOf(t("disco livre"), d.free !== undefined ? `${d.free}%` : "—"),
-                                   tileOf(t("memória"), d.memory !== undefined ? `${d.memory}%` : "—"), tileOf(t("processador"), d.cpu !== undefined ? `${d.cpu}%` : "—"));
+                                   tileOf(t("memória"), d.memory !== undefined ? `${d.memory}%` : "—"), tileOf(t("processador"), d.cpu !== undefined ? `${d.cpu}%` : "—"),
+                                   ...(h.v12 != null ? [tileOf(t("bateria 12 V do carro"), `${num(h.v12, 1)} V`)] : []));
   const tiles = [];
   if (n.torque) tiles.push(tileOf(t("força da direção"), `${num(n.torque.factor, 2)} m/s²`), tileOf(t("atrito"), num(n.torque.friction, 3)),
                            tileOf(t("aprendizado da direção"), `${n.torque.percent}%${n.torque.active ? "" : " " + t("(ainda não usado)")}`));

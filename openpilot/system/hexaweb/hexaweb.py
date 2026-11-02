@@ -1388,7 +1388,7 @@ def main():
   params = Params()
   sm = messaging.SubMaster(["deviceState", "carState", "selfdriveState", "carControl", "carOutput", "radarState", "gpsLocationExternal",
                             "onroadEvents", "drivingModelData", "driverMonitoringState", "managerState", "lateralTorqueParameters",
-                            "vehicleParameters", "lateralDelay"])
+                            "vehicleParameters", "lateralDelay", "peripheralState"])
 
   def vehicle_state() -> VehicleState:
     sm.update(0)
@@ -1410,7 +1410,8 @@ def main():
     return hexa_live.snapshot(sm["carState"], sm["selfdriveState"], sm["carControl"], sm["carOutput"], sm["radarState"].leadOne,
                               sm["gpsLocationExternal"], now - sm.recv_time["gpsLocationExternal"], sm["deviceState"],
                               now - sm.recv_time["carState"] < 2., events=sm["onroadEvents"], model=sm["drivingModelData"],
-                              monitoring=sm["driverMonitoringState"] if params.get_bool("AutoResume") else None)
+                              monitoring=sm["driverMonitoringState"] if params.get_bool("AutoResume") else None,
+                              peripheral=sm["peripheralState"] if sm.recv_frame["peripheralState"] > 0 else None)
 
   errors_at: list = [-ERRORS_EVERY_S, []]
 
@@ -1426,7 +1427,7 @@ def main():
       errors_at[0], errors_at[1] = now, hexa_live.recent_errors(Paths.swaglog_root())
     return {"device": hexa_live.device_state(sm["deviceState"]), "down": hexa_live.processes_down(manager) if manager is not None else None,
             "learned": hexa_live.learned(seen("lateralTorqueParameters"), seen("vehicleParameters"), seen("lateralDelay")),
-            "errors": errors_at[1]}
+            "errors": errors_at[1], "v12": round(sm["peripheralState"].voltage / 1000., 1) if sm.recv_frame["peripheralState"] > 0 else None}
 
   def gps_fix() -> tuple[float, float, float, float] | None:
     sm.update(0)

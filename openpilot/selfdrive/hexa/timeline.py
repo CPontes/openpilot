@@ -21,6 +21,7 @@ import json
 from collections.abc import Iterable
 from pathlib import Path
 
+from openpilot.selfdrive.hexa import sensors as hexa_sensors
 from openpilot.selfdrive.hexa.shadow import KEYS as SHADOW_KEYS, ShadowCounter
 
 FPS = 10
@@ -307,11 +308,20 @@ def trip_segment(events: Iterable) -> dict:
   took = None  # what the driver took from openpilot since the last path point
   pedal_at = {"gas": -1e9, "brake": -1e9}
   shadow = ShadowCounter()
+  car = hexa_sensors.CarSensors()
 
   for m in sorted(events, key=lambda m: m.logMonoTime):
     w = m.which()
     t = (m.logMonoTime - t0) / 1e9 if t0 is not None else 0.
-    if w == "longitudinalPlan":
+    if w == "accelerometer":
+      v = m.accelerometer.acceleration.v
+      if len(v) == 3:
+        car.on_accel(t, (v[0], v[1], v[2]))
+    elif w == "deviceMotion":
+      car.on_motion(m.deviceMotion.accelerationDevice.y)
+    elif w == "peripheralState":
+      car.on_voltage(m.peripheralState.voltage / 1000.)
+    elif w == "longitudinalPlan":
       shadow.on_plan(t, m.longitudinalPlan.aTarget, m.longitudinalPlan.fcw)
     elif w == "radarState":
       lead = m.radarState.leadOne
@@ -328,6 +338,9 @@ def trip_segment(events: Iterable) -> dict:
       en = enabled
     elif w == "carControl":
       lat = m.carControl.latActive
+      o = getattr(m.carControl, "orientationNED", ())
+      if len(o) == 3:
+        car.on_pose(t, o[0], o[1])
     elif w == "controlsState":
       curvature = m.controlsState.curvature
     elif w == "gpsLocationExternal":
@@ -341,6 +354,8 @@ def trip_segment(events: Iterable) -> dict:
         t = 0.
       dt = min(t - last, .5) if last is not None else 0.
       last = t
+      ws = getattr(cs, "wheelSpeeds", None)
+      car.on_car(cs.vEgo, getattr(cs, "aEgo", 0.), getattr(cs, "steeringAngleDeg", 0.), (ws.fl, ws.fr, ws.rl, ws.rr) if ws is not None else None, dt)
       cruise = getattr(cs, "cruiseState", None)
       shadow.on_car(t, dt, cs.vEgo, getattr(cs, "aEgo", 0.), cs.brakePressed, getattr(cruise, "driving", False), getattr(cruise, "enabled", None))
       for pedal, pressed, was, text in (("brake", cs.brakePressed, brake, "você no freio"), ("gas", cs.gasPressed, gas, "você no acelerador")):
@@ -387,6 +402,7 @@ def trip_segment(events: Iterable) -> dict:
   for k in ("s", "km", "moving_s", "on_s", *SPLIT_KEYS):
     total[k] = _r(total[k], 3)
   total.update(shadow.result())
+  total.update(car.result())
   return {"points": points, "events": out, "summary": total, "shadow": shadow.events}
 
 
@@ -396,6 +412,7 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
   while: stop is asked before each minute, and None means it gave up (the car turned on)."""
   keys = ("s", "km", "moving_s", "on_s", "driver", "gas", "brake", "off", "marks", *SPLIT_KEYS, *SHADOW_KEYS)
   total: dict = dict.fromkeys(keys, 0.)
+  car: dict = {}
   unread = 0
   for seg in sorted(files):
     if stop():
@@ -407,7 +424,10 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
       continue
     for k in keys:
       total[k] += part.get(k, 0)
-  out = {k: _r(v, 2) for k, v in total.items()}
+    hexa_sensors.merge(car, part)
+  out = {k: _r(v, 2) for k, v in {**total, **car}.items()}
   for k in ("driver", "gas", "brake", "off", "marks", "sh_hard", "sh_earlier", "sh_weaker", "sh_fcw"):
     out[k] = int(total[k])
+  if "se_bumps" in out:
+    out["se_bumps"] = int(out["se_bumps"])
   return {**out, "segments": len(files), "unread": unread}

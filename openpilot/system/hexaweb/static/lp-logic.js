@@ -164,6 +164,22 @@
     return { hard: sum("sh_hard"), earlier: sum("sh_earlier"), weaker: sum("sh_weaker"), fcw: sum("sh_fcw"),
              gap: gapT > 0 ? sum("sh_gap_s") / gapT : null, minutes: Math.round(sum("sh_on_s") / 60), trips: recent.length };
   }
+  // What the car went through in the last 7 days (selfdrive/hexa/sensors.py): maxima, minima and rates, never a score.
+  // Road words from the vertical jolt RMS: [hipótese] thresholds, to be tuned on the owner's roads.
+  const ROUGH = [[0.35, "lisa"], [0.7, "normal"], [1.2, "irregular"], [Infinity, "ruim"]];
+  function weekCar(trips, nowS) {
+    const recent = (trips || []).filter((t) => t.summary && t.mtime >= nowS - 7 * 86400 && (t.summary.se_rough_t || t.summary.se_grade_up || t.summary.se_v12_min));
+    if (!recent.length) return null;
+    const S = (k) => recent.reduce((a, t) => a + (t.summary[k] || 0), 0);
+    const M = (k) => { const v = recent.map((t) => t.summary[k] || 0).filter((x) => x > 0); return v.length ? Math.max(...v) : null; };
+    const mins = recent.map((t) => t.summary.se_v12_min || 0).filter((x) => x > 0);
+    const km = S("km"), roughT = S("se_rough_t"), wheelT = S("se_wheel_t");
+    const rough = roughT > 0 ? Math.sqrt(S("se_rough_ss") / roughT) : null;
+    return { up: M("se_grade_up"), down: M("se_grade_down"), roll: M("se_roll"), decel: M("se_decel"), lat: M("se_lat"),
+             v12: mins.length ? Math.min(...mins) : null, bumps10: km > 1 ? S("se_bumps") / km * 10 : null, rough,
+             roughWord: rough == null ? null : ROUGH.find(([lim]) => rough < lim)[1], wheels: wheelT > 30 ? S("se_wheel_s") / wheelT : null };
+  }
+
   // openpilot's three following distances (longitudinal_mpc_lib/long_mpc.py:71-79), in seconds and in meters at a speed
   const PERSONALITIES = [[T("perto"), 1.25], [T("padrão"), 1.45], [T("folgada"), 1.75]];
   function gapMeters(gapS, kmh) { return Math.round(gapS * kmh / 3.6); }
@@ -175,6 +191,6 @@
     return { ok, ask: !!car.on && !!car.moving && !ok };
   }
 
-  root.LPL = { FIXED_HOST, addressPlan, tripSplit, weekTotal, weekShadow, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
+  root.LPL = { FIXED_HOST, addressPlan, tripSplit, weekTotal, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);
