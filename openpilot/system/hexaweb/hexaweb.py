@@ -116,7 +116,7 @@ class PanelBackend:
     self._spawn = spawn or (lambda job: threading.Thread(target=job, daemon=True).start())
     self._summary_busy = False
     self._clips: dict[str, dict] = {}  # ticket -> {expires, files, start, name}
-    self._fixed_nonces: dict[str, float] = {}  # one-time code -> expiry, to prove lizpilot.local is this comma
+    self._fixed_nonces: dict[str, tuple] = {}  # one-time code -> (expiry, answer, phone), to prove lizpilot.local is this comma
     self.fixed_status: Callable[[], dict] = hexa_mdns.status
 
   def vehicle_state(self) -> VehicleState:
@@ -248,24 +248,25 @@ class PanelBackend:
 
   # *** lizpilot.local is this comma: anyone on the network can answer for a name, so the page checks ***
 
-  def fixed_nonce(self) -> dict:
-    """A one-time code from the comma that served the page. Only the same comma can confirm it by the fixed name."""
+  def fixed_nonce(self, peer: str) -> dict:
+    """A one-time code and its answer, from the comma that served the page. Only this comma knows the answer, and it only
+    gives it to the phone that asked: a fake on the network can neither make it up nor relay the question from its own address."""
     st = self.fixed_status()
     if st.get("state") != "ok":
       return {"nonce": None, "state": st.get("state")}
     now = self.mono()
     with self.lock:
-      self._fixed_nonces = {k: v for k, v in self._fixed_nonces.items() if v > now}
+      self._fixed_nonces = {k: v for k, v in self._fixed_nonces.items() if v[0] > now}
       while len(self._fixed_nonces) >= MAX_FIXED_NONCES:
         self._fixed_nonces.pop(next(iter(self._fixed_nonces)))
-      nonce = secrets.token_urlsafe(16)
-      self._fixed_nonces[nonce] = now + FIXED_NONCE_S
-    return {"nonce": nonce, "state": "ok"}
+      nonce, answer = secrets.token_urlsafe(16), secrets.token_urlsafe(16)
+      self._fixed_nonces[nonce] = (now + FIXED_NONCE_S, answer, peer)
+    return {"nonce": nonce, "answer": answer, "state": "ok"}
 
-  def fixed_check(self, nonce: str) -> dict:
+  def fixed_check(self, nonce: str, peer: str) -> dict:
     with self.lock:
-      expiry = self._fixed_nonces.pop(nonce, None)  # once
-    return {"same": expiry is not None and expiry > self.mono()}
+      entry = self._fixed_nonces.pop(nonce, None)  # once
+    return {"answer": entry[1] if entry is not None and entry[0] > self.mono() and entry[2] == peer else None}
 
   # *** the clip of a mark: the light video of that moment, on the phone, with the car off ***
 
@@ -284,7 +285,10 @@ class PanelBackend:
     for trip in trips:
       segs = sorted(trip["files"])
       videos = {n: Path(trip["files"][n]).parent / CLIP_VIDEO for n in segs}
-      ends = {n: Path(trip["files"][n]).stat().st_mtime for n in segs}  # the minute's log closes when the minute ends
+      try:
+        ends = {n: Path(trip["files"][n]).stat().st_mtime for n in segs}  # the minute's log closes when the minute ends
+      except OSError:
+        continue  # the comma cleaned this drive up after the list was read
       seg = next((n for n in segs if ends[n] - SEGMENT_S - 2 <= t <= ends[n] + 2), None)
       if seg is None:
         continue
@@ -306,7 +310,7 @@ class PanelBackend:
 
   def clip(self, ticket: str) -> dict | None:
     c = self._clips.get(ticket)
-    return c if c is not None and c["expires"] > self.mono() else None
+    return c if c is not None and c["expires"] > self.mono() and not self.vehicle_state().onroad else None  # never with the car on
 
   def clip_playlist(self, ticket: str) -> str | None:
     c = self.clip(ticket)
@@ -541,7 +545,9 @@ class PanelBackend:
       for trip in todo:
         if self.vehicle_state().onroad:
           return
-        summary = self._summarize(trip["files"])
+        summary = self._summarize(trip["files"], lambda: self.vehicle_state().onroad)
+        if summary is None:
+          return
         with self.lock:
           kept = self.store.get(SUMMARY_PARAM) or {}
           kept[trip["id"]] = summary
@@ -909,10 +915,10 @@ def make_handler(backend: PanelBackend):
         if self._who() is not None:
           self._json(200, backend.radars_export())
       elif path == "/api/fixed/nonce":  # before pairing: carries no secret and opens nothing
-        self._json(200, backend.fixed_nonce())
+        self._json(200, backend.fixed_nonce(self.client_address[0]))
       elif path == "/api/fixed/check":  # asked by a page served by address: it may read only this yes or no
         n = (parse_qs(query).get("n") or [""])[0]
-        body = json.dumps(backend.fixed_check(n)).encode()
+        body = json.dumps(backend.fixed_check(n, self.client_address[0])).encode()
         self._send(200, body, "application/json; charset=utf-8", extra={"Access-Control-Allow-Origin": "*"})
       elif path in ("/api/clip.m3u8", "/api/clip.ts"):  # the video player can't send the token: the clip's own ticket
         q = parse_qs(query)

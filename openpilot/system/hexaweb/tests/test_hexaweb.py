@@ -488,7 +488,7 @@ def test_summaries_stop_when_the_car_turns_on(panel, tmp_path):
   trip_logs(panel, tmp_path)
   jobs, read = [], []
   panel.backend._spawn = jobs.append
-  panel.backend._summarize = lambda files: read.append(files) or {"segments": len(files)}
+  panel.backend._summarize = lambda files, stop: read.append(files) or {"segments": len(files)}
   token = panel.pair()
   panel.json("/api/trips", token=token)
   panel.vs = VehicleState(onroad=True)
@@ -958,23 +958,23 @@ def test_mark_clip_without_video(panel, tmp_path):
 def test_the_fixed_name_is_checked_with_a_one_time_code(panel):
   panel.backend.fixed_status = lambda: {"state": "ok", "name": "lizpilot.local"}
   status, body = panel.json("/api/fixed/nonce")  # before pairing: no token
-  assert status == 200 and body["state"] == "ok" and len(body["nonce"]) >= 16
+  assert status == 200 and body["state"] == "ok" and len(body["nonce"]) >= 16 and len(body["answer"]) >= 16
   status, headers, data = panel.request("/api/fixed/check?n=" + body["nonce"])
-  assert status == 200 and json.loads(data) == {"same": True}
-  assert headers["Access-Control-Allow-Origin"] == "*"  # a page served by address reads only this yes or no
-  assert panel.json("/api/fixed/check?n=" + body["nonce"]) == (200, {"same": False})  # once
-  assert panel.json("/api/fixed/check?n=guess") == (200, {"same": False})
+  assert status == 200 and json.loads(data) == {"answer": body["answer"]}
+  assert headers["Access-Control-Allow-Origin"] == "*"  # a page served by address reads only this
+  assert panel.json("/api/fixed/check?n=" + body["nonce"]) == (200, {"answer": None})  # once
+  assert panel.json("/api/fixed/check?n=guess") == (200, {"answer": None})
 
 
 def test_the_fixed_name_code_expires_and_is_bounded(panel):
   panel.backend.fixed_status = lambda: {"state": "ok", "name": "lizpilot.local"}
   _, old = panel.json("/api/fixed/nonce")
   panel.now += hexaweb.FIXED_NONCE_S + 1
-  assert panel.json("/api/fixed/check?n=" + old["nonce"])[1] == {"same": False}
-  codes = [panel.json("/api/fixed/nonce")[1]["nonce"] for _ in range(hexaweb.MAX_FIXED_NONCES + 3)]
+  assert panel.json("/api/fixed/check?n=" + old["nonce"])[1] == {"answer": None}
+  codes = [panel.json("/api/fixed/nonce")[1] for _ in range(hexaweb.MAX_FIXED_NONCES + 3)]
   assert len(panel.backend._fixed_nonces) == hexaweb.MAX_FIXED_NONCES
-  assert panel.json("/api/fixed/check?n=" + codes[0])[1] == {"same": False}  # the oldest went first
-  assert panel.json("/api/fixed/check?n=" + codes[-1])[1] == {"same": True}
+  assert panel.json("/api/fixed/check?n=" + codes[0]["nonce"])[1] == {"answer": None}  # the oldest went first
+  assert panel.json("/api/fixed/check?n=" + codes[-1]["nonce"])[1] == {"answer": codes[-1]["answer"]}
 
 
 def test_no_code_while_another_comma_has_the_name(panel):
@@ -989,3 +989,71 @@ def test_the_fixed_name_check_is_local_only(panel, monkeypatch):
   monkeypatch.setattr(hexaweb.phone, "is_local_address", lambda ip: False)
   assert panel.json("/api/fixed/nonce")[0] == 403
   assert panel.json("/api/fixed/check?n=x")[0] == 403
+
+
+def clip_ready(panel, tmp_path):
+  import os
+  d = tmp_path / "00000020--abcdef0123--0"
+  d.mkdir()
+  for f in ("qlog.zst", "qcamera.ts"):
+    (d / f).write_bytes(b"video")
+    os.utime(d / f, (50_000., 50_000.))
+  panel.backend.log_root = str(tmp_path)
+  panel.store.put(marks.MARKS_PARAM, [{"id": "m1", "t": 49_990., "reason": "curva", "label": "curva"}])
+  status, body = panel.json("/api/mark/clip", {"id": "m1"}, token=panel.pair())
+  assert status == 200
+  return body
+
+
+def test_a_clip_link_stops_when_the_car_turns_on(panel, tmp_path):
+  body = clip_ready(panel, tmp_path)
+  assert panel.request(body["video"])[0] == 200
+  panel.vs = VehicleState(onroad=True)
+  assert panel.request(body["video"])[0] == 404
+  assert panel.request(body["playlist"])[0] == 404
+
+
+def test_a_fake_on_the_network_cant_pass_for_this_comma(panel):
+  panel.backend.fixed_status = lambda: {"state": "ok"}
+  a = panel.backend.fixed_nonce("192.168.0.10")
+  assert a["answer"] and a["answer"] != a["nonce"]
+  assert panel.backend.fixed_check(a["nonce"], "192.168.0.66") == {"answer": None}  # relayed by another device
+  b = panel.backend.fixed_nonce("192.168.0.10")
+  assert panel.backend.fixed_check(b["nonce"], "192.168.0.10") == {"answer": b["answer"]}
+  assert panel.backend.fixed_check(b["nonce"], "192.168.0.10") == {"answer": None}  # once
+
+
+def test_a_summary_stops_inside_a_long_drive(tmp_path):
+  from openpilot.selfdrive.hexa import timeline
+  files = {n: str(tmp_path / f"none{n}") for n in range(5)}
+  seen = []
+
+  def stop():
+    seen.append(1)
+    return len(seen) > 2
+
+  assert timeline.trip_summary(files, stop) is None
+  assert len(seen) == 3
+
+
+def test_recent_errors_reads_only_the_end_of_a_big_log(tmp_path, monkeypatch):
+  from pathlib import Path
+  from openpilot.selfdrive.hexa import live
+  log = tmp_path / "swaglog.0000000001"
+  log.write_bytes(b"x" * (live.ERRORS_TAIL * 3) + b"\n" + json.dumps({"levelname": "ERROR", "levelnum": 40, "msg": "falhou", "created": 5.}).encode() + b"\n")
+
+  def inteiro(self):
+    raise AssertionError("read the whole log")
+
+  monkeypatch.setattr(Path, "read_bytes", inteiro)
+  assert [e["msg"] for e in live.recent_errors(tmp_path)] == ["falhou"]
+
+
+def test_a_profile_never_changes_anything_with_the_car_moving(panel):
+  token = panel.pair()
+  panel.json("/api/profiles/save", {"name": "Estrada"}, token=token)
+  profile = panel.json("/api/state", token=token)[1]["profiles"]["Estrada"]
+  panel.json("/api/option", {"key": "LaneOffsetEnabled", "value": True}, token=token)
+  panel.vs = VehicleState(onroad=True, parked=False, standstill=False, engaged=True)
+  status, _ = panel.json("/api/options/import", {"options": profile, "apply": True}, token=token)
+  assert status == 409 and panel.store.get_bool("LaneOffsetEnabled") is True

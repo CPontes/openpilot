@@ -481,6 +481,7 @@
  "você dirigiu nesta viagem": "you drove this trip",
  "você sozinho": "you alone",
  "{h} h {m} min": "{h} h {m} min",
+ "{km} km em 1 viagem": "{km} km in 1 trip",
  "{km} km em {n} viagens": "{km} km in {n} trips",
  "{m} min": "{m} min",
  "{op} de {andando} min com o openpilot": "{op} of {andando} min with openpilot",

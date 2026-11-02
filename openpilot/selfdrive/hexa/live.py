@@ -104,7 +104,9 @@ def recent_errors(log_dir, files: int = 3, limit: int = 5) -> list[dict]:
   out: list[dict] = []
   for path in names[-files:]:
     try:
-      raw = path.read_bytes()[-ERRORS_TAIL:]
+      with open(path, "rb") as f:  # a log can be big, and only its end matters
+        f.seek(max(path.stat().st_size - ERRORS_TAIL, 0))
+        raw = f.read()
     except OSError:
       continue
     for line in raw.splitlines():

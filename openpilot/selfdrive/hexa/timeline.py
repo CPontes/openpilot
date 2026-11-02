@@ -378,13 +378,16 @@ def trip_segment(events: Iterable) -> dict:
   return {"points": points, "events": out, "summary": total}
 
 
-def trip_summary(files: dict[int, str]) -> dict:
+def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
   """The whole drive in numbers, for the trip list: who had the wheel, for how long and how far, minute by minute.
-  A minute that can't be read is left out and counted, so a broken file doesn't lose the drive."""
+  A minute that can't be read is left out and counted, so a broken file doesn't lose the drive. A long drive takes a
+  while: stop is asked before each minute, and None means it gave up (the car turned on)."""
   keys = ("s", "km", "moving_s", "on_s", "driver", "gas", "brake", "off", "marks", *SPLIT_KEYS)
   total: dict = dict.fromkeys(keys, 0.)
   unread = 0
   for seg in sorted(files):
+    if stop():
+      return None
     try:
       part = trip_segment(read_rlog(files[seg]))["summary"]
     except Exception:
