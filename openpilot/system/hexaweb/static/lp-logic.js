@@ -173,6 +173,132 @@
     return seen;
   }
 
+  // ----- the whole history on Início (owner, 02/11 01:53): search, filters, days, hidden drives and the map
+  // Turned on in the garage and off again is not a drive: out of the lists unless asked for. [hipótese] the limits
+  const IDLE_KM = 0.3, IDLE_MOVING_S = 60;
+  function idle(t) { const s = t && t.summary; return !!s && (s.km || 0) < IDLE_KM && (s.moving_s || 0) < IDLE_MOVING_S; }
+  function fold(s) { return String(s == null ? "" : s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); }
+  function tripStart(t) { return t.mtime - t.minutes * 60; }
+  // marks within the drive, a minute of slack on each side (the clock of a mark vs the log's files)
+  function tripMarks(t, marks) { const a = tripStart(t) - 60, b = t.mtime + 60; return (marks || []).filter((m) => m.t >= a && m.t <= b); }
+  function midnight(s) { const d = new Date(s * 1000); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
+  function daysAgo(s, nowS) { return Math.round((midnight(nowS) - midnight(s)) / 86400000); }
+  function dayKey(s) { const d = new Date(s * 1000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+  // What a drive is found by: its day and times in the panel's language, the version, its marks' reasons and notes.
+  // marks: [{t, text}] already translated; words: {today, yesterday} likewise
+  function tripWords(t, marks, locale, nowS, words) {
+    const d = new Date(tripStart(t) * 1000), end = new Date(t.mtime * 1000);
+    const hm = { hour: "2-digit", minute: "2-digit" };
+    const out = [d.toLocaleDateString(locale, { weekday: "long" }), d.toLocaleDateString(locale, { month: "long" }),
+                 d.toLocaleDateString(locale, { day: "2-digit", month: "2-digit" }), d.toLocaleDateString(locale, { day: "numeric", month: "numeric" }),
+                 d.toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" }), d.toLocaleTimeString(locale, hm), end.toLocaleTimeString(locale, hm)];
+    const ago = daysAgo(tripStart(t), nowS);
+    if (ago === 0 && words && words.today) out.push(words.today);
+    if (ago === 1 && words && words.yesterday) out.push(words.yesterday);
+    const s = t.summary || {};
+    if (s.commit) out.push(s.commit);
+    if (s.version) out.push(s.version);
+    for (const m of tripMarks(t, marks)) out.push(m.text || "");
+    return fold(out.join(" "));
+  }
+  const HISTORY_FILTERS = [["todas", T("Todas")], ["marcas", T("Com marcas")], ["desengates", T("Com desengates")], ["alertas", T("Com alertas")]];
+  // The drives to list, newest first. Every word of the search has to be found; a filter narrows further.
+  // o: { query, filter, marks: [{t, text}], showHidden, locale, nowS, words }
+  // Hidden by the owner and idle drives stay out unless showHidden; the counts say how many each filter would show.
+  function history(trips, o) {
+    o = o || {};
+    const terms = fold(o.query).split(/\s+/).filter(Boolean);
+    const all = trips || [];
+    const out_ = all.filter((t) => t.hidden || idle(t));
+    const pool = o.showHidden ? all : all.filter((t) => !t.hidden && !idle(t));
+    const found = terms.length ? pool.filter((t) => { const w = tripWords(t, o.marks, o.locale, o.nowS, o.words); return terms.every((x) => w.includes(x)); }) : pool;
+    const test = { todas: () => true, marcas: (t) => tripMarks(t, o.marks).length > 0,
+                   desengates: (t) => !!(t.summary && t.summary.off), alertas: (t) => !!(t.summary && t.summary.alerts) };
+    const counts = {};
+    for (const [k] of HISTORY_FILTERS) counts[k] = found.filter(test[k]).length;
+    const f = test[o.filter] ? o.filter : "todas";
+    return { list: found.filter(test[f]), counts, filter: f, hidden: out_.filter((t) => t.hidden).length, idle: out_.filter((t) => !t.hidden && idle(t)).length };
+  }
+  // Drives grouped by the day they started, with the day's km and minutes from the drives that have a summary.
+  function byDay(list) {
+    const days = [];
+    for (const t of list || []) {
+      const k = dayKey(tripStart(t));
+      let d = days[days.length - 1];
+      if (!d || d.key !== k) { d = { key: k, start: tripStart(t), trips: [], km: 0, minutes: 0 }; days.push(d); }
+      d.trips.push(t); d.km += (t.summary && t.summary.km) || 0; d.minutes += t.minutes;
+    }
+    return days;
+  }
+
+  // A drive's numbers, as a trip computer shows them. Averages only from 1 km and 1 min on; older summaries lack v_max and run_*.
+  // run: the longest stretch with openpilot alone, a measure of openpilot, never a record to beat (no streaks: weekTotal).
+  function tripNumbers(s) {
+    if (!s || !(s.moving_s > 0)) return null;
+    const km = s.km || 0;
+    return { km, movingMin: minutes(s.moving_s), stopMin: minutes(s.stop_s),
+             avg: km >= 1 && s.moving_s >= 60 ? Math.round(km / (s.moving_s / 3600)) : null,
+             vmax: s.v_max > 0 ? Math.round(s.v_max) : null,
+             runKm: s.run_km > 0 ? s.run_km : null, runMin: s.run_km > 0 ? minutes(s.run_s) : null };
+  }
+  // Week by week, oldest first, for the trend: km, openpilot's share of the time moving, and the rates per 100 km.
+  // Weeks start on Monday; a week without drives shows as empty, so a gap reads as a gap.
+  function weekly(trips, nowS, n) {
+    const monday = (s) => { const d = new Date(midnight(s)); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.getTime() / 1000; };
+    const weeks = [];
+    let start = monday(nowS);
+    for (let i = 0; i < (n || 8); i++) {
+      weeks.unshift({ start, trips: 0, km: 0, moving_s: 0, op_s: 0, off: 0, alerts: 0 });
+      const d = new Date(start * 1000); d.setDate(d.getDate() - 7); start = d.getTime() / 1000;
+    }
+    for (const t of trips || []) {
+      if (!t.summary || t.hidden || idle(t)) continue;
+      const w = weeks.find((x, i) => tripStart(t) >= x.start && (i === weeks.length - 1 || tripStart(t) < weeks[i + 1].start));
+      if (!w) continue;
+      w.trips += 1;
+      for (const k of ["km", "moving_s", "op_s", "off", "alerts"]) w[k] += t.summary[k] || 0;
+    }
+    return weeks.map((w) => ({ start: w.start, trips: w.trips, km: w.km, opPct: w.moving_s > 0 ? Math.round(100 * w.op_s / w.moving_s) : null,
+                               off100: w.km >= 1 ? 100 * w.off / w.km : null, alerts100: w.km >= 1 ? 100 * w.alerts / w.km : null }));
+  }
+
+  // The map: Web Mercator, 256 px tiles (OpenStreetMap). points: [[lat, lon, who, s], ...] from /api/trip/path
+  const TILE = 256, MAP_ZMIN = 3, MAP_ZMAX = 17;
+  function mercator(lat, lon, z) {
+    const n = TILE * Math.pow(2, z), s = Math.sin(lat * Math.PI / 180);
+    return [(lon + 180) / 360 * n, (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n];
+  }
+  // The zoom where the whole path fills w × h with pad on every side: z is the tiles' whole zoom, size their size in pixels
+  // (256 to 512, the rest of the zoom), xy the path in the box's pixels.
+  function mapFit(points, w, h, pad) {
+    if (!points || !points.length || w <= 2 * pad || h <= 2 * pad) return null;
+    const w0 = points.map((p) => mercator(p[0], p[1], 0));
+    const xs = w0.map((p) => p[0]), ys = w0.map((p) => p[1]);
+    const bw = Math.max(...xs) - Math.min(...xs), bh = Math.max(...ys) - Math.min(...ys);
+    const room = Math.min(bw > 0 ? (w - 2 * pad) / bw : Infinity, bh > 0 ? (h - 2 * pad) / bh : Infinity);
+    const zf = Math.max(MAP_ZMIN, Math.min(MAP_ZMAX, Math.log2(room))), z = Math.floor(zf), k = Math.pow(2, zf);
+    const ox = (Math.min(...xs) + bw / 2) * k - w / 2, oy = (Math.min(...ys) + bh / 2) * k - h / 2;
+    return { z, size: TILE * Math.pow(2, zf - z), ox, oy, xy: w0.map(([x, y]) => [x * k - ox, y * k - oy]) };
+  }
+  // The tiles under the box: z/x/y and where each goes, in the box's pixels
+  function mapTiles(fit, w, h) {
+    if (!fit) return [];
+    const n = Math.pow(2, fit.z), sz = fit.size, out = [];
+    for (let ty = Math.floor(fit.oy / sz); ty * sz < fit.oy + h; ty++) {
+      if (ty < 0 || ty >= n) continue;
+      for (let tx = Math.floor(fit.ox / sz); tx * sz < fit.ox + w; tx++) {
+        out.push({ z: fit.z, x: ((tx % n) + n) % n, y: ty, size: sz, left: tx * sz - fit.ox, top: ty * sz - fit.oy });
+      }
+    }
+    return out;
+  }
+  // The path point closest in time to s seconds from the start of the drive
+  function nearestAt(points, s) {
+    let best = -1, gap = Infinity;
+    (points || []).forEach((p, i) => { const g = Math.abs(p[3] - s); if (g < gap) { gap = g; best = i; } });
+    return best;
+  }
+
   // Shadow mode (selfdrive/hexa/shadow.py), added up over the last 7 days: what openpilot's longitudinal would have done
   // while the Haval ACC drove. Null until a drive has it (openpilot engaged with the ACC driving).
   function weekShadow(trips, nowS) {
@@ -206,6 +332,7 @@
     return { ok, ask: !!car.on && !!car.moving && !ok };
   }
 
-  root.LPL = { FIXED_HOST, addressPlan, tripSplit, weekTotal, totals, monthStart, versionOf, versions, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
+  root.LPL = { FIXED_HOST, addressPlan, tripSplit, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
+               tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

@@ -7,6 +7,7 @@ openpilot/selfdrive/hexa/phone.py; this file only parses HTTP and calls PanelBac
 import gzip
 import json
 import math
+import re
 import secrets
 import threading
 import time
@@ -55,9 +56,13 @@ REPLAY_CACHE = 3
 TRIP_CACHE = 120  # minutes of trips kept in memory
 TRIP_INDEX_S = 30.  # the page asks once per minute of the trip: don't walk the log folder every time
 SUMMARY_PARAM = "HexaTripSummaries"  # {route: who had the wheel, for how long and how far}
-SUMMARY_NEWEST = 10  # drives summarized in the background, newest first, with the car off
-SUMMARY_KEEP = 60
-SUMMARY_VERSION = 2  # 2: version, alerts. An older summary is read again, the newest SUMMARY_NEWEST drives only
+SUMMARY_NEWEST = 300  # drives summarized in the background, newest first, with the car off: the whole history on the comma
+SUMMARY_KEEP = 300
+TRIPS_LISTED = 300
+PATH_DIR = "hexa_trips"  # next to the log folder: each drive's path, for the map on the phone. Never leaves the comma
+HIDDEN_PARAM = "HexaTripsHidden"  # drives the owner hid from the phone's lists: the logs stay on the comma
+HIDDEN_KEEP = 600
+SUMMARY_VERSION = 3  # 2: version, alerts. 3: the path for the map. An older summary is read again, the newest SUMMARY_NEWEST only
 ERRORS_EVERY_S = 30.
 CLIP_BEFORE_S = 10.  # the clip of a mark starts this long before it
 CLIP_TICKET_S = 600.  # a clip link works this long, for that clip only
@@ -78,7 +83,7 @@ SECURITY_HEADERS = {
   "Referrer-Policy": "no-referrer",
   # connect-src: a page opened by address may check that the fixed name answers on this network, and nothing else
   "Content-Security-Policy": "; ".join(("default-src 'self'", "script-src 'self' 'unsafe-inline'", "style-src 'self' 'unsafe-inline'",
-                                         "img-src 'self' data:", f"connect-src 'self' http://{hexa_mdns.NAME}:{phone.PORT}")),
+                                         "img-src 'self' data: https://tile.openstreetmap.org", f"connect-src 'self' http://{hexa_mdns.NAME}:{phone.PORT}")),
 }
 
 
@@ -627,20 +632,71 @@ class PanelBackend:
     if not self.log_root:
       return 404, {"error": "Sem pasta de logs."}
     with self._replay_lock:
-      trips = self._trips()[:60]
-    todo = [t for t in trips[:SUMMARY_NEWEST] if self._summary_of(t) is None]
+      trips = self._trips()[:TRIPS_LISTED]
+    kept = self.store.get(SUMMARY_PARAM) or {}  # read once: the whole history is in it
+    newest = {t["id"] for t in trips[:SUMMARY_NEWEST]}
+    summaries = {t["id"]: self._summary_of(t, kept, newest) for t in trips}
+    todo = [t for t in trips[:SUMMARY_NEWEST] if summaries[t["id"]] is None]
     if todo and not self._summary_busy:
       self._summary_busy = True
       self._spawn(lambda: self._summarize_trips(todo))
-    return 200, {"trips": [{"id": t["id"], "mtime": int(t["mtime"]), "minutes": len(t["files"]),
-                            "segments": sorted(t["files"]), "summary": self._summary_of(t)} for t in trips],
-                 "pending": any(self._summary_of(t) is None for t in trips[:SUMMARY_NEWEST])}
+    hidden = set(self.store.get(HIDDEN_PARAM) or [])
+    return 200, {"trips": [{"id": t["id"], "mtime": int(t["mtime"]), "minutes": len(t["files"]), "segments": sorted(t["files"]),
+                            "summary": summaries[t["id"]], "hidden": t["id"] in hidden} for t in trips],
+                 "pending": bool(todo), "pending_n": len(todo)}
 
-  def _summary_of(self, trip: dict) -> dict | None:
-    s = (self.store.get(SUMMARY_PARAM) or {}).get(trip["id"])
+  def trip_hide(self, who: dict, route: str, hidden: bool) -> tuple[int, dict]:
+    """Hides a drive from the phone's lists, or shows it again. Only a name on the list: nothing is deleted."""
+    if self.vehicle_state().onroad:
+      return 409, {"error": "As viagens só abrem com o carro desligado."}
+    with self._replay_lock:
+      known = any(t["id"] == route for t in self._trips())
+    if not known:
+      return 404, {"error": "Viagem não encontrada."}
+    with self.lock:
+      kept = [r for r in (self.store.get(HIDDEN_PARAM) or []) if r != route]
+      self.store.put(HIDDEN_PARAM, (kept + [route])[-HIDDEN_KEEP:] if hidden else kept)
+      self._audit({"event": "trip_hidden" if hidden else "trip_shown", "who": who.get("name", ""), "key": route})
+    return 200, {"ok": True, "hidden": hidden}
+
+  def _summary_of(self, trip: dict, kept: dict | None = None, newest: set | None = None) -> dict | None:
+    s = (kept if kept is not None else self.store.get(SUMMARY_PARAM) or {}).get(trip["id"])
     if not isinstance(s, dict) or s.get("segments") != len(trip["files"]):  # a drive that grew is redone
       return None
-    return s if s.get("sv") == SUMMARY_VERSION or trip not in self._trips()[:SUMMARY_NEWEST] else None  # old drives keep what they have
+    if newest is None:
+      newest = {t["id"] for t in self._trips()[:SUMMARY_NEWEST]}
+    return s if s.get("sv") == SUMMARY_VERSION or trip["id"] not in newest else None  # old drives keep what they have
+
+  def _path_file(self, route: str) -> Path | None:
+    return Path(self.log_root).parent / PATH_DIR / f"{route}.json" if self.log_root and re.fullmatch(r"[0-9a-f]{8}--[0-9a-f]{10}", route) else None
+
+  def _keep_path(self, route: str, path: list | None) -> None:
+    f = self._path_file(route)
+    if f is None or not path:
+      return
+    try:
+      f.parent.mkdir(parents=True, exist_ok=True)
+      f.write_text(json.dumps(path, separators=(",", ":")))
+      for old in sorted(f.parent.glob("*.json"))[:-SUMMARY_KEEP]:  # route names grow with each drive
+        old.unlink(missing_ok=True)
+    except OSError:
+      from openpilot.common.swaglog import cloudlog
+      cloudlog.exception("hexaweb: trip path not kept")
+
+  def trip_path(self, route: str) -> tuple[int, dict]:
+    """The drive's path for the map on the phone: [lat, lon, who, s from the start], a point every ~10 s. Car off only."""
+    if self.vehicle_state().onroad:
+      return 409, {"error": "As viagens só abrem com o carro desligado."}
+    with self._replay_lock:
+      known = any(t["id"] == route for t in self._trips())  # only ids from the list: no paths from outside
+    f = self._path_file(route) if known else None
+    try:
+      points = json.loads(f.read_text()) if f is not None else None
+    except (OSError, ValueError):
+      points = None
+    if not isinstance(points, list):
+      return 404, {"error": "Sem caminho desta viagem ainda."}
+    return 200, {"points": points}
 
   def _summarize_trips(self, todo: list[dict]) -> None:
     """Reads each drive once, after it ended, and keeps the numbers. Stops as soon as the car is on again."""
@@ -652,6 +708,7 @@ class PanelBackend:
         if summary is None:
           return
         summary = {**summary, "sv": SUMMARY_VERSION}
+        self._keep_path(trip["id"], summary.pop("path", None))
         with self.lock:
           kept = self.store.get(SUMMARY_PARAM) or {}
           kept[trip["id"]] = summary
@@ -1002,6 +1059,9 @@ def make_handler(backend: PanelBackend):
       elif path == "/api/trips":
         if self._who() is not None:
           self._json(*backend.trips_list())
+      elif path == "/api/trip/path":
+        if self._who() is not None:
+          self._json(*backend.trip_path(parse_qs(query).get("route", [""])[0]))
       elif path == "/api/trip/segment":
         if self._who() is not None:
           q = parse_qs(query)
@@ -1084,6 +1144,7 @@ def make_handler(backend: PanelBackend):
         "/api/radars/import": lambda who, b: backend.radars_import(who, b.get("edits")),
         "/api/options/import": lambda who, b: backend.options_import(who, b.get("options"), bool(b.get("apply")), b.get("profiles")),
         "/api/mark/clip": lambda who, b: backend.clip_ticket(who, str(b.get("id", ""))),
+        "/api/trip/hide": lambda who, b: backend.trip_hide(who, str(b.get("route", "")), b.get("hidden") is not False),
         "/api/profiles/save": lambda who, b: backend.profile_save(who, b.get("name", "")),
         "/api/profiles/delete": lambda who, b: backend.profile_delete(who, str(b.get("name", ""))),
         "/api/update": lambda who, b: backend.update_action(who, str(b.get("action", "")), str(b.get("branch", ""))),

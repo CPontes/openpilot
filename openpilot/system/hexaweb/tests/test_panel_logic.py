@@ -258,3 +258,83 @@ def test_versions_newest_first_without_the_unknown():
   trips = [{"summary": {"commit": "b2"}}, {"summary": {"commit": "a1"}}, {"summary": {"commit": "b2"}}, {"summary": {}}, {"summary": None}]
   assert run("versions", trips) == ["b2", "a1"]
   assert run("versionOf", {"summary": None}) == ""
+
+
+# ----- Início: the whole history, the map (owner, 02/11 01:53) and hidden drives (02:02)
+
+SAT = 1_793_448_000  # 2026-10-31 12:00 UTC, a Saturday
+
+
+def drive(end, minutes=20, **summary):
+  s = {"km": 12., "moving_s": 1000, "off": 0, "alerts": 0, **summary}
+  return {"id": f"r{end}", "mtime": end, "minutes": minutes, "summary": s, "hidden": False}
+
+
+def test_idle_drives_and_accents():
+  assert run("idle", drive(SAT, km=.1, moving_s=20)) is True
+  assert run("idle", drive(SAT, km=.1, moving_s=300)) is False  # a long time crawling is a drive
+  assert run("idle", {"mtime": SAT, "minutes": 1, "summary": None}) is False  # not read yet: never hidden for it
+  assert run("fold", "Sábado ÇÃO") == "sabado cao"
+
+
+def test_history_search_finds_day_time_version_and_marks():
+  a, b = drive(SAT, commit="abc1234"), drive(SAT - 86400 * 3, off=2, alerts=1)
+  marks = [{"t": SAT - 300, "text": "Curva fechada"}]
+  o = {"marks": marks, "locale": "pt-BR", "nowS": SAT + 3600, "words": {"today": "hoje", "yesterday": "ontem"}}
+
+  def ids(q, **kw):
+    return [t["id"] for t in run("history", [a, b], {**o, "query": q, **kw})["list"]]
+
+  assert ids("") == [a["id"], b["id"]]
+  assert ids("sabado") == [a["id"]] and ids("hoje") == [a["id"]] and ids("31/10") == [a["id"]]
+  assert ids("ABC12") == [a["id"]] and ids("curva") == [a["id"]] and ids("curva quarta") == []  # every word must be found
+  assert ids("quarta") == [b["id"]]
+  h = run("history", [a, b], {**o, "filter": "desengates"})
+  assert [t["id"] for t in h["list"]] == [b["id"]] and h["counts"] == {"todas": 2, "marcas": 1, "desengates": 1, "alertas": 1}
+  assert ids("", filter="nada") == [a["id"], b["id"]]
+
+
+def test_history_leaves_out_hidden_and_idle_drives_unless_asked():
+  shown, hid, still = drive(SAT), {**drive(SAT - 600), "hidden": True}, drive(SAT - 1200, km=0., moving_s=0)
+  h = run("history", [shown, hid, still], {})
+  assert [t["id"] for t in h["list"]] == [shown["id"]] and (h["hidden"], h["idle"]) == (1, 1)
+  assert len(run("history", [shown, hid, still], {"showHidden": True})["list"]) == 3
+
+
+def test_history_by_day():
+  days = run("byDay", [drive(SAT), drive(SAT - 3600, km=3.), drive(SAT - 86400)])
+  assert [(d["key"], len(d["trips"]), d["km"], d["minutes"]) for d in days] == [("2026-10-31", 2, 15., 40), ("2026-10-30", 1, 12., 20)]
+
+
+def test_map_fits_the_whole_path_and_lists_its_tiles():
+  assert run("mercator", 0, 0, 1) == [256, 256]
+  pts = [[1.0, 2.0, 0, 0], [1.01, 2.02, 3, 60], [1.005, 2.03, 1, 120]]
+  f = run("mapFit", pts, 360, 220, 18)
+  assert all(17.99 <= x <= 342.01 and 17.99 <= y <= 202.01 for x, y in f["xy"])  # the path touches the margin, never past it
+  bigger = run("mapFit", pts, 720, 440, 18)
+  assert bigger["z"] == f["z"] + 1  # twice the room, one zoom closer
+  tiles = run("mapTiles", f, 360, 220)
+  assert all(t["z"] == f["z"] for t in tiles) and min(t["left"] for t in tiles) <= 0 and max(t["left"] + t["size"] for t in tiles) >= 360
+  xs, ys = [x for x, _ in f["xy"]], [y for _, y in f["xy"]]
+  assert 256 <= f["size"] < 512 and max(max(xs) - min(xs), max(ys) - min(ys)) > 160  # fills the box
+  assert run("mapFit", [[1.0, 2.0, 0, 0]], 360, 220, 18)["z"] == 17  # a single point: close in, not the world
+  assert run("mapFit", [], 360, 220, 18) is None
+  assert run("nearestAt", pts, 70) == 1
+
+
+def test_trip_numbers_like_a_trip_computer():
+  n = run("tripNumbers", {"km": 30., "moving_s": 1800, "stop_s": 300, "v_max": 98.4, "run_km": 12.34, "run_s": 600})
+  assert (n["avg"], n["vmax"], n["runKm"], n["runMin"], n["movingMin"], n["stopMin"]) == (60, 98, 12.34, 10, 30, 5)
+  old = run("tripNumbers", {"km": .5, "moving_s": 40})
+  assert old["avg"] is None and old["vmax"] is None and old["runKm"] is None  # too short for an average; older summaries
+  assert run("tripNumbers", None) is None
+
+
+def test_weekly_trend_leaves_hidden_and_idle_drives_out():
+  now = SAT  # a Saturday: the week started on Monday 26/10
+  trips = [drive(now, km=20., moving_s=1000, op_s=800, off=1), drive(now - 3 * 86400, km=10., moving_s=1000, op_s=200),
+           {**drive(now - 3600, km=50.), "hidden": True}, drive(now - 7200, km=0., moving_s=0), drive(now - 8 * 86400, km=40., moving_s=2000, op_s=1000, off=2)]
+  w = run("weekly", trips, now, 3)
+  assert [x["trips"] for x in w] == [0, 1, 2]
+  assert w[2]["km"] == 30. and w[2]["opPct"] == 50 and abs(w[2]["off100"] - 100 / 30) < 1e-9
+  assert w[1]["off100"] == 5. and w[0]["opPct"] is None

@@ -85,6 +85,7 @@ def test_page_is_served_with_security_headers(panel):
   assert headers["X-Frame-Options"] == "DENY"
   assert headers["Cache-Control"] == "no-store"
   assert "default-src 'self'" in headers["Content-Security-Policy"]
+  assert "img-src 'self' data: https://tile.openstreetmap.org;" in headers["Content-Security-Policy"]  # only the street map, never a script
   assert headers["Content-Security-Policy"].endswith("connect-src 'self' http://lizpilot.local:8088")  # only the fixed name, to check it
   assert panel.request("/manifest.webmanifest")[0] == 200
   assert panel.request("/../hexaweb.py")[0] == 404
@@ -1161,3 +1162,43 @@ def test_a_red_light_camera_from_the_phone(panel, tmp_path):
   assert add_point(panel, token, kind="sinal", limit=10)[0] == 400
   mine = panel.json("/api/radars/near", token=token)[1]["mine"]
   assert mine[0]["kind"] == "sinal"
+
+
+def test_each_drive_keeps_its_path_for_the_map(panel, tmp_path):
+  logs = tmp_path / "realdata"
+  logs.mkdir()
+  trip_logs(panel, logs)
+  jobs = []
+  panel.backend._spawn = jobs.append
+  path = [[1.0, 2.0, 0, 0], [1.001, 2.001, 3, 10]]  # made-up place
+  panel.backend._summarize = lambda files, stop: {"segments": len(files), "path": path}
+  token = panel.pair()
+  assert panel.json("/api/trip/path?route=0000000f--8784034901", token=token)[0] == 404  # not read yet
+  t = panel.json("/api/trips", token=token)[1]
+  assert t["pending"] and t["pending_n"] == 1
+  jobs.pop()()
+  status, body = panel.json("/api/trip/path?route=0000000f--8784034901", token=token)
+  assert status == 200 and body["points"] == path
+  assert "path" not in panel.json("/api/trips", token=token)[1]["trips"][0]["summary"]  # the list stays light
+  assert (tmp_path / hexaweb.PATH_DIR / "0000000f--8784034901.json").is_file()  # next to the logs, never in params
+  assert panel.json("/api/trip/path?route=../../etc", token=token)[0] == 404
+  assert panel.json("/api/trip/path?route=0000000f--8784034901")[0] == 401
+  panel.vs = VehicleState(onroad=True)
+  assert panel.json("/api/trip/path?route=0000000f--8784034901", token=token)[0] == 409
+
+
+def test_a_drive_can_be_hidden_from_the_lists_and_shown_again(panel, tmp_path):
+  trip_logs(panel, tmp_path)
+  token = panel.pair()
+  route = "0000000f--8784034901"
+  assert panel.json("/api/trips", token=token)[1]["trips"][0]["hidden"] is False
+  assert panel.json("/api/trip/hide", {"route": route}, token=token)[0] == 200
+  assert panel.json("/api/trips", token=token)[1]["trips"][0]["hidden"] is True
+  assert (tmp_path / f"{route}--0" / "qlog.zst").is_file()  # nothing is deleted
+  assert panel.store.get(phone.AUDIT_PARAM)[-1]["event"] == "trip_hidden"
+  assert panel.json("/api/trip/hide", {"route": route, "hidden": False}, token=token)[0] == 200
+  assert panel.json("/api/trips", token=token)[1]["trips"][0]["hidden"] is False and panel.store.get(hexaweb.HIDDEN_PARAM) == []
+  assert panel.json("/api/trip/hide", {"route": "0000000f--0000000000"}, token=token)[0] == 404  # only drives on the comma
+  assert panel.json("/api/trip/hide", {"route": route})[0] == 401
+  panel.vs = VehicleState(onroad=True)
+  assert panel.json("/api/trip/hide", {"route": route}, token=token)[0] == 409

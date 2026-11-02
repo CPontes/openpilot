@@ -35,6 +35,8 @@
   .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .tile { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; min-width: 0; }
   .tile b { display: block; font-family: var(--font-display); font-size: 26px; line-height: 1.1; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .tile b small { font-family: var(--font); font-size: 14px; font-weight: 400; color: var(--muted); }
+  .tile:nth-child(5):last-child { grid-column: 1 / -1; }
   .tile span { color: var(--muted); font-size: 14px; }
   .checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; font-size: 15px; }
   .check { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -81,7 +83,7 @@
   .opt .sum { color: var(--muted); font-size: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .opt .more { margin: 4px 0 6px; padding: 12px; border-radius: 12px; background: var(--card-2); font-size: 14px; color: #C9D1D9; white-space: pre-line; }
   .lock { color: var(--warn); font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-  textarea, input[type=text], input[inputmode=numeric], select { width: 100%; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); }
+  textarea, input[type=text], input[type=search], input[inputmode=numeric], select { width: 100%; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); }
   textarea { resize: vertical; }
   textarea::placeholder, input::placeholder { color: var(--dim); }
   label.field { display: block; font-size: 14px; color: var(--muted); margin: 14px 0 6px; }
@@ -131,6 +133,40 @@
   .split .op, .sw.op { background: var(--accent); }
   .split .help, .sw.help { background: repeating-linear-gradient(135deg, var(--accent) 0 5px, var(--you) 5px 10px); }
   .split .you, .sw.you { background: var(--you); }
+  .navbtn { flex: none; width: 48px; height: 48px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+  .navbtn:disabled { opacity: .3; }
+  .map { position: relative; height: 240px; margin: 0 -16px; overflow: hidden; background: var(--card-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); cursor: pointer; }
+  .map .tiles { position: absolute; inset: 0; }
+  .map .tiles img { position: absolute; width: 256px; height: 256px; max-width: none; user-select: none; -webkit-user-drag: none; pointer-events: none;
+                    filter: invert(1) hue-rotate(180deg) brightness(.8) contrast(.9) saturate(.5); }  /* the street map, dark like the panel */
+  .map canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .map .mapmsg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; color: var(--muted); font-size: 15px; }
+  .map .mapchip { position: absolute; top: 8px; right: 8px; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line-2); background: rgba(11, 14, 17, .82); color: var(--muted); font-weight: 700; font-size: 14px; }
+  .map .mapchip[aria-pressed="true"] { color: var(--text); }
+  .map .attrib { position: absolute; right: 0; bottom: 0; font-size: 11px; line-height: 1; padding: 4px 6px; background: rgba(11, 14, 17, .8); color: var(--muted); text-decoration: none; border-top-left-radius: 8px; }
+  .maplegend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+  .maplegend > span { display: inline-flex; align-items: center; gap: 6px; }
+  .maplegend .sw { display: inline-block; width: 16px; height: 6px; border-radius: 3px; }
+  .maplegend .pin { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--warn); }
+  .weeks { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; align-items: end; }
+  .weeks .wk { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+  .weeks .track { position: relative; width: 100%; height: 96px; border-radius: 6px; background: var(--card-2); overflow: hidden; }
+  .weeks .b { position: absolute; left: 0; right: 0; bottom: 0; background: var(--accent); border-radius: 6px 6px 0 0; }
+  .weeks .v { font-size: 12px; font-weight: 700; color: var(--accent); min-height: 16px; }
+  .weeks .d { font-size: 11px; color: var(--dim); }
+  .weeks .o { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .card.hday { padding: 0; overflow: hidden; }
+  .hday .hhead { display: flex; align-items: baseline; gap: 10px; padding: 12px 16px 8px; }
+  .hwrap { position: relative; overflow: hidden; border-top: 1px solid #222A32; }
+  .hwrap .hact { position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end; padding-right: 20px; background: var(--warn-bg); color: var(--warn); font-weight: 700; }
+  .hrow { position: relative; display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 4px 12px; align-items: center; width: 100%; min-height: 64px; padding: 10px 16px;
+          background: var(--card); border: 0; color: inherit; text-align: left; touch-action: pan-y; transition: transform .18s ease-out; }
+  .hrow[aria-current="true"] { background: var(--ok-bg); box-shadow: inset 4px 0 0 var(--accent); }
+  .hrow .htime { font-family: var(--font-display); font-weight: 700; font-size: 21px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .hrow .hmid { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .hrow .hmeta { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .hrow .hmeta .w { color: var(--warn); font-weight: 600; }
+  .hrow.off { opacity: .55; }
   .legend3 { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto 64px; gap: 8px 10px; align-items: center; font-size: 15px; font-variant-numeric: tabular-nums; }
   .legend3 .sw { width: 12px; height: 12px; border-radius: 3px; }
   .legend3 .km { color: var(--muted); text-align: right; }
@@ -165,6 +201,9 @@
   .toast { position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 20; max-width: calc(100% - 32px);
            background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 15px; font-weight: 600; opacity: 0; transition: opacity .2s; pointer-events: none; }
   .toast.show { opacity: .96; }
+  .undo { position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 21; width: min(528px, calc(100% - 32px));
+          display: flex; align-items: center; gap: 12px; background: #1C242B; border: 1px solid var(--line-2); color: var(--text); padding: 4px 8px 4px 16px; border-radius: 14px;
+          font-size: 15px; font-weight: 600; box-shadow: 0 10px 28px rgba(0, 0, 0, .55); }
   .offline [data-view] { opacity: .55; }
   .steps { list-style: none; margin: 18px 0 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }
   .steps li { display: flex; gap: 14px; align-items: flex-start; }
@@ -237,21 +276,55 @@
           <div class="label" style="margin:0 0 4px" data-t>Mudou desde a última viagem</div>
           <div id="changesList" class="list"></div>
         </section>
-        <a class="card stack hidden" id="lastTrip" href="/viagens" style="text-decoration:none;color:inherit;gap:10px">
-          <div class="row"><span class="label grow" style="margin:0" data-t>Última viagem</span><span class="small" id="lastTripWhen"></span></div>
-          <div class="stack hidden" id="lastTripSplit" style="gap:12px">
-            <div class="stack" style="gap:4px"><span class="hero" id="lastTripBig"></span><span class="title" id="lastTripLine"></span><span class="desc" id="lastTripSub"></span></div>
-            <div class="split" id="lastTripBar" role="img"></div>
-            <div class="legend3" id="lastTripLegend"></div>
+        <section class="card stack hidden" id="tripCard" style="gap:10px">
+          <div class="row" style="gap:8px">
+            <span class="label grow" style="margin:0" id="tripLabel" data-t>Última viagem</span>
+            <button class="navbtn" id="tripOlder" type="button" data-t-aria="Viagem anterior" aria-label="Viagem anterior"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+            <span class="small num" id="tripPos" style="min-width:52px;text-align:center"></span>
+            <button class="navbtn" id="tripNewer" type="button" data-t-aria="Viagem seguinte" aria-label="Viagem seguinte"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
           </div>
-          <div class="row" style="gap:20px" id="lastTripNums"></div>
-          <span class="link" style="justify-content:space-between"><span data-t>Rever viagem</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span>
-        </a>
+          <div class="stack" style="gap:0"><span class="title num" id="tripWhen"></span><span class="small num" id="tripMeta"></span></div>
+          <div class="map" id="tripMap">
+            <div class="tiles" id="tripTiles"></div>
+            <canvas id="tripCanvas" role="img" data-t-aria="Caminho da viagem" aria-label="Caminho da viagem"></canvas>
+            <div class="mapmsg hidden" id="tripMapMsg"></div>
+            <button class="mapchip" id="streetsBtn" type="button" aria-pressed="true" data-t>Ruas</button>
+            <a class="attrib hidden" id="tripAttrib" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a>
+          </div>
+          <div class="maplegend" id="tripMapLegend">
+            <span><i class="sw op"></i><span data-t>openpilot</span></span>
+            <span><i class="sw help"></i><span data-t>com a sua ajuda</span></span>
+            <span><i class="sw you"></i><span data-t>você</span></span>
+            <span><i class="pin"></i><span data-t>marca</span></span>
+          </div>
+          <div class="small hidden" id="streetsNote" data-t>As ruas vêm do OpenStreetMap pela internet: ele vê a região do mapa, não o caminho. O caminho fica no comma.</div>
+          <div class="stack hidden" id="tripSplit" style="gap:12px">
+            <div class="stack" style="gap:4px"><span class="hero" id="tripBig"></span><span class="title" id="tripLine"></span><span class="desc" id="tripSub"></span></div>
+            <div class="split" id="tripBar" role="img"></div>
+            <div class="legend3" id="tripLegend"></div>
+          </div>
+          <div class="row" style="gap:20px;flex-wrap:wrap" id="tripNums"></div>
+          <div class="grid2 hidden" id="tripFigures"></div>
+          <div class="row" style="justify-content:space-between;flex-wrap:wrap">
+            <a class="link" id="tripOpen" href="/viagens"><span data-t>Rever viagem</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
+            <button class="link" id="tripHide" type="button" style="color:var(--muted)" data-t>Ocultar viagem</button>
+          </div>
+        </section>
         <div class="card att row hidden" id="pendingCard">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>
           <span class="grow" id="pendingText"></span>
           <button class="btn warn" id="pendingBtn" type="button" style="width:auto;min-height:44px;padding:0 16px;font-size:16px" data-t>Classificar</button>
         </div>
+        <section class="hidden" id="historyBox">
+          <div class="row" style="margin:22px 4px 8px"><span class="label grow" style="margin:0" data-t>Histórico</span><span class="small num" id="historyCount"></span></div>
+          <input type="search" id="historyQuery" autocomplete="off" enterkeyhint="search" data-t-ph="Buscar: dia, hora, versão, marca" placeholder="Buscar: dia, hora, versão, marca" data-t-aria="Buscar viagens" aria-label="Buscar viagens">
+          <div class="chips" id="historyFilters" style="margin:10px 0" data-t-aria="Filtrar viagens" aria-label="Filtrar viagens"></div>
+          <div class="small hidden" id="historyReading" style="margin:0 4px 10px"></div>
+          <div id="historyList" class="stack" style="gap:10px"></div>
+          <button class="btn dark hidden" id="historyMore" type="button" style="margin-top:10px" data-t>Mostrar mais</button>
+          <button class="link hidden" id="historyHidden" type="button" style="margin:6px 4px 0"></button>
+          <div class="small" id="historyHint" style="margin:6px 4px 0" data-t>Deslize uma viagem para a esquerda para ocultar. O log continua no comma.</div>
+        </section>
       </div>
 
       <div id="drive" class="hidden">
@@ -487,6 +560,7 @@
   <button type="button" data-go="ajustes"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span data-t>Ajustes</span></button>
 </nav>
 <div class="toast" id="toast" role="status"></div>
+<div class="undo hidden" id="undoBar" role="status"><span class="grow" id="undoText"></span><button class="link" id="undoBtn" type="button" data-t>Desfazer</button></div>
 
 <script src="/i18n.js"></script>
 <script src="/lp-logic.js"></script>
@@ -889,26 +963,9 @@ function renderGarage() {
     const b = el("span", "", v); b.style.cssText = "font-weight:700;color:" + (a.new === false ? "var(--muted)" : "var(--accent)");
     row.append(b); return row;
   }));
-  $("lastTrip").classList.toggle("hidden", !last);
-  if (last) {
-    const start = last.mtime - last.minutes * 60;
-    $("lastTripWhen").textContent = when(start);
-    $("lastTrip").href = "/viagens?trip=" + encodeURIComponent(last.id);
-    const nMarks = marksState.marks.filter((m) => m.t >= start - 60 && m.t <= last.mtime + 60).length;
-    const split = LPL.tripSplit(last.summary);  // who had the wheel; null while the comma is still reading the drive
-    $("lastTripSplit").classList.toggle("hidden", !split);
-    if (split) {
-      $("lastTripBig").textContent = textOf(split.big);
-      $("lastTripLine").textContent = t(split.line);
-      $("lastTripSub").textContent = textOf(split.sub);
-      splitBar($("lastTripBar"), split);
-      $("lastTripLegend").replaceChildren(...split.parts.flatMap((p) => [el("span", "sw " + p.key), el("span", "", t(p.label)),
-        el("b", "", tf("{m} min", { m: p.min })), el("span", "km", `${num(p.km, 1)} km`)]));
-    }
-    const big = (v, unit) => { const b = el("span", "big num", String(v)); b.append(" ", el("small", "", unit)); return b; };
-    $("lastTripNums").replaceChildren(...(split ? [] : [big(last.minutes, t("min"))]), big(nMarks, nMarks === 1 ? t("marca") : t("marcas")),
-      ...(split || last.summary ? [] : [el("span", "small", t("Calculando quem dirigiu…"))]));  // a summary without movement: nothing to split
-  }
+  const h = histNow();
+  renderTripCard(h);
+  renderHistory(h);
   const pending = marksState.marks.filter((m) => !m.reason);
   $("pendingCard").classList.toggle("hidden", !pending.length);
   $("pendingText").textContent = pending.length === 1 ? t("1 marca sem motivo") : tf("{n} marcas sem motivo", { n: pending.length });
@@ -1177,9 +1234,255 @@ async function refreshTrips(force) {
   if (carOn) { trips = null; renderTrips(); return; }
   const r = await api("/api/trips");
   tripsAt = r.status === 200 && r.data.pending ? Date.now() - 25000 : Date.now();  // still reading drives: ask again in 5 s
-  trips = r.status === 200 ? r.data.trips : null;
+  if (r.status === 200) { trips = r.data.trips; tripsPending = r.data.pending_n || 0; cacheTrips(); }
+  else if (r.status !== 0) trips = null;  // no answer from the comma: the last list stays on the screen
   renderTrips(r.status === 200 ? "" : (r.data.error || ""));
   if (view === "inicio" && !driving) renderGarage();
+}
+
+// ----- Início: one drive with its map, and the whole history under it (owner, 02/11 01:53 and 02:02) -----
+const HIST_STEP = 20, MAP_PAD = 26;
+let tripSel = null, histQuery = "", histFilter = "todas", histShowHidden = false, histShown = HIST_STEP, histSig = "", lastHist = null;
+let tripsPending = 0, mapSig = "", tileFails = 0;
+let streets = load("lpStreets") !== "0";  // the street map behind the path, on unless turned off on this phone
+const paths = new Map();  // route → { points } or { status }: page memory only
+function cacheTrips() { if (trips) store("lpTrips", JSON.stringify({ at: Date.now(), trips })); }
+try { const c = JSON.parse(load("lpTrips") || "null"); if (c && Array.isArray(c.trips)) trips = c.trips; } catch (e) {}  // opens with the last list
+function markText(m) {
+  return [t(m.label || ""), m.note || "", m.source === "auto" ? t("automática") : "", m.source === "comma" ? t("bandeira") : ""].join(" ");
+}
+function histNow() {
+  lastHist = LPL.history(trips || [], { query: histQuery, filter: histFilter, showHidden: histShowHidden, locale: L(), nowS: Date.now() / 1000,
+    marks: marksState.marks.map((m) => ({ t: m.t, text: markText(m) })), words: { today: t("hoje"), yesterday: t("ontem") } });
+  return lastHist;
+}
+function tripPicked(h) { return h.list.find((tr) => tr.id === tripSel) || h.list[0] || null; }
+
+function renderTripCard(h) {
+  const tr = tripPicked(h);
+  $("tripCard").classList.toggle("hidden", !tr);
+  if (!tr) return;
+  const i = h.list.indexOf(tr), start = LPL.tripStart(tr), sm = tr.summary;
+  $("tripLabel").textContent = i === 0 && !histQuery && h.filter === "todas" ? t("Última viagem") : t("Viagem");
+  $("tripPos").textContent = tf("{i} de {n}", { i: i + 1, n: h.list.length });
+  $("tripOlder").disabled = i >= h.list.length - 1;  // newest first
+  $("tripNewer").disabled = i <= 0;
+  $("tripWhen").textContent = `${when(start)} → ${hhmm(tr.mtime)}`;
+  const meta = [`${tr.minutes} min`];
+  if (sm) meta.push(`${num(sm.km, 1)} km`);
+  if (LPL.versionOf(tr)) meta.push(tf("versão {v}", { v: LPL.versionOf(tr) }));
+  if (tr.hidden) meta.push(t("oculta")); else if (LPL.idle(tr)) meta.push(t("sem andar"));
+  $("tripMeta").textContent = meta.join(" · ");
+  $("tripOpen").href = "/viagens?trip=" + encodeURIComponent(tr.id);
+  $("tripHide").textContent = tr.hidden ? t("Mostrar de novo") : t("Ocultar viagem");
+  const split = LPL.tripSplit(sm);  // who had the wheel; null while the comma is still reading the drive
+  $("tripSplit").classList.toggle("hidden", !split);
+  if (split) {
+    $("tripBig").textContent = textOf(split.big);
+    $("tripLine").textContent = t(split.line);
+    $("tripSub").textContent = textOf(split.sub);
+    splitBar($("tripBar"), split);
+    $("tripLegend").replaceChildren(...split.parts.flatMap((p) => [el("span", "sw " + p.key), el("span", "", t(p.label)),
+      el("b", "", tf("{m} min", { m: p.min })), el("span", "km", `${num(p.km, 1)} km`)]));
+  }
+  const nMarks = LPL.tripMarks(tr, marksState.marks).length;
+  const big = (v, unit, color) => { const b = el("span", "big num", String(v)); if (color) b.style.color = color; b.append(" ", el("small", "", unit)); return b; };
+  const nums = [big(nMarks, nMarks === 1 ? t("marca") : t("marcas"))];
+  if (sm) nums.push(big(sm.off || 0, sm.off === 1 ? t("desengate") : t("desengates")), big(sm.alerts || 0, sm.alerts === 1 ? t("alerta") : t("alertas"), sm.alerts ? "var(--warn)" : ""));
+  else nums.push(el("span", "small", t("Calculando quem dirigiu…")));
+  $("tripNums").replaceChildren(...nums);
+  const f = LPL.tripNumbers(sm);  // what a trip computer shows
+  $("tripFigures").classList.toggle("hidden", !f);
+  if (f) {
+    const tile = (v, unit, label) => { const d = el("div", "tile"); const b = el("b", "num", v == null ? "—" : String(v)); if (v != null && unit) b.append(" ", el("small", "", unit)); d.append(b, el("span", "", label)); return d; };
+    const tiles = [tile(f.avg, "km/h", t("média andando")), tile(f.vmax, "km/h", t("máxima")),
+                   tile(f.movingMin, "min", t("andando")), tile(f.stopMin, "min", t("parado"))];
+    if (f.runKm != null) tiles.push(tile(num(f.runKm, 1), "km", tf("maior trecho do openpilot sem a sua mão ({m} min)", { m: f.runMin })));
+    $("tripFigures").replaceChildren(...tiles);
+  }
+  drawTrip(tr);
+}
+
+// The drive's path on the map: green with openpilot, striped with your hand or foot, blue with you; amber pins for the marks
+function drawTrip(tr) {
+  const box = $("tripMap"), w = box.clientWidth, hgt = box.clientHeight;
+  let got = paths.get(tr.id);
+  if (!got || (got.status === "none" && tr.summary && !got.summarized) || (got.status === "error" && Date.now() - got.at > 30000)) {
+    got = { status: "loading" }; paths.set(tr.id, got); fetchPath(tr);
+  }
+  const marks = LPL.tripMarks(tr, marksState.marks);
+  const sig = [tr.id, w, hgt, streets, got.points ? got.points.length : got.status, marks.map((m) => m.t).join(",")].join("|");
+  if (sig === mapSig || !w) return;
+  mapSig = sig;
+  const c = $("tripCanvas"), ratio = window.devicePixelRatio || 1;
+  c.width = Math.round(w * ratio); c.height = Math.round(hgt * ratio);
+  const g = c.getContext("2d");
+  g.setTransform(ratio, 0, 0, ratio, 0, 0);
+  g.clearRect(0, 0, w, hgt);
+  const pts = got.points || [], fit = pts.length ? LPL.mapFit(pts, w, hgt, MAP_PAD) : null;
+  const say = (text) => { $("tripMapMsg").textContent = text; $("tripMapMsg").classList.toggle("hidden", !text); };
+  const tiles = streets && fit ? LPL.mapTiles(fit, w, hgt) : [];
+  tileFails = 0;
+  $("tripTiles").replaceChildren(...tiles.map((tl) => {
+    const im = new Image(); im.alt = ""; im.decoding = "async"; im.draggable = false;
+    im.style.cssText = `left:${tl.left}px;top:${tl.top}px;width:${tl.size + .5}px;height:${tl.size + .5}px`;  // + .5: no hairline between tiles
+    im.onerror = () => { im.remove(); tileFails += 1; if (tileFails === tiles.length) $("tripAttrib").classList.add("hidden"); };
+    im.src = `https://tile.openstreetmap.org/${tl.z}/${tl.x}/${tl.y}.png`;
+    return im;
+  }));
+  $("tripAttrib").classList.toggle("hidden", !tiles.length);
+  $("streetsBtn").classList.toggle("hidden", !fit);
+  $("streetsBtn").setAttribute("aria-pressed", streets ? "true" : "false");
+  $("streetsNote").classList.toggle("hidden", !(streets && fit));
+  if (!fit) {
+    say(got.status === "loading" ? t("Carregando o caminho…") : got.status === "none"
+      ? (tr.summary ? t("Sem GPS nesta viagem: sem mapa.") : t("O mapa aparece quando o comma terminar de ler esta viagem."))
+      : t("Não deu para carregar o caminho. Tentando de novo…"));
+    return;
+  }
+  say("");
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const op = css("--accent"), you = css("--you");
+  g.lineCap = "round"; g.lineJoin = "round";
+  g.strokeStyle = "rgba(5, 7, 9, .8)"; g.lineWidth = 9;  // a dark edge, so the path reads over the streets
+  g.beginPath(); fit.xy.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
+  for (let i = 1; i < pts.length; i++) {
+    const who = pts[i][2], [x0, y0] = fit.xy[i - 1], [x1, y1] = fit.xy[i], gap = pts[i][3] - pts[i - 1][3] > 90;  // GPS lost in between
+    const seg = (color, width, dash) => { g.setLineDash(dash); g.strokeStyle = color; g.lineWidth = width; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); };
+    if (gap) { seg(css("--dim"), 2, [2, 6]); continue; }
+    seg(who === 3 ? you : op, 5, []);
+    if (who === 1 || who === 2) seg(you, 5, [6, 6]);
+  }
+  g.setLineDash([]);
+  const dot = ([x, y], r, fill, ring) => { g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = fill; g.fill(); if (ring) { g.lineWidth = 3; g.strokeStyle = ring; g.stroke(); } };
+  dot(fit.xy[0], 7, css("--bg"), css("--text"));  // start: a ring
+  dot(fit.xy[fit.xy.length - 1], 7, css("--text"), css("--bg"));  // end: filled
+  const start = LPL.tripStart(tr);
+  for (const m of marks) {
+    const k = LPL.nearestAt(pts, m.t - start);
+    if (k >= 0) dot(fit.xy[k], 8, css("--warn"), css("--bg"));
+  }
+}
+async function fetchPath(tr) {
+  const r = await api("/api/trip/path?route=" + encodeURIComponent(tr.id));
+  paths.set(tr.id, r.status === 200 ? { points: r.data.points } : r.status === 404 ? { status: "none", summarized: !!tr.summary } : { status: "error", at: Date.now() });
+  mapSig = "";
+  if (view === "inicio" && !driving && lastHist) { const cur = tripPicked(lastHist); if (cur && cur.id === tr.id) drawTrip(cur); }
+}
+
+function dayLabel(s) {
+  const ago = LPL.daysAgo(s, Date.now() / 1000);
+  return ago === 0 ? t("Hoje") : ago === 1 ? t("Ontem") : new Date(s * 1000).toLocaleDateString(L(), { weekday: "short", day: "2-digit", month: "2-digit" });
+}
+function renderHistory(h) {
+  const has = !!(trips && trips.length);
+  $("historyBox").classList.toggle("hidden", !has);
+  if (!has) return;
+  const sel = tripPicked(h);
+  const sig = JSON.stringify([h.list.map((tr) => [tr.id, tr.hidden, !!tr.summary, tr.minutes]), h.counts, h.filter, histShown, sel && sel.id,
+                              marksState.marks.map((m) => [m.t, m.reason]), L(), tripsPending, h.hidden, h.idle, histShowHidden, !!histQuery]);
+  if (sig === histSig) return;
+  histSig = sig;
+  $("historyCount").textContent = h.list.length === 1 ? t("1 viagem") : tf("{n} viagens", { n: h.list.length });
+  $("historyFilters").replaceChildren(...LPL.HISTORY_FILTERS.map(([k, label]) => {
+    const b = el("button", "chip num", `${t(label)} · ${h.counts[k]}`); b.type = "button";
+    b.setAttribute("aria-pressed", k === h.filter ? "true" : "false");
+    b.addEventListener("click", () => { histFilter = k; histShown = HIST_STEP; tripSel = null; renderGarage(); });
+    return b;
+  }));
+  $("historyReading").classList.toggle("hidden", !tripsPending);
+  $("historyReading").textContent = tripsPending === 1 ? t("Lendo o histórico no comma: falta 1 viagem.")
+    : tf("Lendo o histórico no comma: faltam {n} viagens. Números e mapas aparecem aos poucos.", { n: tripsPending });
+  const days = LPL.byDay(h.list.slice(0, histShown));
+  $("historyList").replaceChildren(...(days.length ? days.map((d) => {
+    const card = el("section", "card hday");
+    const head = el("div", "hhead");
+    head.append(el("span", "title grow", dayLabel(d.start)));
+    head.append(el("span", "small num", [d.trips.length === 1 ? t("1 viagem") : tf("{n} viagens", { n: d.trips.length }), `${num(d.km, 0)} km`].join(" · ")));
+    head.firstChild.style.flex = "1";
+    card.append(head, ...d.trips.map((tr) => histRow(tr, sel && tr.id === sel.id)));
+    return card;
+  }) : [el("div", "card desc", histQuery ? tf("Nenhuma viagem com “{busca}”.", { busca: histQuery }) : t("Nenhuma viagem neste filtro."))]));
+  const more = h.list.length - histShown;
+  $("historyMore").classList.toggle("hidden", more <= 0);
+  $("historyMore").textContent = tf("Mostrar mais ({n})", { n: more });
+  const out = h.hidden + h.idle;
+  $("historyHidden").classList.toggle("hidden", !out && !histShowHidden);
+  $("historyHidden").textContent = histShowHidden ? t("Esconder as ocultas e as sem andar")
+    : [h.hidden ? (h.hidden === 1 ? t("1 oculta") : tf("{n} ocultas", { n: h.hidden })) : "", h.idle ? (h.idle === 1 ? t("1 sem andar") : tf("{n} sem andar", { n: h.idle })) : ""]
+        .filter(Boolean).join(" · ") + " · " + t("mostrar");
+}
+function histRow(tr, selected) {
+  const wrap = el("div", "hwrap");
+  const act = el("div", "hact", tr.hidden ? t("Mostrar") : t("Ocultar")); act.setAttribute("aria-hidden", "true");
+  const row = el("button", "hrow" + (tr.hidden || LPL.idle(tr) ? " off" : "")); row.type = "button";
+  if (selected) row.setAttribute("aria-current", "true");
+  row.append(el("span", "htime", hhmm(LPL.tripStart(tr))));
+  const mid = el("span", "hmid"), meta = el("span", "hmeta"), sm = tr.summary, split = LPL.tripSplit(sm);
+  if (split) { const bar = el("span", "split thin"); splitBar(bar, split); mid.append(bar); }
+  meta.append(el("span", "", `${tr.minutes} min`));
+  if (sm) meta.append(el("span", "", `${num(sm.km, 1)} km`));
+  if (split) meta.append(el("span", "", tf("{p}% openpilot", { p: Math.round(split.parts[0].pct) })));
+  const mk = LPL.tripMarks(tr, marksState.marks);
+  if (mk.length) { const x = el("span", mk.some((m) => !m.reason) ? "w" : "", mk.length === 1 ? t("1 marca") : tf("{n} marcas", { n: mk.length })); meta.append(x); }
+  if (sm && sm.off) meta.append(el("span", "", sm.off === 1 ? t("1 desengate") : tf("{n} desengates", { n: sm.off })));
+  if (sm && sm.alerts) meta.append(el("span", "w", sm.alerts === 1 ? t("1 alerta") : tf("{n} alertas", { n: sm.alerts })));
+  if (!sm) meta.append(el("span", "", t("lendo…")));
+  if (tr.hidden) meta.append(el("span", "tag", t("oculta"))); else if (LPL.idle(tr)) meta.append(el("span", "tag", t("sem andar")));
+  mid.append(meta); row.append(mid);
+  row.setAttribute("aria-label", `${dayLabel(LPL.tripStart(tr))} ${hhmm(LPL.tripStart(tr))}, ${meta.textContent}`);
+  row.addEventListener("click", () => {
+    if (row._swiped) { row._swiped = false; return; }
+    tripSel = tr.id; renderGarage();
+    $("tripCard").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  swipeAway(row, () => hideTrip(tr, !tr.hidden));
+  wrap.append(act, row);
+  return wrap;
+}
+// Slide a row to the left to hide it (or show it again): a vertical drag still scrolls the page
+function swipeAway(row, done) {
+  let x0 = null, y0 = 0, dx = 0, dir = null;
+  row.addEventListener("pointerdown", (e) => { if (e.button > 0) return; x0 = e.clientX; y0 = e.clientY; dx = 0; dir = null; row._swiped = false; });
+  row.addEventListener("pointermove", (e) => {
+    if (x0 === null) return;
+    const mx = e.clientX - x0, my = e.clientY - y0;
+    if (!dir && Math.abs(mx) + Math.abs(my) > 10) {
+      dir = mx < 0 && Math.abs(mx) > 1.3 * Math.abs(my) ? "x" : "y";
+      if (dir === "x") { try { row.setPointerCapture(e.pointerId); } catch (err) {} }
+    }
+    if (dir !== "x") return;
+    dx = Math.min(0, mx); row.style.transition = "none"; row.style.transform = `translateX(${dx}px)`;
+  });
+  const end = () => {
+    if (x0 === null) return;
+    x0 = null; row.style.transition = "";
+    if (dir === "x") row._swiped = true;  // the click that follows is the end of the slide, not a tap
+    if (dir === "x" && dx < -Math.min(110, row.clientWidth * .3)) { row.style.transform = "translateX(-100%)"; setTimeout(done, 180); }
+    else row.style.transform = "";
+  };
+  row.addEventListener("pointerup", end);
+  row.addEventListener("pointercancel", end);
+}
+async function hideTrip(tr, hidden) {
+  if (hidden && lastHist && tripPicked(lastHist) === tr) {  // the card moves to the next drive, not back to the newest
+    const i = lastHist.list.indexOf(tr), next = lastHist.list[i + 1] || lastHist.list[i - 1];
+    tripSel = next ? next.id : null;
+  }
+  const r = await api("/api/trip/hide", { route: tr.id, hidden });
+  histSig = ""; mapSig = "";
+  if (r.status !== 200) { toast(r.data.error || t("Não deu para ocultar a viagem.")); renderGarage(); return; }
+  tr.hidden = hidden; cacheTrips();
+  if (hidden) undo(t("Viagem oculta. O log continua no comma."), () => { tripSel = tr.id; hideTrip(tr, false); });
+  else toast(t("A viagem voltou para a lista."));
+  renderGarage();
+}
+function undo(msg, fn) {
+  const bar = $("undoBar");
+  $("undoText").textContent = msg;
+  bar.classList.remove("hidden");
+  clearTimeout(bar._t); bar._t = setTimeout(() => bar.classList.add("hidden"), 6000);
+  $("undoBtn").onclick = () => { bar.classList.add("hidden"); clearTimeout(bar._t); fn(); };
 }
 
 // ----- Velocidade e segurança: who controls the speed, the Haval's safety, and what openpilot would have done (LONG-02) -----
@@ -1278,6 +1581,29 @@ function versionCard(all, v) {
   c.append(el("span", "small", t("Estrada e trânsito mudam os números: compare com várias viagens.")));
   return c;
 }
+// Week by week: openpilot's share of the time moving, and disengagements per 100 km. Rates, never a score.
+function weekCard(all) {
+  const weeks = LPL.weekly(all, Date.now() / 1000, 8);
+  if (weeks.filter((w) => w.trips).length < 2) return null;  // a trend needs two weeks
+  const c = el("section", "card stack"); c.style.gap = "10px";
+  c.append(el("span", "label", t("Desempenho por semana"))); c.lastChild.style.margin = "0";
+  const chart = el("div", "weeks"); chart.setAttribute("role", "img");
+  chart.setAttribute("aria-label", weeks.filter((w) => w.trips).map((w) => `${dayMonth(w.start)}: ${w.opPct}% openpilot`).join(", "));
+  for (const w of weeks) {
+    const col = el("div", "wk");
+    col.append(el("span", "v num", w.opPct == null ? "" : `${w.opPct}%`));
+    const bar = el("span", "b"); bar.style.height = (w.opPct == null ? 0 : Math.max(3, w.opPct)) + "%"; col.append(el("span", "track"));
+    col.lastChild.append(bar);
+    col.append(el("span", "d num", dayMonth(w.start)));
+    col.append(el("span", "o num", w.off100 == null ? "—" : num(w.off100, 1)));
+    chart.append(col);
+  }
+  c.append(chart);
+  const key = el("div", "small"); key.append(t("Barras: openpilot no volante, do tempo andando. Embaixo: desengates a cada 100 km."));
+  c.append(key);
+  return c;
+}
+function dayMonth(s) { return new Date(s * 1000).toLocaleDateString(L(), { day: "2-digit", month: "2-digit" }); }
 function renderTrips(err) {
   const box = $("tripsList");
   if (carOn) { box.replaceChildren(el("div", "card desc", t("As viagens só abrem com o carro desligado."))); return; }
@@ -1292,6 +1618,8 @@ function renderTrips(err) {
     c.append(el("span", "small num", tf(week.trips === 1 ? "{km} km em 1 viagem" : "{km} km em {n} viagens", { km: num(week.km, 0), n: week.trips })));
     cards.push(c);
   }
+  const wk = weekCard(trips);
+  if (wk) cards.push(wk);
   const all = LPL.totals(trips, 0), month = LPL.totals(trips, LPL.monthStart(Date.now() / 1000));
   if (all && all.trips > (week ? week.trips : 0)) {  // only when it says more than the last 7 days
     const c = el("section", "card stack"); c.style.gap = "4px";
@@ -1717,6 +2045,15 @@ $("markCancel").addEventListener("click", closeMark);
 $("markScrim").addEventListener("click", closeMark);
 $("markNote").addEventListener("focus", () => clearTimeout(markTimer));
 $("pendingBtn").addEventListener("click", () => { const p = marksState.marks.filter((m) => !m.reason).pop(); if (p) openMark(p, null); });
+$("tripOlder").addEventListener("click", () => { const h = lastHist, tr = h && tripPicked(h); if (tr) { const o = h.list[h.list.indexOf(tr) + 1]; if (o) { tripSel = o.id; renderGarage(); } } });
+$("tripNewer").addEventListener("click", () => { const h = lastHist, tr = h && tripPicked(h); if (tr) { const o = h.list[h.list.indexOf(tr) - 1]; if (o) { tripSel = o.id; renderGarage(); } } });
+$("tripHide").addEventListener("click", () => { const tr = lastHist && tripPicked(lastHist); if (tr) hideTrip(tr, !tr.hidden); });
+$("streetsBtn").addEventListener("click", () => { streets = !streets; store("lpStreets", streets ? "1" : "0"); mapSig = ""; renderGarage(); });
+$("tripMap").addEventListener("click", (e) => { if (!e.target.closest("button, a")) location.href = $("tripOpen").href; });
+$("historyQuery").addEventListener("input", () => { histQuery = $("historyQuery").value.trim(); histShown = HIST_STEP; tripSel = null; renderGarage(); });
+$("historyMore").addEventListener("click", () => { histShown += HIST_STEP; renderGarage(); });
+$("historyHidden").addEventListener("click", () => { histShowHidden = !histShowHidden; tripSel = null; renderGarage(); });
+window.addEventListener("resize", () => { mapSig = ""; if (view === "inicio" && !driving && lastHist) { const tr = tripPicked(lastHist); if (tr) drawTrip(tr); } });
 $("installDismiss").addEventListener("click", () => { store("lpInstallOk", "1"); $("installCard").classList.add("hidden"); });
 $("updateCard").addEventListener("click", (e) => { e.preventDefault(); sub = "comma"; showView("ajustes"); });
 $("addRadar").addEventListener("click", () => addPoint("radar"));

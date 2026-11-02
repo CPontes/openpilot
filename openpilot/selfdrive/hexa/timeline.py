@@ -38,6 +38,8 @@ TRIP_STEP_S = 2.0  # one point of the trip path
 GPS_MAX_AGE_S = 3.0
 DRIVER_MIN_S = 0.5  # on the wheel for at least this long counts as an intervention
 SKIP_ALERTS = ("Bookmark Saved",)  # already a mark event
+PATH_EVERY = 5  # one point of the map every 5 path points (~10 s): a drive of an hour is ~360 points
+PATH_WHO = {"op": 0, "wheel": 1, "gas": 2, "brake": 2, "you": 3}  # the map's colors: openpilot, your hand, a pedal, you
 ALERT_COUNTED = ("userPrompt", "critical")  # an alert that asks something of the driver; "normal" ones only inform
 TOOK_RANK = {None: 0, "wheel": 1, "gas": 2, "brake": 3}  # a path point covers 2 s: a pedal says more than a hand on the wheel
 # who had the wheel while moving: openpilot alone, openpilot with the driver's hand on it, the driver alone
@@ -323,6 +325,11 @@ def trip_segment(events: Iterable) -> dict:
   pedal_at = {"gas": -1e9, "brake": -1e9}
   shadow = ShadowCounter()
   car = hexa_sensors.CarSensors()
+  run = [0., 0.]  # km and s of openpilot alone (steering, no hand on the wheel) without a break, now
+  run_head: list | None = None  # the run the minute started with, until its first break
+  run_best = [0., 0.]
+  v_max = 0.
+  lat_seen = False  # the minute's first carState comes before its first carControl: not a break
 
   messages = sorted(events, key=lambda m: m.logMonoTime)
   shadow.on_op_long(_op_long(messages))
@@ -360,6 +367,7 @@ def trip_segment(events: Iterable) -> dict:
       en = enabled
     elif w == "carControl":
       lat = m.carControl.latActive
+      lat_seen = True
       o = getattr(m.carControl, "orientationNED", ())
       if len(o) == 3:
         car.on_pose(t, o[0], o[1])
@@ -376,6 +384,14 @@ def trip_segment(events: Iterable) -> dict:
         t = 0.
       dt = min(t - last, .5) if last is not None else 0.
       last = t
+      v_max = max(v_max, cs.vEgo)
+      if lat and not cs.steeringPressed:
+        run[0] += cs.vEgo * dt / 1e3
+        run[1] += dt
+      elif lat_seen:
+        run_head = run_head if run_head is not None else list(run)
+        run_best = max(run_best, run)
+        run = [0., 0.]
       ws = getattr(cs, "wheelSpeeds", None)
       car.on_car(cs.vEgo, getattr(cs, "aEgo", 0.), getattr(cs, "steeringAngleDeg", 0.), (ws.fl, ws.fr, ws.rl, ws.rr) if ws is not None else None, dt)
       cruise = getattr(cs, "cruiseState", None)
@@ -425,6 +441,9 @@ def trip_segment(events: Iterable) -> dict:
     total[k] = _r(total[k], 3)
   total.update(shadow.result())
   total.update(car.result())
+  # the longest stretch with openpilot alone; head and tail join with the minutes around it (trip_summary)
+  total.update({"v_max": _r(v_max * 3.6, 1), "run_best": [_r(x, 3) for x in max(run_best, run)], "run_tail": [_r(x, 3) for x in run],
+                "run_head": [_r(x, 3) for x in (run_head if run_head is not None else run)], "run_whole": run_head is None})
   return {"points": points, "events": out, "summary": total, "shadow": shadow.events, "version": version}
 
 
@@ -436,7 +455,10 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
   total: dict = dict.fromkeys(keys, 0.)
   car: dict = {}
   version: dict = {}
+  path: list[list] = []
+  first = None
   unread = 0
+  run_best, run_cur, prev, v_max = [0., 0.], [0., 0.], None, 0.
   for seg in sorted(files):
     if stop():
       return None
@@ -447,10 +469,23 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
       continue
     part = seg_data["summary"]
     version = version or seg_data.get("version") or {}
+    first = first if first is not None else seg
+    for p in seg_data["points"][::PATH_EVERY]:
+      if p.get("lat") is not None:
+        path.append([p["lat"], p["lon"], PATH_WHO.get(p.get("who"), 3), round((seg - first) * 60 + p["t"])])
     for k in keys:
       total[k] += part.get(k, 0)
     hexa_sensors.merge(car, part)
+    v_max = max(v_max, part.get("v_max", 0.))
+    if "run_head" in part:  # a stretch crosses minutes only when they follow each other: an unread minute breaks it
+      head, tail = part["run_head"], part["run_tail"]
+      joined = [a + b for a, b in zip(run_cur if prev == seg - 1 else [0., 0.], head, strict=True)]
+      run_cur = joined if part["run_whole"] else list(tail)
+      run_best = max(run_best, joined, list(part["run_best"]), run_cur)
+    prev = seg
   out = {k: _r(v, 2) for k, v in {**total, **car}.items()}
   for k in ("driver", "gas", "brake", "off", "marks", "alerts", "alerts_crit", "sh_hard", "sh_earlier", "sh_weaker", "sh_fcw"):
     out[k] = int(total[k])
-  return {**out, "segments": len(files), "unread": unread, "version": version.get("version", ""), "commit": version.get("commit", "")}
+  out.update({"v_max": round(v_max), "run_km": _r(run_best[0], 2), "run_s": round(run_best[1])})
+  return {**out, "segments": len(files), "unread": unread, "version": version.get("version", ""), "commit": version.get("commit", ""),
+          "path": path}

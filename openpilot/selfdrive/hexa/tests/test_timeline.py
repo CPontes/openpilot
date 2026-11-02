@@ -8,7 +8,7 @@ from openpilot.selfdrive.hexa import timeline as tl
 NS = int(1e9)
 
 
-def write_rlog(path, seconds=8.0, bookmark_at=None, mark=None, oscillate=(2.0, 6.0), limit=(6.5, 7.5), pressed=None, acc=None, stop=None):
+def write_rlog(path, seconds=8.0, bookmark_at=None, mark=None, oscillate=(2.0, 6.0), limit=(6.5, 7.5), pressed=None, acc=None, stop=None, lat_from=0.5):
   """A small rlog made of real cereal messages, as the comma would record it."""
   import zstandard
   from openpilot.cereal import log
@@ -37,7 +37,7 @@ def write_rlog(path, seconds=8.0, bookmark_at=None, mark=None, oscillate=(2.0, 6
       c.steeringTorque = 150 if 1.0 <= s < 1.2 else 0
       c.cruiseState.speed = 20.
     add("carState", t, cs)
-    add("carControl", t, lambda c, tq=tq, s=s: (setattr(c, "latActive", s >= 0.5), setattr(c.actuators, "torque", tq)))
+    add("carControl", t, lambda c, tq=tq, s=s: (setattr(c, "latActive", s >= lat_from), setattr(c.actuators, "torque", tq)))
     add("carOutput", t, lambda c, tq=tq: setattr(c.actuatorsOutput, "torqueOutputCan", int(tq * 253)))
     add("selfdriveState", t, lambda c, s=s: (setattr(c, "enabled", s >= 0.5), setattr(c, "alertText1", "TAKE CONTROL" if 7.0 <= s < 7.5 else "")))
     if i % 5 == 0:
@@ -253,3 +253,32 @@ def test_trip_summary_keeps_the_first_version(tmp_path):
   write_rlog(tmp_path / "0.zst", seconds=8.0)
   s = tl.trip_summary({0: str(tmp_path / "0.zst")})
   assert s["alerts"] >= 0 and s["version"] == "" and s["commit"] == ""  # this test log has no initData
+
+
+def test_trip_summary_keeps_a_light_path_with_who_drove():
+  import openpilot.selfdrive.hexa.timeline as t2
+  segs = {0: [{"t": float(i * 2), "lat": -23.5 + i * 1e-4, "lon": -46.6, "who": "op" if i < 20 else "you"} for i in range(30)],
+          1: [{"t": float(i * 2), "lat": None, "lon": None, "who": "op"} for i in range(30)]}
+  real = t2.trip_segment, t2.read_rlog
+  try:
+    t2.read_rlog = lambda f: f
+    t2.trip_segment = lambda seg: {"summary": {}, "points": segs[seg], "events": [], "version": None}
+    s = t2.trip_summary({0: 0, 1: 1})
+  finally:
+    t2.trip_segment, t2.read_rlog = real
+  assert len(s["path"]) == 6 and s["path"][0][2] == 0 and s["path"][-1][2] == 3  # every 5th point, no point without GPS
+  assert [p[3] for p in s["path"]] == [0, 10, 20, 30, 40, 50]
+
+
+def test_trip_summary_has_the_numbers_anyone_wants(tmp_path):
+  # top speed, and the longest stretch with openpilot alone: it goes on into the next minute, and a hand on the wheel ends it
+  files = {}
+  for n, kw in ((0, {"pressed": (3., 4.)}), (1, {"lat_from": 0.}), (2, {"pressed": (2., 3.), "lat_from": 0.})):
+    d = tmp_path / f"00000001--abc--{n}"
+    d.mkdir()
+    files[n] = str(write_rlog(d / "rlog.zst", oscillate=(0., 0.), **kw))
+  s = tl.trip_summary(files)
+  assert s["v_max"] == 36
+  assert abs(s["run_s"] - 14) < 0.2 and abs(s["run_km"] - 0.14) < 0.01  # 4 s + 8 s + 2 s
+  del files[1]  # a minute that is missing breaks the stretch
+  assert abs(tl.trip_summary(files)["run_s"] - 5) < 0.2  # the 4 s at the end of minute 0 no longer join the start of minute 2
