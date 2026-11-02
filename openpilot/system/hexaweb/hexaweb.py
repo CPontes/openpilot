@@ -242,6 +242,7 @@ class PanelBackend:
         "groups": groups,
         "audit": list(reversed(audit)),
         "titles": {**{i.key: i.title for i in comma_ctl.ITEMS}, **{o.key: o.title for o in OPTIONS}},
+        "long_steps": [{"key": k, "label": label, "done": k == "calibrado" and LONG_CALIBRATED} for k, label in comma_ctl.LONG_STEPS],
         "profiles": self.store.get(PROFILES_PARAM) or {},
         # what a speed bump below the Haval ACC's 30 km/h would need: shown in the bump editor, changes nothing
         "longitudinal": {"enabled": bool(self.store.get_bool("AlphaLongitudinalEnabled")), "calibrated": LONG_CALIBRATED},

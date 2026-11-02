@@ -5,6 +5,7 @@ Positions never leave this function: the GPS shows up only as working or not.
 from openpilot.selfdrive.selfdrived.traffic_alerts import driver_attentive
 
 STEER_MAX = 253
+GAP_MIN_SPEED = 3.  # m/s: slower than this, a time gap means little
 GPS_MAX_AGE_S = 3.
 
 # why openpilot doesn't engage or dropped out. An event not listed shows its own name
@@ -162,7 +163,9 @@ def snapshot(cs, sd, cc, out, lead, gps, gps_age: float, ds, car_fresh: bool, ev
     "acc_active": bool(cs.cruiseState.driving),  # the car's ACC is in control right now
     "acc_set": round(cs.cruiseState.speedCluster * 3.6) if cs.cruiseState.speedCluster > 0 else None,
     "torque": round(100 * abs(out.actuatorsOutput.torqueOutputCan) / STEER_MAX),
-    "lead": {"d": round(float(lead.dRel)), "v": round(lead.vLead * 3.6)} if lead.present else None,
+    # gap: seconds to the lead at this speed, what the ACC's distance setting (and openpilot's personality) keeps
+    "lead": {"d": round(float(lead.dRel)), "v": round(lead.vLead * 3.6),
+             "gap": round(float(lead.dRel) / cs.vEgo, 1) if cs.vEgo > GAP_MIN_SPEED else None} if lead.present else None,
     "blinker": "esquerda" if cs.leftBlinker else ("direita" if cs.rightBlinker else ""),
     "blindspot": {"left": bool(cs.leftBlindspot), "right": bool(cs.rightBlindspot)},
     "alert": " ".join(t for t in (sd.alertText1, sd.alertText2) if t),

@@ -21,6 +21,8 @@ import json
 from collections.abc import Iterable
 from pathlib import Path
 
+from openpilot.selfdrive.hexa.shadow import KEYS as SHADOW_KEYS, ShadowCounter
+
 FPS = 10
 STEER_MAX = 253
 MODEL_IDX = (0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20)  # up to ~75 m ahead
@@ -304,15 +306,22 @@ def trip_segment(events: Iterable) -> dict:
   driver_told = False
   took = None  # what the driver took from openpilot since the last path point
   pedal_at = {"gas": -1e9, "brake": -1e9}
+  shadow = ShadowCounter()
 
   for m in sorted(events, key=lambda m: m.logMonoTime):
     w = m.which()
     t = (m.logMonoTime - t0) / 1e9 if t0 is not None else 0.
-    if w == "userBookmark":
+    if w == "longitudinalPlan":
+      shadow.on_plan(t, m.longitudinalPlan.aTarget, m.longitudinalPlan.fcw)
+    elif w == "radarState":
+      lead = m.radarState.leadOne
+      shadow.on_lead(lead.present, lead.dRel)
+    elif w == "userBookmark":
       out.append({"t": _r(t), "kind": "mark", "text": "bandeira", "mono_ns": m.logMonoTime})
       total["marks"] += 1
     elif w == "selfdriveState":
       enabled = m.selfdriveState.enabled
+      shadow.on_selfdrive(enabled)
       if en and not enabled and t0 is not None:
         out.append({"t": _r(t), "kind": "off", "text": "desengatou no freio" if brake else "desengatou"})
         total["off"] += 1
@@ -332,6 +341,8 @@ def trip_segment(events: Iterable) -> dict:
         t = 0.
       dt = min(t - last, .5) if last is not None else 0.
       last = t
+      cruise = getattr(cs, "cruiseState", None)
+      shadow.on_car(t, dt, cs.vEgo, getattr(cs, "aEgo", 0.), cs.brakePressed, getattr(cruise, "driving", False), getattr(cruise, "enabled", None))
       for pedal, pressed, was, text in (("brake", cs.brakePressed, brake, "você no freio"), ("gas", cs.gasPressed, gas, "você no acelerador")):
         if en and pressed:
           took = max(took, pedal, key=TOOK_RANK.__getitem__)
@@ -375,14 +386,15 @@ def trip_segment(events: Iterable) -> dict:
 
   for k in ("s", "km", "moving_s", "on_s", *SPLIT_KEYS):
     total[k] = _r(total[k], 3)
-  return {"points": points, "events": out, "summary": total}
+  total.update(shadow.result())
+  return {"points": points, "events": out, "summary": total, "shadow": shadow.events}
 
 
 def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
   """The whole drive in numbers, for the trip list: who had the wheel, for how long and how far, minute by minute.
   A minute that can't be read is left out and counted, so a broken file doesn't lose the drive. A long drive takes a
   while: stop is asked before each minute, and None means it gave up (the car turned on)."""
-  keys = ("s", "km", "moving_s", "on_s", "driver", "gas", "brake", "off", "marks", *SPLIT_KEYS)
+  keys = ("s", "km", "moving_s", "on_s", "driver", "gas", "brake", "off", "marks", *SPLIT_KEYS, *SHADOW_KEYS)
   total: dict = dict.fromkeys(keys, 0.)
   unread = 0
   for seg in sorted(files):
@@ -396,6 +408,6 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
     for k in keys:
       total[k] += part.get(k, 0)
   out = {k: _r(v, 2) for k, v in total.items()}
-  for k in ("driver", "gas", "brake", "off", "marks"):
+  for k in ("driver", "gas", "brake", "off", "marks", "sh_hard", "sh_earlier", "sh_weaker", "sh_fcw"):
     out[k] = int(total[k])
   return {**out, "segments": len(files), "unread": unread}

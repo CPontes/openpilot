@@ -24,7 +24,7 @@ def gps(fix=True):
 def test_driving():
   s = live.snapshot(*parts(), gps(), 1., device(), True)
   assert s["driving"] and s["v"] == 36 and s["wheel"] == -12 and s["torque"] == 50
-  assert s["acc_set"] == 60 and s["lead"] == {"d": 19, "v": 32} and s["blinker"] == "esquerda"
+  assert s["acc_set"] == 60 and s["lead"] == {"d": 19, "v": 32, "gap": 1.9} and s["blinker"] == "esquerda"  # 18.6 m at 36 km/h
   assert s["alert"] == "Take Control" and s["alert_status"] == "userPrompt" and s["blindspot"] == {"left": False, "right": True}
   assert s["device"]["cpu"] == 15 and s["device"]["free"] == 58
 
@@ -159,3 +159,9 @@ def test_recent_errors_from_swaglog_files(tmp_path):
                     {"t": 200, "process": "modeld", "msg": "modeld lagging", "error": ""}]
   assert "secret" not in str(errors)
   assert live.recent_errors(tmp_path / "missing") == []
+
+
+def test_no_time_gap_when_almost_stopped():
+  cs, sd, cc, out, lead = parts()
+  cs.vEgo = 2.
+  assert live.snapshot(cs, sd, cc, out, lead, gps(), 1., device(), True)["lead"]["gap"] is None

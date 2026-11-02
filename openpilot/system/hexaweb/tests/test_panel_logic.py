@@ -214,3 +214,15 @@ def test_week_total_is_a_sum_of_the_last_7_days():
   assert w["trips"] == 2 and abs(w["km"] - 58.0) < .01 and w["op"] == {"text": "{m} min", "vars": {"m": 46}}
   assert run("duration", 130) == {"text": "{h} h {m} min", "vars": {"h": 2, "m": 10}}
   assert run("weekTotal", [], now) is None
+
+
+def test_week_shadow_adds_up_drives_that_have_it():
+  now = 1_800_000_000
+  sh = {"sh_on_s": 600., "sh_hard": 2, "sh_earlier": 1, "sh_weaker": 1, "sh_fcw": 0, "sh_gap_s": 300., "sh_gap_t": 200.}
+  trips = [{"mtime": now - 3600, "summary": {**SUMMARY, **sh}}, {"mtime": now - 7200, "summary": {**SUMMARY, **sh, "sh_gap_s": 150., "sh_gap_t": 100.}},
+           {"mtime": now - 60, "summary": SUMMARY}, {"mtime": now - 9 * 86400, "summary": {**SUMMARY, **sh}}]
+  w = run("weekShadow", trips, now)
+  assert (w["hard"], w["earlier"], w["weaker"], w["trips"], w["minutes"]) == (4, 2, 2, 2, 20)
+  assert abs(w["gap"] - 1.5) < 1e-9  # time-weighted: 450 / 300
+  assert run("weekShadow", [{"mtime": now, "summary": SUMMARY}], now) is None  # older summaries don't have it
+  assert run("gapMeters", 1.45, 60) == 24

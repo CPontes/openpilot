@@ -154,6 +154,20 @@
     return { op: duration(minutes(op)), km, trips: recent.length };
   }
 
+  // Shadow mode (selfdrive/hexa/shadow.py), added up over the last 7 days: what openpilot's longitudinal would have done
+  // while the Haval ACC drove. Null until a drive has it (openpilot engaged with the ACC driving).
+  function weekShadow(trips, nowS) {
+    const recent = (trips || []).filter((t) => t.summary && t.mtime >= nowS - 7 * 86400 && (t.summary.sh_on_s || 0) > 0);
+    if (!recent.length) return null;
+    const sum = (k) => recent.reduce((a, t) => a + (t.summary[k] || 0), 0);
+    const gapT = sum("sh_gap_t");
+    return { hard: sum("sh_hard"), earlier: sum("sh_earlier"), weaker: sum("sh_weaker"), fcw: sum("sh_fcw"),
+             gap: gapT > 0 ? sum("sh_gap_s") / gapT : null, minutes: Math.round(sum("sh_on_s") / 60), trips: recent.length };
+  }
+  // openpilot's three following distances (longitudinal_mpc_lib/long_mpc.py:71-79), in seconds and in meters at a speed
+  const PERSONALITIES = [[T("perto"), 1.25], [T("padrão"), 1.45], [T("folgada"), 1.75]];
+  function gapMeters(gapS, kmh) { return Math.round(gapS * kmh / 3.6); }
+
   // With the car moving, the phone is for the passenger. Asked once per trip, before Marcar or a point; never parked,
   // never stored on the phone or the comma. Stopping in traffic doesn't ask again; turning the car off does.
   function passenger(gate, car) {
@@ -161,6 +175,6 @@
     return { ok, ask: !!car.on && !!car.moving && !ok };
   }
 
-  root.LPL = { FIXED_HOST, addressPlan, tripSplit, weekTotal, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
+  root.LPL = { FIXED_HOST, addressPlan, tripSplit, weekTotal, weekShadow, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

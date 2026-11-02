@@ -66,6 +66,8 @@
   .steps li.done::before { content: "✓ "; color: var(--accent); }
   .ctl-form { display: flex; flex-direction: column; gap: 8px; padding: 6px 0 10px; }
   .ctl-form input { width: 100%; min-width: 0; box-sizing: border-box; }
+  .safety { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px 8px; align-items: center; font-size: 15px; }
+  .safety .tag { justify-self: start; }
   .bigcode { font-size: 48px; font-weight: 700; letter-spacing: .18em; color: var(--warn); text-align: center; font-variant-numeric: tabular-nums; margin: 10px 0; }
   .pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 700; background: var(--tag-warn); color: var(--warn); }
   .switch { flex: none; position: relative; width: 56px; height: 44px; border: 0; padding: 0; background: none; }
@@ -942,7 +944,10 @@ function renderDrive() {
   const tileOf = (value, unit, label) => { const d = el("div", "tile"); const v = el("b", "", String(value)); if (unit) { v.append(" "); const u = el("small", "", unit); u.style.cssText = "font-size:16px;color:var(--muted);font-family:var(--font)"; v.append(u); } d.append(v, el("span", "", label)); return d; };
   $("driveTiles").replaceChildren(
     tileOf(l.v, "km/h", t("velocidade")),
-    l.lead ? tileOf(l.lead.d, "m", tf("carro à frente, {v} km/h", { v: l.lead.v })) : tileOf("—", "", t("nenhum carro à frente")),
+    !l.lead ? tileOf("—", "", t("nenhum carro à frente"))
+      : l.lead.gap != null ? tileOf(Number(l.lead.gap).toLocaleString(L(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }), "s",
+                                    tf("até o carro à frente: {d} m, ele a {v} km/h", { d: l.lead.d, v: l.lead.v }).replace(/(\d) (m|km\/h)/g, "$1\u00a0$2"))
+      : tileOf(l.lead.d, "m", tf("carro à frente, {v} km/h", { v: l.lead.v })),
   );
   $("driveDetails").replaceChildren(tileOf(wheelText(l.wheel), "", t("volante")), tileOf(l.torque + "%", "", t("força do openpilot")));
   renderLane(l);
@@ -1157,6 +1162,56 @@ async function refreshTrips(force) {
   if (view === "inicio" && !driving) renderGarage();
 }
 
+// ----- Velocidade e segurança: who controls the speed, the Haval's safety, and what openpilot would have done (LONG-02) -----
+const SAFETY_NAMES = { aeb: "Frenagem automática de emergência", fcw: "Aviso de colisão do Haval", bsm: "Ponto cego", esp: "ABS, estabilidade e airbags" };
+// with the Haval ACC / with openpilot's longitudinal. [hipótese] until LONG-02 proves the AEB path (the comma rewrites ACC_CMD 0x143)
+const SAFETY_STATE = { aeb: ["ok", "prova"], fcw: ["ok", "prova"], bsm: ["ok", "ok"], esp: ["nao", "nao"] };
+const SAFETY_TEXT = { ok: "continua", prova: "a provar", nao: "intactos" };
+const SAFETY_CLASS = { ok: "tag ok", prova: "tag warn", nao: "tag" };
+function speedCard(list) {
+  const card = el("details", "card stack"); card.id = "speedCard";
+  if (speedOpen) card.open = true;
+  card.addEventListener("toggle", () => { speedOpen = card.open; });
+  const sum = el("summary", "", t("Velocidade e segurança")); card.append(sum);
+  const opLong = !!(state && state.longitudinal && state.longitudinal.enabled);
+  card.append(el("span", "label", t("Quem cuida da velocidade")));
+  card.append(el("div", "title", opLong ? t("openpilot (alfa)") : t("ACC do Haval")));
+  card.append(el("div", "desc", opLong ? t("O openpilot acelera e freia. A frenagem de emergência do Haval ainda não foi provada com ele.")
+                                        : t("O openpilot cuida do volante. Acelerar e frear é do Haval, com a segurança dele inteira.")));
+  card.append(el("span", "label", t("Segurança do Haval")));
+  const tbl = el("div", "safety");
+  tbl.append(el("span", "small", ""), el("span", "small", t("com o ACC")), el("span", "small", t("com o openpilot")));
+  for (const [key, [a, b]] of Object.entries(SAFETY_STATE)) {
+    tbl.append(el("span", "", t(SAFETY_NAMES[key])), el("span", SAFETY_CLASS[a], t(SAFETY_TEXT[a])), el("span", SAFETY_CLASS[b], t(SAFETY_TEXT[b])));
+  }
+  card.append(tbl);
+  const sh = LPL.weekShadow(list, Date.now() / 1000);
+  card.append(el("span", "label", t("Modo sombra · últimos 7 dias")));
+  card.append(el("div", "desc", t("Enquanto o Haval dirige, o openpilot calcula o que faria. Nada muda no carro.")));
+  if (!sh) card.append(el("div", "small", t("Aparece depois de uma viagem com o openpilot no volante e o ACC do Haval ligado.")));
+  else {
+    const grid = el("div", "grid2");
+    const tile = (v, label, color) => { const d = el("div", "tile"); const b = el("b", "num", String(v)); if (color) b.style.color = color; d.append(b, el("span", "", label)); return d; };
+    grid.append(tile(sh.hard, t("freadas fortes do Haval")), tile(sh.earlier, t("o openpilot começaria antes"), "var(--accent)"),
+                tile(sh.weaker, t("o openpilot frearia tarde"), sh.weaker ? "var(--warn)" : ""),
+                tile(sh.gap != null ? num(sh.gap, 2) + " s" : "—", t("distância que o Haval manteve")));
+    card.append(grid);
+    card.append(el("div", "small", tf("{min} min em {n} viagens. Alertas de colisão do openpilot: {fcw}.", { min: sh.minutes, n: sh.trips, fcw: sh.fcw })));
+  }
+  card.append(el("span", "label", t("Distâncias do openpilot")));
+  const ref = sh && sh.gap != null ? sh.gap : null;
+  card.append(el("div", "desc", LPL.PERSONALITIES.map(([name, s]) => `${t(name)} ${num(s, 2)} s (${LPL.gapMeters(s, 60)} m)`).join(" · ") + " · " +
+                 t("a 60 km/h") + (ref ? " · " + tf("o Haval: {s} s", { s: num(ref, 2) }) : "")));
+  card.append(el("span", "label", t("O que falta para trocar")));
+  const steps = el("ul", "steps");
+  const longSteps = (state && state.long_steps) || [];
+  for (const st of longSteps) steps.append(el("li", st.key === "sombra" && sh ? "done" : (st.done ? "done" : ""), t(st.label)));
+  card.append(steps);
+  card.append(el("div", "small", t("Até lá, o longitudinal fica travado no celular. Ajustes → Comma → Desenvolvedor mostra os avisos do comma.")));
+  return card;
+}
+let speedOpen = false;
+
 function renderTrips(err) {
   const box = $("tripsList");
   if (carOn) { box.replaceChildren(el("div", "card desc", t("As viagens só abrem com o carro desligado."))); return; }
@@ -1171,6 +1226,7 @@ function renderTrips(err) {
     c.append(el("span", "small num", tf(week.trips === 1 ? "{km} km em 1 viagem" : "{km} km em {n} viagens", { km: num(week.km, 0), n: week.trips })));
     cards.push(c);
   }
+  cards.push(speedCard(trips));
   box.replaceChildren(...cards, ...trips.slice(0, 15).map((tr) => {
     const start = tr.mtime - tr.minutes * 60;
     const a = el("a", "card stack"); a.href = "/viagens?trip=" + encodeURIComponent(tr.id); a.style.cssText = "text-decoration:none;color:inherit;gap:8px";
