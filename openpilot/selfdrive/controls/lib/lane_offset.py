@@ -15,11 +15,13 @@ import numpy as np
 
 from openpilot.cereal import log
 from openpilot.common.realtime import DT_CTRL
+from openpilot.common.swaglog import cloudlog
 
 LaneChangeState = log.LaneChangeState
 
 HOLD_TIME = 1.5             # s, driver must hold the wheel this long before a new position is learned
 RELEASE_TIME = 0.3          # s, shorter gaps in steeringPressed don't end a hold
+LOG_PERIOD = 1.0            # s, while a position is taught
 MAX_LEARN_LAT_ACCEL = 0.4   # m/s^2, a hold in a curve is steering, not a chosen position
 STABLE_WINDOW = 1.0         # s, lateral position must be stable over the end of the hold
 STABLE_TOLERANCE = 0.15     # m, max lateral movement within STABLE_WINDOW
@@ -56,6 +58,7 @@ class LaneOffset:
     self.t = 0.0
     self.last_position: float | None = None
     self.last_position_t = 0.0
+    self.log_t = 0.0
 
   def reset(self):
     self.rate = 0.0
@@ -95,6 +98,9 @@ class LaneOffset:
 
     self.valid = self._measure(model_v2) and CS.vEgo > MIN_SPEED
     self.t += DT_CTRL
+    if self.learned != 0.0 and self.t - self.log_t >= LOG_PERIOD:
+      self.log_t = self.t
+      cloudlog.event("lane_offset", learned_cm=self.offset_cm, position_cm=int(round(self.position * 100)), correction=round(self.correction, 5))
     if self.valid:
       # the model runs slower than this loop, only use new measurements
       if self.last_position is None:

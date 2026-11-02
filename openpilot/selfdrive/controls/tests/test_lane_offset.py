@@ -295,3 +295,29 @@ class TestClosedLoop:
       lo = LaneOffset()
       hold(lo, side * 0.3, HOLD_TIME + 0.1)
       assert side * lo.update(True, True, car_state(), model(side * 0.5, lane_width=2.4)) < 0
+
+
+class TestItGoesToTheLog:
+  # a curve the driver marked couldn't be told apart: the model cutting it, or the taught position. Nothing logged either
+  def events(self, monkeypatch):
+    seen = []
+    monkeypatch.setattr("openpilot.selfdrive.controls.lib.lane_offset.cloudlog.event", lambda name, **kw: seen.append((name, kw)))
+    return seen
+
+  def test_once_a_second_with_a_position_taught(self, monkeypatch):
+    seen = self.events(monkeypatch)
+    lo = LaneOffset()
+    hold(lo, -0.3, 3.)
+    let_go(lo, -0.3)
+    seen.clear()
+    for _ in range(500):
+      lo.update(True, True, car_state(), model(-0.3))
+    assert [n for n, _ in seen] == ["lane_offset"] * 5
+    assert seen[0][1]["learned_cm"] == -30 and seen[0][1]["position_cm"] == -30 and "correction" in seen[0][1]
+
+  def test_nothing_with_no_position_taught(self, monkeypatch):
+    seen = self.events(monkeypatch)
+    lo = LaneOffset()
+    for _ in range(500):
+      lo.update(True, True, car_state(), model(0.))
+    assert seen == []
