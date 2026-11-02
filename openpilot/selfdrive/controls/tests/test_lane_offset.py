@@ -321,3 +321,14 @@ class TestItGoesToTheLog:
     for _ in range(500):
       lo.update(True, True, car_state(), model(0.))
     assert seen == []
+
+  def test_a_bad_measure_does_not_stop_the_process(self, monkeypatch):
+    seen = self.events(monkeypatch)
+    lo = LaneOffset()
+    hold(lo, -0.3, 3.)
+    let_go(lo, -0.3)
+    lo.position = float("nan")
+    seen.clear()
+    lo.log_t = -10.
+    lo.update(True, True, car_state(), model(0., prob=0.))
+    assert len(seen) == 1

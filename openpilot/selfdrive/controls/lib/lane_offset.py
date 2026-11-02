@@ -100,7 +100,7 @@ class LaneOffset:
     self.t += DT_CTRL
     if self.learned != 0.0 and self.t - self.log_t >= LOG_PERIOD:
       self.log_t = self.t
-      cloudlog.event("lane_offset", learned_cm=self.offset_cm, position_cm=int(round(self.position * 100)), correction=round(self.correction, 5))
+      cloudlog.event("lane_offset", learned_cm=self.offset_cm, position_cm=round(self.position * 100, 1), correction=round(self.correction, 5))
     if self.valid:
       # the model runs slower than this loop, only use new measurements
       if self.last_position is None:

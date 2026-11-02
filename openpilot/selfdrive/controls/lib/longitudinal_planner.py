@@ -71,6 +71,8 @@ class LongitudinalPlanner:
       self.a_cruise = self.output_a_target
       if self.stop_point is not None:
         self.stop_point.reset()
+      if self.lead_boost is not None:
+        self.lead_boost.reset()
 
     # Prevent divergence, smooth in current v_ego
     self.v_desired_filter.x = max(0.0, self.v_desired_filter.update(v_ego))
@@ -107,10 +109,11 @@ class LongitudinalPlanner:
     self.a_cruise = get_cruise_accel(v_cruise, v_ego, self.a_cruise, self.output_a_target, self.dt)
     cruise_should_stop = should_stop(v_ego, self.a_cruise)
 
+    a_model = output_a_target_e2e
     output_a_target_e2e = self.accel_boost.update(sm, output_a_target_e2e, output_a_target_mpc, self.a_cruise)
-    if self.lead_boost is not None:
+    if self.lead_boost is not None and not reset_state:
       lat_accel = abs(sm['modelV2'].action.desiredCurvature) * v_ego ** 2
-      output_a_target_e2e = self.lead_boost.update(output_a_target_e2e, output_should_stop_e2e, v_ego, sm['radarState'].leadOne, lat_accel)
+      output_a_target_e2e += self.lead_boost.update(a_model, output_should_stop_e2e, v_ego, sm['radarState'].leadOne, lat_accel)
 
     candidates = [(output_a_target_mpc, self.mpc.source, output_should_stop_mpc),
                   (self.a_cruise, LongitudinalPlanSource.cruise, cruise_should_stop),

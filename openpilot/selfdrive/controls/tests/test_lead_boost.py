@@ -16,7 +16,7 @@ def lead(present=True, d=30., v=15.):
 def run(boost, seconds, a=0.8, v=10., ahead=None, stop=False, lat=0.):
   out = a
   for _ in range(int(seconds / DT)):
-    out = boost.update(a, stop, v, lead() if ahead is None else ahead, lat)
+    out = a + boost.update(a, stop, v, lead() if ahead is None else ahead, lat)
   return out
 
 
@@ -54,6 +54,16 @@ class TestLeadBoost:
   def test_from_a_stop_the_gap_is_counted_at_a_walking_pace(self):
     assert run(self.b, 2., v=0., ahead=lead(d=1., v=5.)) == 0.8
     assert run(self.b, 2., v=0., ahead=lead(d=3., v=5.)) == 0.8 + LEAD_BOOST_MAX
+
+  def test_it_fades_out_with_the_model(self):
+    run(self.b, 2.)
+    assert run(self.b, DT, a=.1) == .1 + .2
+    assert run(self.b, DT, a=0.) == 0.
+
+  def test_a_reset_forgets_it(self):
+    run(self.b, 2.)
+    self.b.reset()
+    assert run(self.b, DT) < .8 + .05
 
   def test_it_leaves_faster_than_it_came(self):
     run(self.b, 2.)
@@ -99,6 +109,34 @@ class TestInThePlanner:
 
   def test_other_cars_keep_the_model(self, planner):  # noqa: F811
     assert self.run(planner(self.cp("toyota")), self.sm()) < 0.6
+
+  def test_the_set_speed_still_wins(self, planner):  # noqa: F811
+    sm = self.sm()
+    cs = sm["carState"].as_builder()
+    cs.vCruise = 36.
+    sm["carState"] = cs.as_reader()
+    assert self.run(planner(self.cp("gwm")), sm) < 0.6
+
+  def test_the_other_boost_is_no_model_asking(self, planner):  # noqa: F811
+    p = planner(self.cp("gwm"))
+    p.accel_boost.total_boost = 0.2
+    sm = self.sm()
+    m = sm["modelV2"].as_builder()
+    m.action.desiredAcceleration = -0.15
+    sm["modelV2"] = m.as_reader()
+    assert self.run(p, sm) < 0.2
+
+  def test_disengaged_it_keeps_nothing(self, planner):  # noqa: F811
+    from opendbc.car.structs import car
+    p = planner(self.cp("gwm"))
+    self.run(p, self.sm())
+    assert p.lead_boost.bonus > 0.
+    sm = self.sm()
+    ct = sm["controlsState"].as_builder()
+    ct.longControlState = car.CarControl.Actuators.LongControlState.off
+    sm["controlsState"] = ct.as_reader()
+    p.update(sm)
+    assert p.lead_boost.bonus == 0.
 
   def test_the_lead_still_wins(self, planner):  # noqa: F811
     assert self.run(planner(self.cp("gwm")), self.sm(), a_lead=.3) < 0.6

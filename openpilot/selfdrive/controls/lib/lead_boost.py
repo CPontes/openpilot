@@ -10,6 +10,7 @@ away, it was 0 of 36, and 0 of the 113 hard brakes of the plan (tools/analise/bo
 LEAD_BOOST_MAX = 0.5  # m/s^2
 LEAD_BOOST_UP = 0.5  # m/s^3
 LEAD_BOOST_DOWN = 2.0  # m/s^3
+LEAD_BOOST_GAIN = 2.  # times what the model asks: none at zero, so it ends without a step
 PULLING_AWAY = 0.5  # m/s faster than us
 MIN_GAP = 1.45  # s, the middle following distance: a closer car comes first
 MIN_GAP_SPEED = 1.5  # m/s, so a start from a stop has a gap to measure
@@ -21,13 +22,17 @@ class LeadBoost:
     self.dt = dt
     self.bonus = 0.
 
+  def reset(self):
+    self.bonus = 0.
+
   def update(self, a_model: float, model_stops: bool, v_ego: float, lead, lat_accel: float) -> float:
+    """The bonus. a_model is what the model itself asks, before any other boost."""
     pulling_away = lead.present and lead.vLead > v_ego + PULLING_AWAY and lead.dRel > MIN_GAP * max(v_ego, MIN_GAP_SPEED)
     if a_model <= 0.:
       self.bonus = 0.
-      return a_model
+      return 0.
     if pulling_away and not model_stops and lat_accel < MAX_LAT_ACCEL:
       self.bonus = min(self.bonus + LEAD_BOOST_UP * self.dt, LEAD_BOOST_MAX)
     else:
       self.bonus = max(self.bonus - LEAD_BOOST_DOWN * self.dt, 0.)
-    return a_model + self.bonus
+    return min(self.bonus, LEAD_BOOST_GAIN * a_model)
