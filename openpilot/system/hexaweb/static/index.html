@@ -1363,10 +1363,12 @@ async function refreshPhones() {
   }));
   $("thisAddress").textContent = location.host;
   $("thisHow").textContent = howToInstall();
-  const plan = LPL.addressPlan(location.hostname, await fixedReachable(), !!token);
+  const plan = LPL.addressPlan(location.hostname, await fixedSame(), !!token);
   $("fixedCard").classList.toggle("hidden", plan !== "offer");
   $("fixedGo").href = fixedUrl("#parear");
-  $("thisNote").textContent = plan === "fixed" ? t("Endereço fixo: funciona mesmo se o comma mudar de rede.")
+  const taken = plan !== "fixed" && state && state.fixed && state.fixed.state === "conflict";
+  $("thisNote").textContent = taken ? t("Outro comma já usa lizpilot.local nesta rede. Este continua pelo endereço numérico.")
+    : plan === "fixed" ? t("Endereço fixo: funciona mesmo se o comma mudar de rede.")
     : plan === "offer" ? t("Endereço que você está usando agora. Muda quando o comma troca de rede.")
     : t("Se o comma mudar de rede, este endereço muda: leia o QR de novo no comma, em Configurações → LizPilot → parear celular.");
 }
@@ -1381,13 +1383,18 @@ function saveFile(name, data) {
 // ----- the fixed address: lizpilot.local, answered by the comma on the local network -----
 let fixedProbe = null;
 function fixedUrl(hash) { return `http://${LPL.FIXED_HOST}:${location.port || "80"}/${hash || ""}`; }
-function fixedReachable() {  // one check per page: does the fixed name answer from this phone, on this network?
+// Anyone on the network can answer for a name. The comma that served this page hands out a one-time code, and only
+// that same comma confirms it by the fixed name: no confirmation, no move (and never mid-typing the pairing code).
+function fixedSame() {  // one check per page
   if (location.hostname.toLowerCase() === LPL.FIXED_HOST) return Promise.resolve(true);
   if (!fixedProbe) {
     const ctl = typeof AbortController === "function" ? new AbortController() : null;
-    const timer = ctl && setTimeout(() => ctl.abort(), 1500);
-    fixedProbe = fetch(fixedUrl("manifest.webmanifest"), { mode: "no-cors", cache: "no-store", signal: ctl ? ctl.signal : undefined })
-      .then(() => true, () => false).finally(() => clearTimeout(timer));
+    const timer = ctl && setTimeout(() => ctl.abort(), 2000);
+    const signal = ctl ? ctl.signal : undefined;
+    fixedProbe = fetch("/api/fixed/nonce", { cache: "no-store", signal }).then((r) => (r.ok ? r.json() : null))
+      .then((d) => (d && d.nonce ? fetch(fixedUrl("api/fixed/check?n=" + encodeURIComponent(d.nonce)), { cache: "no-store", signal }) : null))
+      .then((r) => (r && r.ok ? r.json() : null))
+      .then((d) => !!(d && d.same === true), () => false).finally(() => clearTimeout(timer));
   }
   return fixedProbe;
 }
@@ -1422,7 +1429,7 @@ LP.ready.then(() => {
     setTimeout(() => $("pin").focus(), 50);
   }
   // Not paired yet and opened by address: pair on the fixed name instead, so the phone keeps it. Never mid-typing.
-  if (!token) fixedReachable().then((ok) => {
+  if (!token) fixedSame().then((ok) => {
     if (!token && !$("pin").value && LPL.addressPlan(location.hostname, ok, false) === "move") location.replace(fixedUrl(location.hash === "#parear" ? "#parear" : ""));
   });
   refresh();

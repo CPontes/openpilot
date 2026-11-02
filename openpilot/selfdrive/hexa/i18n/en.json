@@ -525,5 +525,6 @@
  "Fechar": "Close",
  "Sem vídeo para esta marca.": "No video for this mark.",
  "Vídeo da marca": "Mark video",
- "vídeo": "video"
+ "vídeo": "video",
+ "Outro comma já usa lizpilot.local nesta rede. Este continua pelo endereço numérico.": "Another comma already uses lizpilot.local on this network. This one stays on its numeric address."
 }

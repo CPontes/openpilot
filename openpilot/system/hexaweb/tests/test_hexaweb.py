@@ -951,3 +951,41 @@ def test_mark_clip_without_video(panel, tmp_path):
   panel.store.put(marks.MARKS_PARAM, [{"id": "m2", "t": (d / "qlog.zst").stat().st_mtime - 30}])
   token = panel.pair()
   assert panel.json("/api/mark/clip", {"id": "m2"}, token=token) == (404, {"error": "Sem vídeo para esta marca."})
+
+
+# *** lizpilot.local is this comma ***
+
+def test_the_fixed_name_is_checked_with_a_one_time_code(panel):
+  panel.backend.fixed_status = lambda: {"state": "ok", "name": "lizpilot.local"}
+  status, body = panel.json("/api/fixed/nonce")  # before pairing: no token
+  assert status == 200 and body["state"] == "ok" and len(body["nonce"]) >= 16
+  status, headers, data = panel.request("/api/fixed/check?n=" + body["nonce"])
+  assert status == 200 and json.loads(data) == {"same": True}
+  assert headers["Access-Control-Allow-Origin"] == "*"  # a page served by address reads only this yes or no
+  assert panel.json("/api/fixed/check?n=" + body["nonce"]) == (200, {"same": False})  # once
+  assert panel.json("/api/fixed/check?n=guess") == (200, {"same": False})
+
+
+def test_the_fixed_name_code_expires_and_is_bounded(panel):
+  panel.backend.fixed_status = lambda: {"state": "ok", "name": "lizpilot.local"}
+  _, old = panel.json("/api/fixed/nonce")
+  panel.now += hexaweb.FIXED_NONCE_S + 1
+  assert panel.json("/api/fixed/check?n=" + old["nonce"])[1] == {"same": False}
+  codes = [panel.json("/api/fixed/nonce")[1]["nonce"] for _ in range(hexaweb.MAX_FIXED_NONCES + 3)]
+  assert len(panel.backend._fixed_nonces) == hexaweb.MAX_FIXED_NONCES
+  assert panel.json("/api/fixed/check?n=" + codes[0])[1] == {"same": False}  # the oldest went first
+  assert panel.json("/api/fixed/check?n=" + codes[-1])[1] == {"same": True}
+
+
+def test_no_code_while_another_comma_has_the_name(panel):
+  for state in ("conflict", "off", "starting"):
+    panel.backend.fixed_status = lambda state=state: {"state": state, "name": "lizpilot.local"}
+    assert panel.json("/api/fixed/nonce") == (200, {"nonce": None, "state": state})
+  token = panel.pair()
+  assert panel.json("/api/state", token=token)[1]["fixed"]["state"] == "starting"
+
+
+def test_the_fixed_name_check_is_local_only(panel, monkeypatch):
+  monkeypatch.setattr(hexaweb.phone, "is_local_address", lambda ip: False)
+  assert panel.json("/api/fixed/nonce")[0] == 403
+  assert panel.json("/api/fixed/check?n=x")[0] == 403

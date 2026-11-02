@@ -59,6 +59,8 @@ SUMMARY_KEEP = 60
 ERRORS_EVERY_S = 30.
 CLIP_BEFORE_S = 10.  # the clip of a mark starts this long before it
 CLIP_TICKET_S = 600.  # a clip link works this long, for that clip only
+FIXED_NONCE_S = 60.  # a same-comma check for lizpilot.local works this long, once
+MAX_FIXED_NONCES = 8
 CLIP_VIDEO = "qcamera.ts"  # the light video loggerd keeps for each minute
 SEGMENT_S = 60.
 PROFILES_PARAM = "HexaOptionProfiles"  # {name: {option key: value}}, saved by the owner from the phone
@@ -114,6 +116,8 @@ class PanelBackend:
     self._spawn = spawn or (lambda job: threading.Thread(target=job, daemon=True).start())
     self._summary_busy = False
     self._clips: dict[str, dict] = {}  # ticket -> {expires, files, start, name}
+    self._fixed_nonces: dict[str, float] = {}  # one-time code -> expiry, to prove lizpilot.local is this comma
+    self.fixed_status: Callable[[], dict] = hexa_mdns.status
 
   def vehicle_state(self) -> VehicleState:
     with self._vs_lock:
@@ -215,6 +219,7 @@ class PanelBackend:
         "profiles": self.store.get(PROFILES_PARAM) or {},
         # what a speed bump below the Haval ACC's 30 km/h would need: shown in the bump editor, changes nothing
         "longitudinal": {"enabled": bool(self.store.get_bool("AlphaLongitudinalEnabled")), "calibrated": LONG_CALIBRATED},
+        "fixed": self.fixed_status(),
         "you": who.get("name", ""),
       }
 
@@ -240,6 +245,27 @@ class PanelBackend:
       self._audit({"event": "set", "who": who.get("name", ""), "key": key, "old": old, "new": value})
       msg = "Vale na próxima partida do carro." if opt.restart_needed else "Vale no próximo engate."
       return 200, {"ok": True, "message": msg}
+
+  # *** lizpilot.local is this comma: anyone on the network can answer for a name, so the page checks ***
+
+  def fixed_nonce(self) -> dict:
+    """A one-time code from the comma that served the page. Only the same comma can confirm it by the fixed name."""
+    st = self.fixed_status()
+    if st.get("state") != "ok":
+      return {"nonce": None, "state": st.get("state")}
+    now = self.mono()
+    with self.lock:
+      self._fixed_nonces = {k: v for k, v in self._fixed_nonces.items() if v > now}
+      while len(self._fixed_nonces) >= MAX_FIXED_NONCES:
+        self._fixed_nonces.pop(next(iter(self._fixed_nonces)))
+      nonce = secrets.token_urlsafe(16)
+      self._fixed_nonces[nonce] = now + FIXED_NONCE_S
+    return {"nonce": nonce, "state": "ok"}
+
+  def fixed_check(self, nonce: str) -> dict:
+    with self.lock:
+      expiry = self._fixed_nonces.pop(nonce, None)  # once
+    return {"same": expiry is not None and expiry > self.mono()}
 
   # *** the clip of a mark: the light video of that moment, on the phone, with the car off ***
 
@@ -882,6 +908,12 @@ def make_handler(backend: PanelBackend):
       elif path == "/api/radars/export":
         if self._who() is not None:
           self._json(200, backend.radars_export())
+      elif path == "/api/fixed/nonce":  # before pairing: carries no secret and opens nothing
+        self._json(200, backend.fixed_nonce())
+      elif path == "/api/fixed/check":  # asked by a page served by address: it may read only this yes or no
+        n = (parse_qs(query).get("n") or [""])[0]
+        body = json.dumps(backend.fixed_check(n)).encode()
+        self._send(200, body, "application/json; charset=utf-8", extra={"Access-Control-Allow-Origin": "*"})
       elif path in ("/api/clip.m3u8", "/api/clip.ts"):  # the video player can't send the token: the clip's own ticket
         q = parse_qs(query)
         ticket = (q.get("ticket") or [""])[0]
