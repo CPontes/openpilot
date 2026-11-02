@@ -2,12 +2,38 @@ from types import SimpleNamespace
 
 from opendbc.car.gwm.tests.test_always_on import ALWAYS_ON
 from opendbc.car.gwm.tests.test_carstate import Car
-from openpilot.selfdrive.selfdrived.always_on_lateral import LongitudinalPause, ButtonType
+from openpilot.selfdrive.selfdrived.always_on_lateral import EventName, LongitudinalPause, ButtonType, reverse_is_parking
+from openpilot.selfdrive.selfdrived.events import ET, Events
 
 
 def cs(brake=False, resume=False):
   events = [SimpleNamespace(type=ButtonType.resumeCruise)] if resume else []
   return SimpleNamespace(brakePressed=brake, buttonEvents=events)
+
+
+def reverse_events():
+  events = Events()
+  events.add(EventName.reverseGear)
+  return events
+
+
+class TestReverseWithTheBrake:
+  def test_parking_is_not_an_emergency(self):
+    events = reverse_events()
+    reverse_is_parking(events, True, True)
+    assert EventName.reverseGear not in events.names and EventName.pedalPressed in events.names
+    assert events.contains(ET.USER_DISABLE)  # it still disengages
+    assert not any(a.alert_text_1 == "TAKE CONTROL IMMEDIATELY" for a in events.create_alerts([ET.USER_DISABLE]))
+
+  def test_without_the_brake_nothing_changes(self):
+    events = reverse_events()
+    reverse_is_parking(events, True, False)
+    assert events.names == [EventName.reverseGear]
+
+  def test_disengaged_nothing_changes(self):
+    events = reverse_events()
+    reverse_is_parking(events, False, True)
+    assert events.names == [EventName.reverseGear]
 
 
 class TestLongitudinalPause:

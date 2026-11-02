@@ -21,7 +21,7 @@ from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 from openpilot.selfdrive.selfdrived.events import Events, ET
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
-from openpilot.selfdrive.selfdrived.always_on_lateral import LongitudinalPause
+from openpilot.selfdrive.selfdrived.always_on_lateral import LongitudinalPause, reverse_is_parking
 from openpilot.selfdrive.selfdrived.traffic_alerts import AccLostAlert, AutoResume, BumpSlowdown, LeadDepartAlert, driver_attentive
 from openpilot.selfdrive.hexa import radars
 from opendbc.car.gwm.values import GwmSafetyFlags
@@ -299,6 +299,7 @@ class SelfdriveD:
         if self.long_pause.update(self.enabled, brake_disengage, CS):
           self.events.add(EventName.gasPressedOverride)
         brake_disengage = False
+        reverse_is_parking(self.events, self.enabled, CS.brakePressed)
 
       # Disable on rising edge of accelerator or brake. Also disable on brake when speed > 0
       if (CS.gasPressed and not self.CS_prev.gasPressed and self.disengage_on_accelerator) or brake_disengage:
