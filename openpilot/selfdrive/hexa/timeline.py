@@ -51,10 +51,15 @@ SPLIT_KEYS = ("op_s", "help_s", "you_s", "stop_s", "op_km", "help_km", "you_km",
 #   wob_ss, wob_n  the wheel going back and forth: steering angle around its own 1 s average, openpilot steering above 20 km/h
 #                  (RMS = sqrt(ss / n), degrees). [hipótese] at the qlog's 10 Hz it tells the same as the 100 Hz measured on 02/11
 #   lane_n, lane_ok  drivingModelData samples, openpilot steering above 20 km/h, and how many saw both lines at 0.5 or more
-KPI_KEYS = ("wob_ss", "wob_n", "lane_n", "lane_ok", "slow_s")  # slow_s: openpilot steering below SLOW_MAX (the slow-traffic mission)
+KPI_KEYS = ("wob_ss", "wob_n", "wob_s", "lane_n", "lane_ok", "slow_s")  # slow_s: openpilot steering below SLOW_MAX (the slow-traffic mission)
 SLOW_MAX = 30 / 3.6
 WOBBLE_MIN_SPEED = 20 / 3.6
 WOBBLE_WINDOW_S = 1.
+# [teste] CTO review of 05, 6 real routes: with curves in, 98% of the wobble was the curve itself and the route rated 9 came out
+# worse than the unusable one. Only straights count: the angle under STRAIGHT_DEG for the last STRAIGHT_S.
+STRAIGHT_DEG, STRAIGHT_S = 3., 3.
+PIN_MIN_SPEED = 2.  # m/s: openpilot letting go while moving. Parked or stopped in traffic is no pin
+PIN_END_S = 60.  # the last minute of a drive is parking: no pin there
 LANE_OK = 0.5
 OFF_AT_MAX = 50
 
@@ -348,7 +353,7 @@ def trip_segment(events: Iterable) -> dict:
   run_hand = None  # since when the wheel is pressed
   v_max = 0.
   kpi = dict.fromkeys(KPI_KEYS, 0.)
-  angles: list[tuple[float, float]] = []  # the last second of steering angle, for the wobble
+  angles: list[tuple[float, float]] = []  # the last STRAIGHT_S of steering angle, for the wobble
   en_seen = False  # the minute's first carState can come before its first selfdriveState: not a break
 
   messages = sorted(events, key=lambda m: m.logMonoTime)
@@ -387,7 +392,7 @@ def trip_segment(events: Iterable) -> dict:
         total["alerts_crit"] += status == "critical"
       alert_text, alert_status = text, status
       if en and not enabled and t0 is not None:
-        out.append({"t": _r(t), "kind": "off", "text": "desengatou no freio" if brake else "desengatou"})
+        out.append({"t": _r(t), "kind": "off", "text": "desengatou no freio" if brake else "desengatou", "v": _r(speed)})
         total["off"] += 1
       en = enabled
       en_seen = True
@@ -412,11 +417,14 @@ def trip_segment(events: Iterable) -> dict:
       v_max = max(v_max, cs.vEgo)
       speed = cs.vEgo
       angle = getattr(cs, "steeringAngleDeg", 0.)
-      angles = [(ta, a) for ta, a in angles if t - ta < WOBBLE_WINDOW_S] + [(t, angle)]
-      if en and lat and cs.vEgo > WOBBLE_MIN_SPEED and not cs.steeringPressed and len(angles) >= 3:
-        mean = sum(a for _, a in angles) / len(angles)
+      angles = [(ta, a) for ta, a in angles if t - ta < STRAIGHT_S] + [(t, angle)]
+      straight = t - angles[0][0] >= STRAIGHT_S - .5 and all(abs(a) < STRAIGHT_DEG for _, a in angles)
+      if en and lat and cs.vEgo > WOBBLE_MIN_SPEED and not cs.steeringPressed and straight:
+        recent = [a for ta, a in angles if t - ta < WOBBLE_WINDOW_S]
+        mean = sum(recent) / len(recent)
         kpi["wob_ss"] += (angle - mean) ** 2
         kpi["wob_n"] += 1
+        kpi["wob_s"] += dt
       run_hand = (run_hand if run_hand is not None else t) if cs.steeringPressed else None
       if en and not (cs.gasPressed or cs.brakePressed or (run_hand is not None and t - run_hand >= DRIVER_MIN_S)):
         run[0] += cs.vEgo * dt / 1e3
@@ -495,7 +503,8 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
   version: dict = {}
   auto: list[dict] = []
   path: list[list] = []
-  off_at: list[int] = []  # seconds from minute 0 where openpilot let go: the map's red pins
+  off_at: list[int] = []  # seconds from minute 0 where openpilot let go moving: the map's red pins
+  end_s = 0.
   unread = 0
   run_best, run_cur, prev, v_max = [0., 0.], [0., 0.], None, 0.
   for seg in sorted(files):
@@ -510,7 +519,8 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
     version = version or seg_data.get("version") or {}
     # told from the end of the minute: a drive's last minute is short
     auto += [{"seg": seg, "left": _r(part["s"] - e["t"]), "kind": e["kind"]} for e in seg_data["events"] if e["kind"] in AUTO_TEXT]
-    off_at += [round(seg * 60 + e["t"]) for e in seg_data["events"] if e["kind"] == "off"]
+    off_at += [round(seg * 60 + e["t"]) for e in seg_data["events"] if e["kind"] == "off" and e.get("v", 0.) >= PIN_MIN_SPEED]
+    end_s = max(end_s, seg * 60 + part.get("s", 0.))
     pts = seg_data["points"]
     for i in range(0, len(pts), PATH_EVERY):  # who drove: the most of the driver in the group (you > a pedal > the hand > openpilot)
       group = pts[i:i + PATH_EVERY]
@@ -534,4 +544,5 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
     out["se_hard_brakes"] = int(out["se_hard_brakes"])
   out.update({"v_max": round(v_max), "run_km": _r(run_best[0], 2), "run_s": round(run_best[1])})
   return {**out, "segments": len(files), "unread": unread, "version": version.get("version", ""), "commit": version.get("commit", ""),
-          "auto_marks": auto[:AUTO_MARKS_MAX], "path": path, "off_at": off_at[:OFF_AT_MAX]}
+          "auto_marks": auto[:AUTO_MARKS_MAX], "path": path,
+          "off_at": [x for x in off_at if x < end_s - PIN_END_S][:OFF_AT_MAX]}

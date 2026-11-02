@@ -5,7 +5,7 @@ Each mission is one real test. What counts as done, and who says so:
 - "marca": it happens while driving and the comma can't tell by itself yet. The owner taps "Fiz agora": a mark with the hour,
   the place and the mission, so the CTO finds the minute in the log. A mark never completes a mission by itself;
 - "parado": the owner does it parked and answers on the phone (HexaMissions keeps the answer);
-- "cto": the CTO measures it in a log;
+- "cto": the CTO measures it in a log. Only proofs checked by the CTO go in `done` (never the designer's own reports);
 - "decisao": not a test, a choice of the owner's.
 
 The CTO completes a "marca" or "cto" mission by raising `done` here, with the route that proved it in `proof`.
@@ -33,9 +33,9 @@ TRAILS: tuple[tuple[str, str], ...] = (
   ("versao", "Versão e envio à comma"),
 )
 
-# The system's level, by missions done out of all: the LizPilot's, never the driver's
-LEVELS: tuple[tuple[float, str], ...] = ((0., "Garagem"), (.15, "Bairro"), (.29, "Cidade"), (.44, "Rodovia"), (.62, "Trânsito"),
-                                         (.81, "Todos os climas"), (1., "Pronto para a comma"))
+# The system's level, by missions done out of all: the LizPilot's, never the driver's. Numbers only: a name like "Rodovia"
+# read as a release, and could be reached with doors and turn signals, no highway at all (CTO review of 06)
+LEVELS: tuple[tuple[float, str], ...] = ((0., ""), (.15, ""), (.29, ""), (.44, ""), (.62, ""), (.81, ""), (1., ""))
 
 
 @dataclass(frozen=True)
@@ -68,7 +68,7 @@ CATALOG: tuple[Mission, ...] = (
   Mission("mao-na-curva", "direcao", "O volante segue a sua mão na curva", 1, "cto", done=1, proof="rota 29 · 0 de 55 contra a mão"),
   Mission("sinuosa", "direcao", "Rua sinuosa da rota diária medida", 1, "cto", done=1, proof="rota 0f · falta força em 9 de 19"),
   Mission("curva-fechada", "direcao", "Curva fechada medida", 1, "cto", done=1, proof="rota 16 · não é o torque"),
-  Mission("asfalto-ruim", "direcao", "Asfalto ruim medido", 1, "cto", done=1, proof="176 min · apertos 4 a 7 vezes mais"),
+  Mission("asfalto-ruim", "direcao", "Asfalto ruim medido", 1, "cto", note="aguarda o CTO conferir a medição"),
   Mission("transito-lento", "direcao", "Trânsito lento atrás de outro carro", 1, "auto", detect="slow10",
           note="10 min abaixo de 30 km/h com o openpilot no volante",
           why="É a dúvida mais antiga da direção: o balanço abaixo de 30 km/h.",
@@ -131,8 +131,10 @@ CATALOG: tuple[Mission, ...] = (
   # *** Longitudinal do comma ***
   Mission("long-primeira", "long", "Primeira volta com ele", 1, "cto", done=1, proof="rota 23"),
   Mission("long-re", "long", "Ré com freio", 1, "cto", done=1, proof="rota 26"),
-  Mission("long-sinal", "long", "Sinal vermelho visto", 5, "cto", done=3, proof="rota 26", lock="Só com o longitudinal do comma ligado"),
-  Mission("long-sem-freada", "long", "Uma viagem sem freada forte sua", 1, "cto", lock="Só com o longitudinal do comma ligado"),
+  # no count on the red light: the stops with no car ahead still end on the owner's pedal, and on route 2e the model
+  # pulled away on a red (CTO review of 06)
+  Mission("long-sinal", "long", "Sinal vermelho visto", 1, "cto", note="as paradas sem carro à frente ainda acabam no seu pedal"),
+  Mission("long-sem-freada", "long", "Uma viagem sem freada forte sua", 1, "cto"),
   Mission("long-aeb", "long", "O AEB da Haval segue ativo", 1, "cto", lock="Só no log. Nunca provoque o AEB"),
   # *** Avisos e atenção ***
   Mission("aviso-radar", "avisos", "Aviso de radar antes do radar", 3, "marca", option="RadarAlert"),
@@ -150,7 +152,6 @@ CATALOG: tuple[Mission, ...] = (
   Mission("lizpilot-local", "celular", "lizpilot.local abre o painel", 1, "parado"),
   Mission("perfil", "celular", "Perfil e cópia dos ajustes", 2, "parado"),
   Mission("video-marca", "celular", "Vídeo da marca", 1, "parado", note="com o carro desligado"),
-  Mission("ssh", "celular", "SSH com os 4 números", 2, "parado", note="e expira em 60 s"),
   Mission("historico", "celular", "Histórico, mapa e ocultar", 1, "parado"),
   Mission("android", "celular", "Android", 1, "parado", note="se tiver um"),
   # *** Coleta para a comma (VALID-01) ***

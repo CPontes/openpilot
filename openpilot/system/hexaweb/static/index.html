@@ -134,6 +134,7 @@
   .split .help, .sw.help { background: repeating-linear-gradient(135deg, var(--accent) 0 5px, var(--you) 5px 10px); }
   .split .you, .sw.you { background: var(--you); }
   .kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .kpis > :nth-child(3):last-child { grid-column: 1 / -1; }
   .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .kpi.worse { border-color: var(--warn-line); }
   .kpi .k { font-size: 13px; color: var(--muted); }
@@ -997,8 +998,9 @@ function refreshHome(full) {
 }
 
 let readyOpen = false;
-const KPI_SHOWN = [["kmPerInt", () => t("km por intervenção"), (v) => num(v, 1)], ["opPct", () => t("openpilot no volante"), (v) => `${Math.round(v)}%`],
-                   ["wobble", () => t("balanço do volante"), (v) => `${num(v, 2)}°`], ["alerts100", () => t("alertas a cada 100 km"), (v) => num(v, 0)]];
+// no "km per intervention" until the owner says what an intervention is: a hand on the wheel isn't one (CTO review of 05)
+const KPI_SHOWN = [["opPct", () => t("openpilot no volante"), (v) => `${Math.round(v)}%`],
+                   ["wobble", () => t("balanço em reta"), (v) => `${num(v, 2)}°`], ["alerts100", () => t("alertas a cada 100 km"), (v) => num(v, 0)]];
 // A line for 8 weeks, null weeks left out; the color says if the last week is on the good side
 function sparkline(values, good) {
   const pts = values.map((v, i) => [i, v]).filter((p) => p[1] != null);
@@ -1012,10 +1014,11 @@ let kpiSig = "";
 function renderKpis() {
   const nowS = Date.now() / 1000, list = trips ? LPL.listed(trips) : [];
   const k = LPL.kpis(list, nowS, 28);
-  const show = k.now.trips >= 2;
+  const show = k.now.trips >= 2 && !k.now.few;  // under KPI_MIN_KM in 4 weeks: no numbers at all
   $("kpiBox").classList.toggle("hidden", !show);
   if (!show) return;
-  const sig = JSON.stringify([list.length, list[0] && list[0].id, Math.floor(nowS / 3600), L()]);
+  // summaries arrive after the list (a new SUMMARY_VERSION rereads the history): they are part of what is drawn
+  const sig = JSON.stringify([list.length, list[0] && list[0].id, list.filter((x) => x.summary).map((x) => x.summary.sv || 0).join(""), Math.floor(nowS / 3600), L()]);
   if (sig === kpiSig) return;
   kpiSig = sig;
   $("kpiGrid").replaceChildren(...KPI_SHOWN.map(([key, label, fmt]) => {
@@ -1417,9 +1420,9 @@ function renderMissionCard() {
   if (!missions) return;
   const prog = mProg(), lv = LPL.missionLevel(missions, prog);
   $("missionRing").innerHTML = ringSvg(lv.n, lv.total, 76, `${Math.round(100 * lv.n / lv.total)}%`);
-  $("missionLevel").textContent = tf("Nível {n} · {nome}", { n: lv.i + 1, nome: t(lv.name) });
+  $("missionLevel").textContent = tf("Nível {n} de {m}", { n: lv.i + 1, m: missions.levels.length });
   $("missionCount").textContent = tf("{d} de {n} missões", { d: lv.n, n: lv.total });
-  $("missionNext").textContent = lv.next ? tf(lv.next.left === 1 ? "Falta 1 para o nível {n}, {nome}" : "Faltam {k} para o nível {n}, {nome}", { k: lv.next.left, n: lv.i + 2, nome: t(lv.next.name) }) : t("Tudo provado no seu carro.");
+  $("missionNext").textContent = lv.next ? tf(lv.next.left === 1 ? "Falta 1 para o nível {n}" : "Faltam {k} para o nível {n}", { k: lv.next.left, n: lv.i + 2 }) : t("Tudo provado no seu carro.");
   const res = missionResult(prog), rb = $("missionResultBox"); rb.replaceChildren();
   if (res) {
     const a = el("button", "card ok row"); a.type = "button"; a.style.cssText = "width:100%;margin:0;text-align:left;color:inherit;font:inherit";
@@ -1498,7 +1501,7 @@ function renderMissions() {
     }
     const sb = el("button", "btn dark", tf("Selos · {d} de {n}", { d: LPL.missionTrails(missions, prog).filter((x) => x.seal).length, n: missions.trails.length })); sb.type = "button";
     sb.addEventListener("click", () => openMissions({ s: "selos" })); out.push(sb);
-    out.push(el("div", "small", tf("Nível {n} · {nome}. O nível é do LizPilot: sobe com o que já foi provado no carro, não com como você dirige.", { n: lv.i + 1, nome: t(lv.name) })));
+    out.push(el("div", "small", tf("Nível {n} de {m}. O nível é do LizPilot e só diz quanto do catálogo já foi testado: não libera nada no carro.", { n: lv.i + 1, m: missions.levels.length })));
   } else if (s.s === "trilha") {
     mBack(t("Missões"), { s: "trilhas" });
     const tr = missions.trails.find((x) => x.key === s.tr), ms = missions.missions.filter((m) => m.trail === s.tr);
@@ -1580,7 +1583,7 @@ function renderMissions() {
       out.push(h1(res.rows.length ? tf(res.rows.length === 1 ? "1 missão avançou" : "{n} missões avançaram", { n: res.rows.length }) : t("Nenhuma missão avançou sozinha")));
       if (now.i > before.i) {
         const c = el("section", "card ok row"); c.insertAdjacentHTML("beforeend", HEX_DONE.replace(/28/g, "52"));
-        const g = el("span", "grow"); g.append(el("span", "mlevel", t("Subiu de nível")), el("span", "big", tf("Nível {n} · {nome}", { n: now.i + 1, nome: t(now.name) })));
+        const g = el("span", "grow"); g.append(el("span", "mlevel", t("Subiu de nível")), el("span", "big", tf("Nível {n} de {m}", { n: now.i + 1, m: missions.levels.length })));
         g.lastChild.style.display = "block"; c.append(g); out.push(c);
       }
       for (const r of res.rows) {
@@ -1707,7 +1710,7 @@ function renderTripCard(h) {
   else nums.push(el("span", "small", t("Calculando quem dirigiu…")));
   $("tripNums").replaceChildren(...nums);
   const vs = sm ? LPL.tripVsAverage(tr, LPL.listed(trips || []), Date.now() / 1000) : null;
-  const vsShown = vs && ["kmPerInt", "opPct", "wobble"].some((k2) => vs[k2].value != null);
+  const vsShown = vs && ["opPct", "wobble"].some((k2) => vs[k2].value != null);
   $("tripVs").classList.toggle("hidden", !vsShown);
   if (vsShown) {
     const cell = (key, label, fmt) => {
@@ -1716,8 +1719,7 @@ function renderTripCard(h) {
       c2.append(el("small", "", label), el("small", x.word === "melhor que a sua média" ? "up" : x.word === "pior que a sua média" ? "down" : "", x.word ? t(x.word) : ""));
       return c2;
     };
-    $("tripVs").replaceChildren(cell("kmPerInt", t("km por intervenção"), (v) => num(v, 1)), cell("opPct", "openpilot", (v) => `${Math.round(v)}%`),
-                                cell("wobble", t("balanço"), (v) => `${num(v, 2)}°`));
+    $("tripVs").replaceChildren(cell("opPct", "openpilot", (v) => `${Math.round(v)}%`), cell("wobble", t("balanço em reta"), (v) => `${num(v, 2)}°`));
   }
   const f = LPL.tripNumbers(sm);  // what a trip computer shows
   $("tripFigures").classList.toggle("hidden", !f);
@@ -2048,8 +2050,8 @@ function weekCard(all) {
 }
 function dayMonth(s) { return new Date(s * 1000).toLocaleDateString(L(), { day: "2-digit", month: "2-digit" }); }
 // The version now against the one before: the KPIs side by side, the difference colored, and a warning when there's little to go on
-const VERSION_ROWS = { kmPerInt: [() => t("km por intervenção"), (v) => num(v, 1)], opPct: [() => t("openpilot no volante"), (v) => `${Math.round(v)}%`],
-                       wobble: [() => t("balanço do volante"), (v) => `${num(v, 2)}°`], alerts100: [() => t("alertas a cada 100 km"), (v) => num(v, 0)] };
+const VERSION_ROWS = { opPct: [() => t("openpilot no volante"), (v) => `${Math.round(v)}%`],
+                       wobble: [() => t("balanço em reta"), (v) => `${num(v, 2)}°`], alerts100: [() => t("alertas a cada 100 km"), (v) => num(v, 0)] };
 function versionVerdict(list) {
   const vc = LPL.versionCompare(list);
   if (!vc) return null;
@@ -2058,6 +2060,10 @@ function versionVerdict(list) {
   c.append(el("span", "title num", tf("{antes} → {agora}", { antes: vc.before, agora: vc.now })));
   const head = el("div", "small num", tf("{a} km nesta versão · {b} km na anterior", { a: num(vc.a.km, 0), b: num(vc.b.km, 0) }));
   c.append(head);
+  if (vc.few) {  // under the minimum: the numbers, no verdict (CTO review of 05)
+    const w = el("div", "card att desc", tf("Pouca estrada para dizer: com menos de {km} km de cada lado, trânsito e caminho mudam mais que a versão. Os números ficam abaixo, sem veredito.", { km: LPL.VERSION_MIN_KM }));
+    w.style.margin = "0"; c.append(w);
+  }
   if (vc.judged) {
     const v = el("div", "big"); v.style.color = vc.better * 2 > vc.judged ? "var(--accent)" : vc.better * 2 === vc.judged ? "var(--text)" : "var(--warn)";
     v.textContent = tf("Melhor em {n} de {m}", { n: vc.better, m: vc.judged }); c.append(v);
@@ -2072,7 +2078,6 @@ function versionVerdict(list) {
     tbl.append(cell);
   }
   c.append(tbl);
-  if (vc.few) c.append(el("div", "small", tf("Pouca estrada ainda: com menos de {km} km de cada lado, trânsito e caminho mudam mais que a versão.", { km: LPL.VERSION_MIN_KM })));
   return c;
 }
 function renderTrips(err) {

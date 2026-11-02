@@ -408,43 +408,53 @@ def test_a_mark_finds_its_place_on_the_path_of_a_trimmed_drive():
 # ----- the KPIs (owner, 02/11 14:54): every number with its context
 
 def kdrive(end, **s):
-  base = {"km": 20., "moving_s": 1200, "op_s": 900, "off": 1, "driver": 1, "alerts": 2, "wob_ss": 400., "wob_n": 1000, "lane_n": 100, "lane_ok": 90}
+  base = {"km": 20., "moving_s": 1200, "op_s": 900, "off": 1, "driver": 1, "alerts": 2, "wob_ss": 400., "wob_n": 1000, "wob_s": 100.,
+          "lane_n": 100, "lane_ok": 90}
   return {"id": f"k{end}", "mtime": end, "minutes": 25, "summary": {**base, **s}, "hidden": False}
 
 
 def test_kpi_of_a_set_of_drives():
   k = run("kpiOf", [kdrive(SAT), kdrive(SAT - 3600, km=10., off=0, driver=0)])
-  assert abs(k["kmPerInt"] - 15.) < 1e-9 and abs(k["opPct"] - 75) < 1e-9 and abs(k["wobble"] - (800 / 2000) ** .5) < 1e-9
+  assert "kmPerInt" not in k  # a hand on the wheel isn't an intervention (CTO review of 05)
+  assert abs(k["opPct"] - 75) < 1e-9 and abs(k["wobble"] - (800 / 2000) ** .5) < 1e-9
   assert k["lanePct"] == 90 and abs(k["alerts100"] - 400 / 30) < 1e-9
-  thin = run("kpiOf", [kdrive(SAT, km=.5, moving_s=20, wob_n=10, lane_n=3)])
-  assert thin["kmPerInt"] is None and thin["opPct"] is None and thin["wobble"] is None and thin["lanePct"] is None
+  thin = run("kpiOf", [kdrive(SAT, km=.5, moving_s=20, wob_s=12., lane_n=3)])
+  assert thin["opPct"] is None and thin["wobble"] is None and thin["lanePct"] is None  # under 30 s of straight: no wobble
+  old = run("kpiOf", [kdrive(SAT, wob_s=None)])
+  assert old["wobble"] is None  # a summary from before the straights-only wobble measured curves
   assert run("kpiOf", [{**kdrive(SAT), "hidden": True}])["trips"] == 0
 
 
 def test_kpis_trend_says_better_or_worse_the_right_way():
-  now = [kdrive(SAT - 86400 * i, off=0, driver=1, wob_ss=200.) for i in range(3)]
-  before = [kdrive(SAT - 86400 * (30 + i), off=2, driver=2, wob_ss=400.) for i in range(3)]
+  now = [kdrive(SAT - 86400 * i, wob_ss=200.) for i in range(3)]
+  before = [kdrive(SAT - 86400 * (30 + i), wob_ss=400.) for i in range(3)]
   k = run("kpis", now + before, SAT + 60, 28)
-  assert k["kmPerInt"]["trend"] == 1 and k["wobble"]["trend"] == 1  # more km per intervention and less wobble: both better
+  assert k["wobble"]["trend"] == 1  # less wobble: better
   assert k["opPct"]["trend"] == 0 and k["alerts100"]["trend"] == 0  # the same: about the same
-  worse = run("kpis", [kdrive(SAT, alerts=9)] + before, SAT + 60, 28)
+  worse = run("kpis", [kdrive(SAT, alerts=9), kdrive(SAT - 3600, alerts=9)] + before, SAT + 60, 28)
   assert worse["alerts100"]["trend"] == -1
+  thin = run("kpis", [kdrive(SAT, km=12.)] + before, SAT + 60, 28)  # 12 km in 4 weeks: no number, no arrow
+  assert thin["now"]["few"] and thin["now"]["opPct"] is None and thin["opPct"] is None
 
 
-def test_version_compare_against_the_one_before_and_warns_on_few_km():
-  trips = [kdrive(SAT, commit="b2", off=0, driver=1), kdrive(SAT - 7200, commit="b2", off=0, driver=1), kdrive(SAT - 86400, commit="a1", off=2, driver=2)]
+def test_version_compare_says_nothing_under_the_minimum():
+  trips = [kdrive(SAT, commit="b2", wob_ss=200.), kdrive(SAT - 7200, commit="b2", wob_ss=200.), kdrive(SAT - 86400, commit="a1")]
   v = run("versionCompare", trips)
   assert (v["now"], v["before"]) == ("b2", "a1") and v["few"] is True
-  row = next(r for r in v["rows"] if r["key"] == "kmPerInt")
-  assert row["now"] == 20. and row["before"] == 5. and row["delta"]["trend"] == 1 and v["better"] >= 1
+  assert v["better"] is None and v["judged"] is None and all(r["delta"] is None for r in v["rows"])  # the numbers, no verdict
+  row = next(r for r in v["rows"] if r["key"] == "wobble")
+  assert row["now"] < row["before"]
+  many = [kdrive(SAT - 3600 * i, commit="b2", km=25., wob_ss=200.) for i in range(9)] + [kdrive(SAT - 86400 * (2 + i), commit="a1", km=25.) for i in range(9)]
+  v = run("versionCompare", many)
+  assert not v["few"] and v["judged"] >= 1 and v["better"] >= 1
   assert run("versionCompare", [kdrive(SAT, commit="b2")]) is None
 
 
 def test_a_drive_against_its_average():
   trips = [kdrive(SAT - 86400 * i) for i in range(1, 4)]
-  me = kdrive(SAT, off=0, driver=0)
+  me = kdrive(SAT, wob_ss=100.)
   v = run("tripVsAverage", me, trips + [me], SAT + 60)
-  assert v["kmPerInt"]["word"] == "melhor que a sua média" and v["opPct"]["word"] == "na sua média"
+  assert v["wobble"]["word"] == "melhor que a sua média" and v["opPct"]["word"] == "na sua média" and "kmPerInt" not in v
 
 
 # ----- missions

@@ -9,7 +9,7 @@ NS = int(1e9)
 
 
 def write_rlog(path, seconds=8.0, bookmark_at=None, mark=None, oscillate=(2.0, 6.0), limit=(6.5, 7.5), pressed=None, acc=None, stop=None, speed=10.,
-               lat_from=0.5, lat_off=None, gas=None, lanes=None):
+               lat_from=0.5, lat_off=None, gas=None, lanes=None, swing=8., bend=None, off_from=None):
   """A small rlog made of real cereal messages, as the comma would record it."""
   import zstandard
   from openpilot.cereal import log
@@ -36,14 +36,14 @@ def write_rlog(path, seconds=8.0, bookmark_at=None, mark=None, oscillate=(2.0, 6
         c.gasPressed = gas[0] <= s < gas[1]
       if acc:
         c.cruiseState.driving = acc[0] <= s < acc[1]
-      c.steeringAngleDeg = (8. if (int(s * 4) % 2) else -8.) if osc else 1.
+      c.steeringAngleDeg = (swing if (int(s * 4) % 2) else -swing) if osc else (bend[2] if bend and bend[0] <= s < bend[1] else 1.)
       c.steeringTorque = 150 if 1.0 <= s < 1.2 else 0
       c.cruiseState.speed = 20.
     add("carState", t, cs)
     lat_on = s >= lat_from and not (lat_off and lat_off[0] <= s < lat_off[1])  # the GWM drops latActive standing still
     add("carControl", t, lambda c, tq=tq, lat_on=lat_on: (setattr(c, "latActive", lat_on), setattr(c.actuators, "torque", tq)))
     add("carOutput", t, lambda c, tq=tq: setattr(c.actuatorsOutput, "torqueOutputCan", int(tq * 253)))
-    on = s >= min(lat_from, 0.5)
+    on = s >= min(lat_from, 0.5) and not (off_from is not None and s >= off_from)
     add("selfdriveState", t, lambda c, s=s, on=on: (setattr(c, "enabled", on), setattr(c, "alertText1", "TAKE CONTROL" if 7.0 <= s < 7.5 else "")))
     if i % 5 == 0:
       def model(mv):
@@ -338,20 +338,30 @@ def test_a_hard_brake_is_told_from_the_end_of_its_minute(monkeypatch):
 
 
 def test_the_kpis_wobble_lane_seen_and_where_it_let_go(tmp_path):
-  # the wheel going back and forth only counts with openpilot steering; lane seen is both lines at 0.5 or more; off_at in s from minute 0
+  # the wheel going back and forth only counts with openpilot steering on a straight (under 3° for 3 s); lane seen is both
+  # lines at 0.5 or more; off_at in s from minute 0, only moving and not in the drive's last minute
   d = tmp_path / "00000001--abc--2"
   d.mkdir()
-  calm = tl.trip_summary({2: str(write_rlog(d / "a.zst", seconds=8., oscillate=(0., 0.), lat_from=0., lanes=lambda s: (.9, .9)))})
-  wavy = tl.trip_summary({2: str(write_rlog(d / "b.zst", seconds=8., oscillate=(1., 7.), lat_from=0., lanes=lambda s: (.9, .2 if s < 4 else .9)))})
+  calm = tl.trip_summary({2: str(write_rlog(d / "a.zst", seconds=10., oscillate=(0., 0.), lat_from=0., lanes=lambda s: (.9, .9)))})
+  wavy = tl.trip_summary({2: str(write_rlog(d / "b.zst", seconds=10., oscillate=(0., 10.), swing=2., lat_from=0., lanes=lambda s: (.9, .2 if s < 5 else .9)))})
+  curvy = tl.trip_summary({2: str(write_rlog(d / "e.zst", seconds=10., oscillate=(0., 0.), bend=(0., 10., 25.), lat_from=0.))})
+  swerve = tl.trip_summary({2: str(write_rlog(d / "f.zst", seconds=10., oscillate=(0., 10.), swing=8., lat_from=0.))})
   def rms(s):
     return (s["wob_ss"] / s["wob_n"]) ** .5
 
-  assert calm["wob_n"] > 500 and rms(calm) < .1
-  assert rms(wavy) > 4  # ±8° every quarter second
+  assert calm["wob_s"] > 6 and rms(calm) < .1
+  assert rms(wavy) > 1.5  # ±2° every quarter second, on a straight
+  assert curvy["wob_n"] == 0 and swerve["wob_n"] == 0  # a held curve, or swings past 3°, are not a straight
   assert calm["lane_n"] == wavy["lane_n"] > 10 and calm["lane_ok"] == calm["lane_n"]
   assert abs(wavy["lane_ok"] / wavy["lane_n"] - .5) < .1
-  off = tl.trip_summary({2: str(write_rlog(d / "c.zst", seconds=8., oscillate=(0., 0.)))})  # write_rlog's TAKE CONTROL; enabled from 0.5 s
+  off = tl.trip_summary({2: str(write_rlog(d / "c.zst", seconds=8., oscillate=(0., 0.)))})
   assert off["off_at"] == [] and calm["off_at"] == []
+  # letting go at 3 s of minute 0 moving is a pin; the same at the end of the drive (parking) or stopped is not
+  let_go = {0: str(write_rlog(d / "g.zst", seconds=8., oscillate=(0., 0.), off_from=3.)), 2: str(write_rlog(d / "h.zst", seconds=8., oscillate=(0., 0.)))}
+  assert tl.trip_summary(let_go)["off_at"] == [3]
+  assert tl.trip_summary({2: str(write_rlog(d / "i.zst", seconds=8., oscillate=(0., 0.), off_from=3.))})["off_at"] == []
+  stopped = {0: str(write_rlog(d / "j.zst", seconds=8., oscillate=(0., 0.), off_from=3., stop=(2., 5.))), 2: let_go[2]}
+  assert tl.trip_summary(stopped)["off_at"] == []
 
 
 def test_slow_traffic_counts_only_with_openpilot_steering_below_30(tmp_path):

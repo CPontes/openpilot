@@ -320,17 +320,23 @@
   function kpiOf(trips) {
     const ts = (trips || []).filter((t) => t.summary && !t.hidden && !idle(t));
     const sum = (k) => ts.reduce((a, t) => a + (t.summary[k] || 0), 0);
-    const km = sum("km"), moving = sum("moving_s"), ints = sum("off") + sum("driver"), wobN = sum("wob_n"), laneN = sum("lane_n");
+    // the wobble only from summaries that measure it on straights (wob_s, CTO review of 05): the older ones measured curves
+    const straight = ts.filter((t) => t.summary.wob_s != null), wobS = straight.reduce((a, t) => a + t.summary.wob_s, 0);
+    const wobN = straight.reduce((a, t) => a + (t.summary.wob_n || 0), 0), wobSS = straight.reduce((a, t) => a + (t.summary.wob_ss || 0), 0);
+    const km = sum("km"), moving = sum("moving_s"), laneN = sum("lane_n");
+    // no "km per intervention": a hand on the wheel isn't an intervention, and the owner hasn't said yet what is (CTO review of 05)
     return { trips: ts.length, km,
-             kmPerInt: km >= 1 ? km / Math.max(1, ints) : null,
              opPct: moving >= 60 ? 100 * sum("op_s") / moving : null,
-             wobble: wobN >= 300 ? Math.sqrt(sum("wob_ss") / wobN) : null,
+             wobble: wobS >= WOBBLE_MIN_S && wobN ? Math.sqrt(wobSS / wobN) : null,
              lanePct: laneN >= 20 ? 100 * sum("lane_ok") / laneN : null,
              alerts100: km >= 1 ? 100 * sum("alerts") / km : null,
              off100: km >= 1 ? 100 * sum("off") / km : null };
   }
+  const WOBBLE_MIN_S = 30;  // s on straights: a short drive has no wobble rather than a wrong one
+  const KPI_MIN_KM = 30;  // a window or an average with less road says nothing: no number, no arrow
+  function enough(k) { if (k.km >= KPI_MIN_KM) return k; const out = { trips: k.trips, km: k.km, few: true }; for (const x of Object.keys(KPI_BETTER)) out[x] = null; return out; }
   // Which way is better for each KPI, and how big a change counts (relative, or points for a percent)
-  const KPI_BETTER = { kmPerInt: 1, opPct: 1, lanePct: 1, wobble: -1, alerts100: -1, off100: -1 };
+  const KPI_BETTER = { opPct: 1, lanePct: 1, wobble: -1, alerts100: -1, off100: -1 };
   function kpiDelta(key, now, before) {
     if (now == null || before == null) return null;
     const pts = key === "opPct" || key === "lanePct";
@@ -342,23 +348,23 @@
   // The last `days` against the `days` before: the four numbers of Início, with their trend
   function kpis(trips, nowS, days) {
     const span = (days || 28) * 86400;
-    const now = kpiOf((trips || []).filter((t) => tripStart(t) >= nowS - span));
-    const before = kpiOf((trips || []).filter((t) => tripStart(t) >= nowS - 2 * span && tripStart(t) < nowS - span));
+    const now = enough(kpiOf((trips || []).filter((t) => tripStart(t) >= nowS - span)));
+    const before = enough(kpiOf((trips || []).filter((t) => tripStart(t) >= nowS - 2 * span && tripStart(t) < nowS - span)));
     const out = { now, before };
     for (const k of Object.keys(KPI_BETTER)) out[k] = kpiDelta(k, now[k], before[k]);
     return out;
   }
   // One drive against the average of the last 4 weeks: "acima da média", "na média", "abaixo da média"
   function tripVsAverage(t, trips, nowS) {
-    const mine = kpiOf([t]), avg = kpiOf((trips || []).filter((x) => x.id !== t.id && tripStart(x) >= nowS - 28 * 86400));
+    const mine = kpiOf([t]), avg = enough(kpiOf((trips || []).filter((x) => x.id !== t.id && tripStart(x) >= nowS - 28 * 86400)));
     const out = {};
-    for (const k of ["kmPerInt", "opPct", "wobble"]) {
+    for (const k of ["opPct", "wobble"]) {
       const d = kpiDelta(k, mine[k], avg[k]);
       out[k] = { value: mine[k], word: d == null ? null : d.trend > 0 ? T("melhor que a sua média") : d.trend < 0 ? T("pior que a sua média") : T("na sua média") };
     }
     return out;
   }
-  // The version now against the one before it, in the order the drives happened. Fewer than 200 km on a side: a warning
+  // The version now against the one before it, in the order the drives happened. Under 200 km on a side: the numbers, no verdict
   const VERSION_MIN_KM = 200;
   function versionCompare(trips) {
     const ts = (trips || []).filter((t) => t.summary && !t.hidden && !idle(t) && versionOf(t)).sort((a, b) => b.mtime - a.mtime);
@@ -366,17 +372,17 @@
     const now = versionOf(ts[0]), prev = (ts.find((t) => versionOf(t) !== now) || null);
     if (!prev) return null;
     const a = kpiOf(ts.filter((t) => versionOf(t) === now)), b = kpiOf(ts.filter((t) => versionOf(t) === versionOf(prev)));
-    const rows = ["kmPerInt", "opPct", "wobble", "alerts100"].map((k) => ({ key: k, now: a[k], before: b[k], delta: kpiDelta(k, a[k], b[k]) }));
+    const few = a.km < VERSION_MIN_KM || b.km < VERSION_MIN_KM;
+    const rows = ["opPct", "wobble", "alerts100"].map((k) => ({ key: k, now: a[k], before: b[k], delta: few ? null : kpiDelta(k, a[k], b[k]) }));
     const judged = rows.filter((r) => r.delta);
-    return { now, before: versionOf(prev), a, b, rows, better: judged.filter((r) => r.delta.trend > 0).length, judged: judged.length,
-             few: a.km < VERSION_MIN_KM || b.km < VERSION_MIN_KM };
+    return { now, before: versionOf(prev), a, b, rows, better: few ? null : judged.filter((r) => r.delta.trend > 0).length, judged: few ? null : judged.length, few };
   }
   // Week by week of one KPI, oldest first, for a sparkline (null weeks stay null: a gap reads as a gap)
   function kpiWeeks(trips, nowS, key, n) {
     const out = [];
     for (let i = (n || 8) - 1; i >= 0; i--) {
-      const end = nowS - i * 7 * 86400, start = end - 7 * 86400;
-      out.push(kpiOf((trips || []).filter((t) => tripStart(t) >= start && tripStart(t) < end))[key]);
+      const end = nowS - i * 7 * 86400, start = end - 7 * 86400, wk = kpiOf((trips || []).filter((t) => tripStart(t) >= start && tripStart(t) < end));
+      out.push(wk.km >= KPI_MIN_KM / 4 ? wk[key] : null);  // a week needs a quarter of the window's road
     }
     return out;
   }
@@ -467,7 +473,7 @@
     return { ok, ask: !!car.on && !!car.moving && !ok };
   }
 
-  root.LPL = { missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
+  root.LPL = { missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
                tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);
