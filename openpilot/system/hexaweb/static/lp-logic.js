@@ -154,6 +154,25 @@
     return { op: duration(minutes(op)), km, trips: recent.length };
   }
 
+  // Every drive with a summary since sinceS (0: all of them). Sums and rates, never a score or a streak.
+  // Disengagements and alerts per 100 km only from 1 km on, so one short drive doesn't look like a trend.
+  function totals(trips, sinceS) {
+    const ts = (trips || []).filter((t) => t.summary && t.mtime >= (sinceS || 0));
+    if (!ts.length) return null;
+    const sum = (k) => ts.reduce((a, t) => a + (t.summary[k] || 0), 0);
+    const km = sum("km"), moving = sum("moving_s");
+    return { trips: ts.length, km, op: duration(minutes(sum("op_s"))), opPct: moving > 0 ? Math.round(100 * sum("op_s") / moving) : null,
+             off: sum("off"), alerts: sum("alerts"), per100: km >= 1 ? { off: 100 * sum("off") / km, alerts: 100 * sum("alerts") / km } : null };
+  }
+  function monthStart(nowS) { const d = new Date(nowS * 1000); return new Date(d.getFullYear(), d.getMonth(), 1).getTime() / 1000; }
+  // The installed version of each drive (its git commit), newest first. Drives summarized before this have none.
+  function versionOf(t) { return (t && t.summary && t.summary.commit) || ""; }
+  function versions(trips) {
+    const seen = [];
+    for (const t of trips || []) { const v = versionOf(t); if (v && !seen.includes(v)) seen.push(v); }
+    return seen;
+  }
+
   // Shadow mode (selfdrive/hexa/shadow.py), added up over the last 7 days: what openpilot's longitudinal would have done
   // while the Haval ACC drove. Null until a drive has it (openpilot engaged with the ACC driving).
   function weekShadow(trips, nowS) {
@@ -187,6 +206,6 @@
     return { ok, ask: !!car.on && !!car.moving && !ok };
   }
 
-  root.LPL = { FIXED_HOST, addressPlan, tripSplit, weekTotal, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
+  root.LPL = { FIXED_HOST, addressPlan, tripSplit, weekTotal, totals, monthStart, versionOf, versions, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

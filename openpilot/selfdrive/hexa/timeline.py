@@ -38,6 +38,7 @@ TRIP_STEP_S = 2.0  # one point of the trip path
 GPS_MAX_AGE_S = 3.0
 DRIVER_MIN_S = 0.5  # on the wheel for at least this long counts as an intervention
 SKIP_ALERTS = ("Bookmark Saved",)  # already a mark event
+ALERT_COUNTED = ("userPrompt", "critical")  # an alert that asks something of the driver; "normal" ones only inform
 TOOK_RANK = {None: 0, "wheel": 1, "gas": 2, "brake": 3}  # a path point covers 2 s: a pedal says more than a hand on the wheel
 # who had the wheel while moving: openpilot alone, openpilot with the driver's hand on it, the driver alone
 SPLIT_KEYS = ("op_s", "help_s", "you_s", "stop_s", "op_km", "help_km", "you_km", "acc_s")
@@ -312,8 +313,10 @@ def trip_segment(events: Iterable) -> dict:
   step = dpsi = 0.
   fix = None
   fix_t = -1e9
-  total = {"s": 0., "km": 0., "moving_s": 0., "on_s": 0., "driver": 0, "gas": 0, "brake": 0, "off": 0, "marks": 0,
+  total = {"s": 0., "km": 0., "moving_s": 0., "on_s": 0., "driver": 0, "gas": 0, "brake": 0, "off": 0, "marks": 0, "alerts": 0, "alerts_crit": 0,
            **dict.fromkeys(SPLIT_KEYS, 0.)}
+  alert_text: str | None = None  # the alert on screen now; None until the minute's first message, which may carry one from the minute before
+  version: dict | None = None
   driver_since = None
   driver_told = False
   took = None  # what the driver took from openpilot since the last path point
@@ -338,9 +341,19 @@ def trip_segment(events: Iterable) -> dict:
     elif w == "userBookmark":
       out.append({"t": _r(t), "kind": "mark", "text": "bandeira", "mono_ns": m.logMonoTime})
       total["marks"] += 1
+    elif w == "initData":
+      if version is None:
+        version = {"version": str(getattr(m.initData, "version", "") or ""), "commit": str(getattr(m.initData, "gitCommit", "") or "")[:7]}
     elif w == "selfdriveState":
-      enabled = m.selfdriveState.enabled
+      ss = m.selfdriveState
+      enabled = ss.enabled
       shadow.on_selfdrive(enabled)
+      text = str(getattr(ss, "alertText1", "") or "")
+      status = str(getattr(ss, "alertStatus", "normal"))
+      if alert_text is not None and text and text != alert_text and status in ALERT_COUNTED:
+        total["alerts"] += 1
+        total["alerts_crit"] += status == "critical"
+      alert_text = text
       if en and not enabled and t0 is not None:
         out.append({"t": _r(t), "kind": "off", "text": "desengatou no freio" if brake else "desengatou"})
         total["off"] += 1
@@ -412,29 +425,32 @@ def trip_segment(events: Iterable) -> dict:
     total[k] = _r(total[k], 3)
   total.update(shadow.result())
   total.update(car.result())
-  return {"points": points, "events": out, "summary": total, "shadow": shadow.events}
+  return {"points": points, "events": out, "summary": total, "shadow": shadow.events, "version": version}
 
 
 def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
   """The whole drive in numbers, for the trip list: who had the wheel, for how long and how far, minute by minute.
   A minute that can't be read is left out and counted, so a broken file doesn't lose the drive. A long drive takes a
   while: stop is asked before each minute, and None means it gave up (the car turned on)."""
-  keys = ("s", "km", "moving_s", "on_s", "driver", "gas", "brake", "off", "marks", *SPLIT_KEYS, *SHADOW_KEYS)
+  keys = ("s", "km", "moving_s", "on_s", "driver", "gas", "brake", "off", "marks", "alerts", "alerts_crit", *SPLIT_KEYS, *SHADOW_KEYS)
   total: dict = dict.fromkeys(keys, 0.)
   car: dict = {}
+  version: dict = {}
   unread = 0
   for seg in sorted(files):
     if stop():
       return None
     try:
-      part = trip_segment(read_rlog(files[seg]))["summary"]
+      seg_data = trip_segment(read_rlog(files[seg]))
     except Exception:
       unread += 1
       continue
+    part = seg_data["summary"]
+    version = version or seg_data.get("version") or {}
     for k in keys:
       total[k] += part.get(k, 0)
     hexa_sensors.merge(car, part)
   out = {k: _r(v, 2) for k, v in {**total, **car}.items()}
-  for k in ("driver", "gas", "brake", "off", "marks", "sh_hard", "sh_earlier", "sh_weaker", "sh_fcw"):
+  for k in ("driver", "gas", "brake", "off", "marks", "alerts", "alerts_crit", "sh_hard", "sh_earlier", "sh_weaker", "sh_fcw"):
     out[k] = int(total[k])
-  return {**out, "segments": len(files), "unread": unread}
+  return {**out, "segments": len(files), "unread": unread, "version": version.get("version", ""), "commit": version.get("commit", "")}

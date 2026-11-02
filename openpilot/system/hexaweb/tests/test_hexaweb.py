@@ -484,6 +484,19 @@ def test_each_trip_gets_its_summary_once_with_the_car_off(panel, tmp_path):
   assert panel.json("/api/trips", token=token)[1]["trips"][0]["summary"] is None and len(jobs) == 1
 
 
+def test_a_summary_from_before_the_versions_is_read_again(panel, tmp_path):
+  trip_logs(panel, tmp_path)
+  panel.store.put(hexaweb.SUMMARY_PARAM, {"0000000f--8784034901": {"segments": 2, "km": 1.}})  # no "sv": made before
+  jobs = []
+  panel.backend._spawn = jobs.append
+  token = panel.pair()
+  t = panel.json("/api/trips", token=token)[1]
+  assert t["trips"][0]["summary"] is None and len(jobs) == 1
+  jobs.pop()()
+  s = panel.json("/api/trips", token=token)[1]["trips"][0]["summary"]
+  assert s["sv"] == hexaweb.SUMMARY_VERSION and "alerts" in s and "commit" in s
+
+
 def test_summaries_stop_when_the_car_turns_on(panel, tmp_path):
   trip_logs(panel, tmp_path)
   jobs, read = [], []

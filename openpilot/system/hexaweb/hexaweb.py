@@ -57,6 +57,7 @@ TRIP_INDEX_S = 30.  # the page asks once per minute of the trip: don't walk the 
 SUMMARY_PARAM = "HexaTripSummaries"  # {route: who had the wheel, for how long and how far}
 SUMMARY_NEWEST = 10  # drives summarized in the background, newest first, with the car off
 SUMMARY_KEEP = 60
+SUMMARY_VERSION = 2  # 2: version, alerts. An older summary is read again, the newest SUMMARY_NEWEST drives only
 ERRORS_EVERY_S = 30.
 CLIP_BEFORE_S = 10.  # the clip of a mark starts this long before it
 CLIP_TICKET_S = 600.  # a clip link works this long, for that clip only
@@ -637,7 +638,9 @@ class PanelBackend:
 
   def _summary_of(self, trip: dict) -> dict | None:
     s = (self.store.get(SUMMARY_PARAM) or {}).get(trip["id"])
-    return s if isinstance(s, dict) and s.get("segments") == len(trip["files"]) else None  # a drive that grew is redone
+    if not isinstance(s, dict) or s.get("segments") != len(trip["files"]):  # a drive that grew is redone
+      return None
+    return s if s.get("sv") == SUMMARY_VERSION or trip not in self._trips()[:SUMMARY_NEWEST] else None  # old drives keep what they have
 
   def _summarize_trips(self, todo: list[dict]) -> None:
     """Reads each drive once, after it ended, and keeps the numbers. Stops as soon as the car is on again."""
@@ -648,6 +651,7 @@ class PanelBackend:
         summary = self._summarize(trip["files"], lambda: self.vehicle_state().onroad)
         if summary is None:
           return
+        summary = {**summary, "sv": SUMMARY_VERSION}
         with self.lock:
           kept = self.store.get(SUMMARY_PARAM) or {}
           kept[trip["id"]] = summary

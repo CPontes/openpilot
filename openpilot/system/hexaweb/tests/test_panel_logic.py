@@ -238,3 +238,23 @@ def test_week_car_takes_maxima_minima_and_rates():
   assert (w["up"], w["down"], w["v12"], w["decel"], w["roll"]) == (11.5, 6.5, 12.3, 3.1, 5)
   assert abs(w["wheels"] - 1.2) < 1e-9
   assert run("weekCar", [{"mtime": now, "summary": SUMMARY}], now) is None
+
+
+# ----- Viagens: totals and versions (owner's decisions on the sweep, 02/11)
+
+def test_totals_add_every_drive_with_a_summary_and_give_rates_from_1_km():
+  trips = [{"mtime": 100, "summary": {"km": 30., "moving_s": 1800, "op_s": 1500, "off": 3, "alerts": 6}},
+           {"mtime": 200, "summary": {"km": 20., "moving_s": 1200, "op_s": 600, "off": 2, "alerts": 0}},
+           {"mtime": 300, "summary": None}]
+  t = run("totals", trips, 0)
+  assert t["trips"] == 2 and t["km"] == 50. and t["opPct"] == 70 and t["off"] == 5
+  assert t["per100"] == {"off": 10., "alerts": 12.}
+  assert run("totals", trips, 150)["trips"] == 1
+  assert run("totals", [{"mtime": 1, "summary": {"km": .4, "moving_s": 30, "op_s": 0, "off": 1}}], 0)["per100"] is None
+  assert run("totals", [], 0) is None
+
+
+def test_versions_newest_first_without_the_unknown():
+  trips = [{"summary": {"commit": "b2"}}, {"summary": {"commit": "a1"}}, {"summary": {"commit": "b2"}}, {"summary": {}}, {"summary": None}]
+  assert run("versions", trips) == ["b2", "a1"]
+  assert run("versionOf", {"summary": None}) == ""

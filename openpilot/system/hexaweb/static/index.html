@@ -511,6 +511,7 @@ const POINT_SVG = {
   sinal: '<rect x="8" y="2.5" width="8" height="16" rx="2.5"/><circle cx="12" cy="6.5" r="1.4"/><circle cx="12" cy="10.5" r="1.4"/><circle cx="12" cy="14.5" r="1.4"/><path d="M12 18.5v3"/>',
   lombada: '<path d="M2 17h4.5c2.2 0 3.2-6 5.5-6s3.3 6 5.5 6H22"/>',
 };
+let tripVersion = null;  // Viagens filtered by the installed version (its commit), null = all
 let trips = null, tripsAt = 0, update = null, health = null, near = null, live = null, liveAt = 0, latSince = null;
 let passengerOk = false, passNext = null;  // the passenger question: page memory only, never stored
 const API_TIMEOUT_MS = 8000;
@@ -1256,6 +1257,26 @@ function carReportCard(list) {
   return card;
 }
 
+function totalLine(label, x) {
+  return el("span", "desc num", `${label}: ` + tf(x.trips === 1 ? "{km} km em 1 viagem" : "{km} km em {n} viagens", { km: num(x.km, 0), n: x.trips }) +
+    " · " + tf("{op} com o openpilot", { op: textOf(x.op) }));
+}
+function compareLine(label, x) {
+  if (!x) return el("span", "desc", `${label}: ` + t("nenhuma viagem com resumo"));
+  const parts = [tf(x.trips === 1 ? "{km} km em 1 viagem" : "{km} km em {n} viagens", { km: num(x.km, 0), n: x.trips })];
+  if (x.opPct != null) parts.push(tf("openpilot em {p}% do tempo andando", { p: x.opPct }));
+  parts.push(x.per100 ? tf("{d} desengates e {a} alertas a cada 100 km", { d: num(x.per100.off, 1), a: num(x.per100.alerts, 1) }) : t("menos de 1 km: sem taxa"));
+  return el("span", "desc num", `${label}: ` + parts.join(" · "));
+}
+// Compares the chosen version with the others: rates per 100 km, never a score.
+function versionCard(all, v) {
+  const c = el("section", "card stack"); c.style.gap = "4px";
+  c.append(el("span", "label", tf("Versão {v}", { v }))); c.lastChild.style.margin = "0";
+  c.append(compareLine(t("Nesta versão"), LPL.totals(all.filter((tr) => LPL.versionOf(tr) === v), 0)));
+  c.append(compareLine(t("Nas outras"), LPL.totals(all.filter((tr) => LPL.versionOf(tr) && LPL.versionOf(tr) !== v), 0)));
+  c.append(el("span", "small", t("Estrada e trânsito mudam os números: compare com várias viagens.")));
+  return c;
+}
 function renderTrips(err) {
   const box = $("tripsList");
   if (carOn) { box.replaceChildren(el("div", "card desc", t("As viagens só abrem com o carro desligado."))); return; }
@@ -1270,10 +1291,32 @@ function renderTrips(err) {
     c.append(el("span", "small num", tf(week.trips === 1 ? "{km} km em 1 viagem" : "{km} km em {n} viagens", { km: num(week.km, 0), n: week.trips })));
     cards.push(c);
   }
+  const all = LPL.totals(trips, 0), month = LPL.totals(trips, LPL.monthStart(Date.now() / 1000));
+  if (all && all.trips > (week ? week.trips : 0)) {  // only when it says more than the last 7 days
+    const c = el("section", "card stack"); c.style.gap = "4px";
+    c.append(el("span", "label", t("Totais"))); c.lastChild.style.margin = "0";
+    if (month && month.trips < all.trips) c.append(totalLine(t("Este mês"), month));
+    c.append(totalLine(t("Desde sempre"), all));
+    c.append(el("span", "small", t("Só as viagens com o resumo pronto.")));
+    cards.push(c);
+  }
+  const versions = LPL.versions(trips);
+  if (versions.length >= 2 || tripVersion) {
+    const row = el("div", "chips"); row.setAttribute("aria-label", t("Filtrar por versão"));
+    for (const v of [null, ...versions]) {
+      const b = el("button", "chip num", v || t("Todas as versões")); b.type = "button";
+      b.setAttribute("aria-pressed", v === tripVersion ? "true" : "false");
+      b.addEventListener("click", () => { tripVersion = v; renderTrips(); });
+      row.append(b);
+    }
+    cards.push(row);
+    if (tripVersion) cards.push(versionCard(trips, tripVersion));
+  }
   cards.push(speedCard(trips));
   const carCard = carReportCard(trips);
   if (carCard) cards.push(carCard);
-  box.replaceChildren(...cards, ...trips.slice(0, 15).map((tr) => {
+  const shown = tripVersion ? trips.filter((tr) => LPL.versionOf(tr) === tripVersion) : trips;
+  box.replaceChildren(...cards, ...shown.slice(0, 15).map((tr) => {
     const start = tr.mtime - tr.minutes * 60;
     const a = el("a", "card stack"); a.href = "/viagens?trip=" + encodeURIComponent(tr.id); a.style.cssText = "text-decoration:none;color:inherit;gap:8px";
     const top = el("div", "row"); top.append(el("span", "title grow num", `${when(start)} → ${hhmm(tr.mtime)}`)); top.insertAdjacentHTML("beforeend", ICON_CHEV);
@@ -1286,6 +1329,10 @@ function renderTrips(err) {
       if (pend) { mk.style.color = "var(--warn)"; mk.style.fontWeight = "600"; }
       meta.append(mk);
     }
+    const sm = tr.summary || {};
+    if (sm.off) meta.append(el("span", "", sm.off === 1 ? t("1 desengate") : tf("{n} desengates", { n: sm.off })));
+    if (sm.alerts) meta.append(el("span", "", sm.alerts === 1 ? t("1 alerta") : tf("{n} alertas", { n: sm.alerts })));
+    if (versions.length >= 2 && LPL.versionOf(tr)) meta.append(el("span", "small", LPL.versionOf(tr)));
     const split = LPL.tripSplit(tr.summary);
     if (split) {
       const bar = el("div", "split thin"); splitBar(bar, split);

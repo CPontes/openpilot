@@ -228,3 +228,28 @@ def test_trip_summary_splits_who_had_the_wheel(tmp_path):
   assert abs(s["op_s"] + s["help_s"] + s["you_s"] - s["moving_s"]) < .05
   assert abs(s["op_km"] - .11) < .005 and abs(s["acc_s"] - 8.0) < .1
   assert s["segments"] == 3 and s["unread"] == 1
+
+
+def test_a_trip_counts_the_alerts_that_ask_something_and_reads_the_version():
+  msgs = [Msg("initData", .5, version="0.11.3", gitCommit="7006d57abcdef", params=SimpleNamespace(entries=[]))]
+  alerts = [(1., "", "normal"), (2., "Carro da frente saiu", "normal"), (3., "TAKE CONTROL", "critical"), (3.1, "TAKE CONTROL", "critical"),
+            (4., "", "normal"), (5., "Steer Unavailable", "userPrompt"), (6., "Pay Attention", "userPrompt")]
+  for t, text, status in alerts:
+    msgs.append(Msg("selfdriveState", t, enabled=True, alertText1=text, alertStatus=status))
+  msgs.append(Msg("carState", 1.001, vEgo=10., gasPressed=False, brakePressed=False, steeringPressed=False))
+  d = tl.trip_segment(msgs)
+  assert (d["summary"]["alerts"], d["summary"]["alerts_crit"]) == (3, 1)
+  assert d["version"] == {"version": "0.11.3", "commit": "7006d57"}
+
+
+def test_an_alert_left_over_from_the_minute_before_is_not_counted_again():
+  msgs = [Msg("selfdriveState", 1., enabled=True, alertText1="TAKE CONTROL", alertStatus="critical"),
+          Msg("selfdriveState", 1.1, enabled=True, alertText1="TAKE CONTROL", alertStatus="critical"),
+          Msg("carState", 1.001, vEgo=10., gasPressed=False, brakePressed=False, steeringPressed=False)]
+  assert tl.trip_segment(msgs)["summary"]["alerts"] == 0
+
+
+def test_trip_summary_keeps_the_first_version(tmp_path):
+  write_rlog(tmp_path / "0.zst", seconds=8.0)
+  s = tl.trip_summary({0: str(tmp_path / "0.zst")})
+  assert s["alerts"] >= 0 and s["version"] == "" and s["commit"] == ""  # this test log has no initData
