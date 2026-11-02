@@ -150,6 +150,8 @@
   function listed(trips) { return (trips || []).filter((t) => !t.hidden && !idle(t)); }
   // The same drive in the list as it is now: each refresh replaces the list, and a row on the screen may hold the old one.
   function currentTrip(trips, tr) { return (trips || []).find((t) => t.id === tr.id) || tr; }
+  // No path from the comma means no GPS only once the comma has read the drive: until then it means not yet.
+  function pathSettled(tr, pending) { return !!tr.summary && !pending; }
   // The screen's newest marks and every mark from the list of drives: the newest are the fresher copy.
   function mergeMarks(recent, all) {
     const seen = new Set((recent || []).map((m) => m.id));
@@ -343,7 +345,7 @@
     return { ok, ask: !!car.on && !!car.moving && !ok };
   }
 
-  root.LPL = { FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, mergeMarks, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
+  root.LPL = { FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, mergeMarks, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
                tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

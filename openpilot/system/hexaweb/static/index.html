@@ -1309,7 +1309,7 @@ function renderTripCard(h) {
 function drawTrip(tr) {
   const box = $("tripMap"), w = box.clientWidth, hgt = box.clientHeight;
   let got = paths.get(tr.id);
-  if (!got || (got.status === "none" && tr.summary && !got.summarized) || (got.status === "error" && Date.now() - got.at > 30000)) {
+  if (!got || (got.status === "none" && !got.summarized && tr.summary && Date.now() - got.at > 5000) || (got.status === "error" && Date.now() - got.at > 30000)) {
     got = { status: "loading" }; paths.set(tr.id, got); fetchPath(tr);
   }
   const marks = LPL.tripMarks(tr, allMarks());
@@ -1341,7 +1341,7 @@ function drawTrip(tr) {
     : t("Ruas desligadas. Ligadas, vêm do OpenStreetMap pela internet, que recebe o IP deste celular e a área de cada viagem aberta.");
   if (!fit) {
     say(got.status === "loading" ? t("Carregando o caminho…") : got.status === "none"
-      ? (tr.summary ? t("Sem GPS nesta viagem: sem mapa.") : t("O mapa aparece quando o comma terminar de ler esta viagem."))
+      ? (got.summarized ? t("Sem GPS nesta viagem: sem mapa.") : t("O mapa aparece quando o comma terminar de ler esta viagem."))
       : t("Não deu para carregar o caminho. Tentando de novo…"));
     return;
   }
@@ -1370,7 +1370,7 @@ function drawTrip(tr) {
 }
 async function fetchPath(tr) {
   const r = await api("/api/trip/path?route=" + encodeURIComponent(tr.id));
-  paths.set(tr.id, r.status === 200 ? { points: r.data.points } : r.status === 404 ? { status: "none", summarized: !!tr.summary } : { status: "error", at: Date.now() });
+  paths.set(tr.id, r.status === 200 ? { points: r.data.points } : r.status === 404 ? { status: "none", summarized: LPL.pathSettled(tr, tripsPending), at: Date.now() } : { status: "error", at: Date.now() });
   mapSig = "";
   if (view === "inicio" && !driving && lastHist) { const cur = tripPicked(lastHist); if (cur && cur.id === tr.id) drawTrip(cur); }
 }

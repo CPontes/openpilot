@@ -387,3 +387,11 @@ def test_a_hard_brake_shows_on_its_trip_page():
 def test_unpairing_leaves_no_list_of_drives_on_the_phone():
   html = (Path(__file__).parents[1] / "static" / "index.html").read_text()
   assert 'if (v === null) store("lpTrips", null);' in html
+
+
+def test_no_path_yet_is_not_no_gps():
+  # right after an update the phone has summaries from its cache and the comma is still reading the drives
+  drive_read = {"summary": {"km": 5.}}
+  assert run("pathSettled", drive_read, 0) is True
+  assert run("pathSettled", drive_read, 12) is False
+  assert run("pathSettled", {"summary": None}, 0) is False
