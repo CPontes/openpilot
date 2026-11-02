@@ -4,7 +4,7 @@ from openpilot.cereal import log
 from openpilot.selfdrive.selfdrived.traffic_alerts import ACC_LOST_DRIVEN, ACC_LOST_MIN_SPEED, ACC_LOST_PEDAL_HOLD, ACC_LOST_TIME, AccLostAlert, \
                                                          AUTO_RESUME_MAX_STOP, BUMP_MAX_DROP, BUMP_MAX_SPEED, BUMP_MAX_TIME, BUMP_MIN_SPEED, \
   BUMP_NO_RESPONSE, BumpSlowdown, AUTO_RESUME_REQUEST, LEAD_DEPART_DISTANCE, LEAD_DEPART_SPEED, \
-                                                         AutoResume, LeadDepartAlert, driver_attentive
+                                                         AutoResume, LeadDepartAlert, StopHoldAlert, driver_attentive
 
 DT = .01
 LEAD_DEPART_TIME_MARGIN = .49  # just before the departure counts
@@ -325,3 +325,13 @@ def test_the_acc_has_to_have_been_driving():
   acc = Acc()
   acc.run(ACC_LOST_DRIVEN - .1)
   assert acc.run(5., acc=False) == 0
+
+
+class TestStopHoldAlert:
+  def test_once_per_hold(self):
+    a = StopHoldAlert()
+    assert [a.update(x) for x in (False, True, True, True)] == [False, True, False, False]
+
+  def test_the_next_hold_tells_again(self):
+    a = StopHoldAlert()
+    assert [a.update(x) for x in (True, False, True)] == [True, False, True]

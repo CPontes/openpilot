@@ -113,6 +113,17 @@ class BumpSlowdown:
     return True
 
 
+class StopHoldAlert:
+  """Once per hold: the plan keeps the flag on until the gas."""
+  def __init__(self):
+    self.prev = False
+
+  def update(self, go_asked):
+    rising = go_asked and not self.prev
+    self.prev = go_asked
+    return rising
+
+
 class AutoResume:
   """Asks the ACC to pull away, once per stop, after the car ahead left. Anything unusual leaves the stop to the driver."""
   def __init__(self, dt: float = DT_CTRL):

@@ -639,6 +639,8 @@
  "restaurou os perfis {nomes}": "restauró los perfiles {nomes}",
  "restaurou perfis": "restauró perfiles",
  "restaurou pontos": "restauró puntos",
+ "parar de vez sem carro à frente": "detenerse del todo sin auto adelante",
+ "Sem carro à frente, quando o modelo freia até quase parar, o comma termina a parada e fica parado até você tocar no acelerador. O modelo às vezes volta a acelerar no sinal vermelho.\nEm teste: o carro não sai sozinho, e pode parar onde o modelo só ia reduzir. Precisa do longitudinal do comma.": "Sin auto adelante, cuando el modelo frena hasta casi detenerse, el comma termina la parada y se queda quieto hasta que toques el acelerador. El modelo a veces vuelve a acelerar en el semáforo en rojo.\nEn prueba: el auto no sale solo, y puede detenerse donde el modelo solo iba a reducir. Necesita el longitudinal del comma.",
  "frear antes com a distância da haval": "frenar antes con la distancia de la Haval",
  "Quando a distância medida pela Haval mostra o carro da frente parando antes do modelo perceber, o comma começa a frear mais cedo e mais suave.\nEm teste: fique pronto para frear. Precisa do longitudinal do comma. Só adiciona freio, e pode reduzir um pouco sem necessidade.": "Cuando la distancia que mide la Haval muestra que el auto de adelante se detiene antes de que el modelo lo note, el comma empieza a frenar antes y más suave.\nEn prueba: esté listo para frenar. Necesita el longitudinal del comma. Solo agrega freno, y puede reducir un poco sin necesidad.",
  "sair sozinho da parada": "salir solo de la parada",

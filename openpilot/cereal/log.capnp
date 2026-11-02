@@ -137,6 +137,7 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     autoResume @107;
     bumpSlowdown @108;
     accLost @109;
+    stopHold @110;
 
     lowBatteryDEPRECATED @40;
     soundsUnavailableDEPRECATED @47;
@@ -1249,6 +1250,7 @@ struct LongitudinalPlan @0xe00b5b3eba12876c {
   allowThrottle @38: Bool;
   allowBrake @39: Bool;
   accelBoost @40 :Float32;
+  stopFinishGo @41 :Bool;
 
 
   solverExecutionTime @35 :Float32;

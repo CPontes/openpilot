@@ -22,7 +22,7 @@ from openpilot.selfdrive.selfdrived.events import Events, ET
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
 from openpilot.selfdrive.selfdrived.always_on_lateral import LongitudinalPause, reverse_is_parking
-from openpilot.selfdrive.selfdrived.traffic_alerts import AccLostAlert, AutoResume, BumpSlowdown, LeadDepartAlert, driver_attentive
+from openpilot.selfdrive.selfdrived.traffic_alerts import AccLostAlert, AutoResume, BumpSlowdown, LeadDepartAlert, StopHoldAlert, driver_attentive
 from openpilot.selfdrive.hexa import radars
 from opendbc.car.gwm.values import GwmSafetyFlags
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
@@ -114,6 +114,7 @@ class SelfdriveD:
                              bool(self.CP.safetyConfigs[-1].safetyParam & GwmSafetyFlags.ALWAYS_ON_LATERAL)
     self.long_pause = LongitudinalPause()
     self.lead_depart_alert = LeadDepartAlert() if self.params.get_bool("LeadDepartAlert") else None
+    self.stop_hold_alert = StopHoldAlert()
     # the panda only lets the pull out with the same flag
     self.auto_resume = AutoResume() if self.CP.brand == 'gwm' and len(self.CP.safetyConfigs) > 0 and \
                                        bool(self.CP.safetyConfigs[-1].safetyParam & GwmSafetyFlags.AUTO_RESUME) else None
@@ -243,6 +244,9 @@ class SelfdriveD:
 
     if self.acc_lost_alert is not None and self.acc_lost_alert.update(self.enabled, CS.cruiseState.driving, CS.vEgo, CS.gasPressed, CS.brakePressed):
       self.events.add(EventName.accLost)
+
+    if self.stop_hold_alert.update(self.sm['longitudinalPlan'].stopFinishGo):
+      self.events.add(EventName.stopHold)
 
     if self.auto_resume is not None:
       lead = self.sm['radarState'].leadOne

@@ -134,6 +134,16 @@ OPTIONS: tuple[HexaOption, ...] = (
     testing=True,
   ),
   HexaOption(
+    key="StopFinish",
+    group="velocidade",
+    title="parar de vez sem carro à frente",
+    description="Sem carro à frente, quando o modelo freia até quase parar, o comma termina a parada e fica parado até você tocar no acelerador. " +
+                "O modelo às vezes volta a acelerar no sinal vermelho.\n" +
+                "Em teste: o carro não sai sozinho, e pode parar onde o modelo só ia reduzir. Precisa do longitudinal do comma.",
+    restart_needed=True,
+    testing=True,
+  ),
+  HexaOption(
     key="BumpSlowdown",
     group="velocidade",
     title="reduzir na lombada",

@@ -15,6 +15,7 @@ from openpilot.selfdrive.controls.lib.longcontrol import LongCtrlState
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import LongitudinalMpc, LongitudinalPlanSource
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import T_IDXS as T_IDXS_MPC
 from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N, get_accel_from_plan, should_stop
+from openpilot.selfdrive.controls.lib.stop_finish import StopFinish
 from openpilot.selfdrive.controls.lib.stop_point import StopPoint
 from openpilot.selfdrive.car.cruise import V_CRUISE_MAX, V_CRUISE_UNSET
 from openpilot.common.swaglog import cloudlog
@@ -43,6 +44,7 @@ class LongitudinalPlanner:
     self.stop_point = StopPoint(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl else None
     self.lead_boost = LeadBoost(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl else None
     self.lead_closing = LeadClosing(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl and Params().get_bool("LeadClosing") else None
+    self.stop_finish = StopFinish(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl and Params().get_bool("StopFinish") else None
 
     self.v_desired_filter = FirstOrderFilter(init_v, 2.0, self.dt)
     self.a_cruise = init_a
@@ -78,6 +80,8 @@ class LongitudinalPlanner:
         self.lead_boost.reset()
       if self.lead_closing is not None:
         self.lead_closing.reset()
+      if self.stop_finish is not None:
+        self.stop_finish.long_off(v_ego, sm['carState'].gasPressed)
 
     # Prevent divergence, smooth in current v_ego
     self.v_desired_filter.x = max(0.0, self.v_desired_filter.update(v_ego))
@@ -129,6 +133,9 @@ class LongitudinalPlanner:
     if self.lead_closing is not None and not reset_state:
       a_closing = self.lead_closing.update(v_ego, sm['carState'].camLeadDistance, sm['radarState'].leadOne, sm['carState'].gasPressed, a_prev)
       candidates.append((a_closing, LongitudinalPlanSource.lead0, False))
+    if self.stop_finish is not None and not reset_state:
+      a_finish = self.stop_finish.update(v_ego, sm['radarState'].leadOne, sm['carState'].gasPressed, sm['modelV2'])
+      candidates.append((a_finish, LongitudinalPlanSource.e2e, should_stop(v_ego, a_finish)))
 
     output_a_target, self.mpc.source, _ = min(candidates, key=lambda c: c[0])
     self.output_should_stop = any(should_stop for _, _, should_stop in candidates)
@@ -156,6 +163,7 @@ class LongitudinalPlanner:
 
     longitudinalPlan.aTarget = float(self.output_a_target)
     longitudinalPlan.accelBoost = float(self.accel_boost.total_boost)
+    longitudinalPlan.stopFinishGo = self.stop_finish is not None and self.stop_finish.go_asked
     longitudinalPlan.shouldStop = bool(self.output_should_stop)
     longitudinalPlan.allowBrake = True
 

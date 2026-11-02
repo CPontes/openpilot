@@ -528,6 +528,14 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
       Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 3.),
   },
 
+  EventName.stopHold: {
+    ET.PERMANENT: Alert(
+      "Parado: toque no acelerador para sair",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 3.),
+  },
+
   # above a radar or bump alert: nobody asked and the car starts to slow down
   EventName.accLost: {
     ET.PERMANENT: Alert(
