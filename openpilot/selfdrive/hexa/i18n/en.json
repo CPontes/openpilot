@@ -117,7 +117,6 @@
  "Desconectar este celular": "Disconnect this phone",
  "Desconectar este celular? Para voltar, será preciso parear de novo.": "Disconnect this phone? To come back, you'll need to pair again.",
  "Desconectar {nome}? Para voltar, será preciso parear de novo.": "Disconnect {nome}? To come back, it'll need to pair again.",
- "Desde sempre": "All time",
  "Desempenho por semana": "Week by week",
  "Desenvolvedor": "Developer",
  "Desfazer": "Undo",
@@ -727,5 +726,9 @@
  "maior trecho sem intervenção ({m} min)": "longest stretch with no intervention ({m} min)",
  "freada brusca": "very hard brake",
  "(automática)": "(automatic)",
- "automática": "automatic"
+ "automática": "automatic",
+ "ocultou uma viagem": "hid a drive",
+ "mostrou uma viagem de novo": "showed a drive again",
+ "Todas as viagens estão ocultas.": "All drives are hidden.",
+ "Guardadas no comma": "Stored on the comma"
 }

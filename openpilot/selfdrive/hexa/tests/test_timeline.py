@@ -304,3 +304,24 @@ def test_a_real_push_or_a_pedal_ends_the_stretch():
   assert stretch((5., False, False, False), (1., True, False, False), (3., False, False, False)) < 6.
   assert stretch((5., False, False, False), (.2, False, True, False), (3., False, False, False)) < 6.
   assert stretch((5., False, False, False), (.2, False, False, True), (3., False, False, False)) < 6.
+
+
+def test_a_prompt_with_the_text_of_a_softer_alert_is_counted():
+  # driverDistracted1 and 2 say the same "Pay Attention": only the second asks for anything, and it has the sound
+  msgs = [Msg("selfdriveState", 1., enabled=True, alertText1="", alertStatus="normal"),
+          Msg("selfdriveState", 2., enabled=True, alertText1="Pay Attention", alertStatus="normal"),
+          Msg("selfdriveState", 3., enabled=True, alertText1="Pay Attention", alertStatus="userPrompt"),
+          Msg("selfdriveState", 3.1, enabled=True, alertText1="Pay Attention", alertStatus="userPrompt"),
+          Msg("carState", 1.001, vEgo=10., gasPressed=False, brakePressed=False, steeringPressed=False)]
+  assert tl.trip_segment(msgs)["summary"]["alerts"] == 1
+
+
+def test_a_hard_brake_is_told_from_the_end_of_its_minute(monkeypatch):
+  # the last minute of a drive is short: 20 s here, the brake at 15 s, so 5 s before the file closed
+  msgs = []
+  for i in range(200):
+    t = i * .1
+    msgs.append(Msg("carState", t, vEgo=15., aEgo=-7. if 15. <= t < 15.5 else 0., gasPressed=False, brakePressed=True, steeringPressed=False))
+  monkeypatch.setattr(tl, "read_rlog", lambda path: msgs)
+  found = tl.trip_summary({0: "x"})["auto_marks"]
+  assert len(found) == 1 and found[0]["kind"] == "hardbrake" and 4. < found[0]["left"] < 5.

@@ -87,3 +87,10 @@ def test_public_and_log_fields_drop_private_keys():
   m["_req_mono_ns"] = 5
   assert "_req_mono_ns" not in marks.public(m)
   assert set(marks.log_fields(m)) == {"id", "t", "mono_ns", "source", "who", "reason", "label", "note", "delay_s"}
+
+
+def test_an_automatic_mark_the_owner_changed_stays_one():
+  found = [(1000., "hardbrake")]
+  m = marks.auto_marks([], found)
+  m[0].update(reason="freada", label="freada estranha")
+  assert len(marks.auto_marks(m, found)) == 1

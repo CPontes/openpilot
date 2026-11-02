@@ -101,6 +101,7 @@ function color(name) { return getComputedStyle(document.documentElement).getProp
 const WHO = { op: ["--accent", "openpilot dirigindo"], you: ["--off", "você dirigindo"], wheel: ["--wheel", "você no volante"],
               gas: ["--gas", "você no acelerador"], brake: ["--danger", "você no freio"] };
 function who(p) { return WHO[p.who] || WHO[p.on ? "op" : "you"]; }
+const SHOWN = ["mark", "off", "hardbrake"];
 
 async function loadTrips() {
   const r = await get("/api/trips");
@@ -117,6 +118,7 @@ async function loadTrips() {
     o.textContent = `${new Date(t.mtime * 1000).toLocaleString(LP.locale, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${t.minutes} min`;
     sel.append(o);
   }
+  if (!sel.options.length) { $("msg").textContent = T("Todas as viagens estão ocultas."); return; }
   if (wanted && [...sel.options].some((o) => o.value === wanted)) sel.value = wanted;
   $("view").classList.remove("hidden");
   hideLabel();
@@ -224,7 +226,7 @@ function render() {
     g.beginPath(); g.moveTo(...drawn[i - 1]); g.lineTo(...drawn[i]); g.stroke();
   }
   for (const e of events) {
-    if (e.kind !== "mark" && e.kind !== "off") continue;
+    if (!SHOWN.includes(e.kind)) continue;
     const [x, y] = drawn[nearest(e.t)];
     g.fillStyle = e.kind === "mark" ? color("--mark") : color("--danger");
     g.beginPath(); g.arc(x, y, 5, 0, 7); g.fill();
@@ -243,7 +245,7 @@ function list() {
   listed = events.length;
   const ul = $("events"); ul.replaceChildren();
   for (const e of [...events].sort((a, b) => a.t - b.t)) {
-    if (e.kind !== "mark" && e.kind !== "off") continue;
+    if (!SHOWN.includes(e.kind)) continue;
     const li = document.createElement("li");
     const tm = document.createElement("span"); tm.className = "time"; tm.textContent = fmt(e.t);
     const tx = document.createElement("span"); tx.textContent = T(e.text);

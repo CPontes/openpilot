@@ -338,3 +338,52 @@ def test_weekly_trend_leaves_hidden_and_idle_drives_out():
   assert [x["trips"] for x in w] == [0, 1, 2]
   assert w[2]["km"] == 30. and w[2]["opPct"] == 50 and abs(w[2]["off100"] - 100 / 30) < 1e-9
   assert w[1]["off100"] == 5. and w[0]["opPct"] is None
+
+
+def summed(**kw):
+  return {"id": "a", "mtime": 1000, "minutes": 10, "hidden": False,
+          "summary": {"km": 10., "moving_s": 600., "op_s": 300., "off": 1, "alerts": 1, "sh_on_s": 60., "sh_hard": 1, "se_grade_up": 3.,
+                      **kw.pop("summary", {})}, **kw}
+
+
+def test_a_hidden_drive_leaves_the_sums_too():
+  shown, hidden, idle = summed(id="a"), summed(id="b", hidden=True), summed(id="c", summary={"km": .1, "moving_s": 10.})
+  trips = [shown, hidden, idle]
+  assert [t["id"] for t in run("listed", trips)] == ["a"]
+  assert run("weekTotal", trips, 1000)["trips"] == 1
+  assert run("totals", trips, 0)["trips"] == 1
+  assert run("weekShadow", trips, 1000)["trips"] == 1
+  assert run("totals", [hidden], 0) is None
+
+
+def test_a_row_finds_its_drive_in_the_list_of_now():
+  # the list is replaced on each refresh: the row may hold the object of an older one
+  old, new = {"id": "a", "hidden": False, "n": 1}, {"id": "a", "hidden": False, "n": 2}
+  assert run("currentTrip", [new], old)["n"] == 2
+  assert run("currentTrip", [], old)["n"] == 1
+
+
+def test_the_newest_marks_win_over_the_list_of_drives():
+  recent = [{"id": "1", "t": 10, "reason": "faixa"}]
+  older = [{"id": "1", "t": 10, "reason": ""}, {"id": "2", "t": 5, "reason": "outro"}]
+  got = run("mergeMarks", recent, older)
+  assert sorted(m["id"] for m in got) == ["1", "2"] and next(m for m in got if m["id"] == "1")["reason"] == "faixa"
+  assert run("mergeMarks", recent, None) == recent
+
+
+def test_the_pages_finish_what_hiding_a_drive_starts():
+  static = Path(__file__).parents[1] / "static"
+  html, trip = (static / "index.html").read_text(), (static / "viagens.html").read_text()
+  assert 'trip_hidden: "ocultou uma viagem"' in html and 'trip_shown: "mostrou uma viagem de novo"' in html
+  assert "Todas as viagens estão ocultas." in trip and "sel.options.length" in trip  # with all of them hidden it stayed on loading
+  assert "Desde sempre" not in html  # the sums only reach the drives whose logs are still on the comma
+
+
+def test_a_hard_brake_shows_on_its_trip_page():
+  trip = (Path(__file__).parents[1] / "static" / "viagens.html").read_text()
+  assert 'const SHOWN = ["mark", "off", "hardbrake"];' in trip and 'e.kind !== "mark" && e.kind !== "off"' not in trip
+
+
+def test_unpairing_leaves_no_list_of_drives_on_the_phone():
+  html = (Path(__file__).parents[1] / "static" / "index.html").read_text()
+  assert 'if (v === null) store("lpTrips", null);' in html

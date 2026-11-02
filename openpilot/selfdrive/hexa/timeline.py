@@ -320,6 +320,7 @@ def trip_segment(events: Iterable) -> dict:
   total = {"s": 0., "km": 0., "moving_s": 0., "on_s": 0., "driver": 0, "gas": 0, "brake": 0, "off": 0, "marks": 0, "alerts": 0, "alerts_crit": 0,
            **dict.fromkeys(SPLIT_KEYS, 0.)}
   alert_text: str | None = None  # the alert on screen now; None until the minute's first message, which may carry one from the minute before
+  alert_status = "normal"
   version: dict | None = None
   driver_since = None
   driver_told = False
@@ -360,10 +361,10 @@ def trip_segment(events: Iterable) -> dict:
       shadow.on_selfdrive(enabled)
       text = str(getattr(ss, "alertText1", "") or "")
       status = str(getattr(ss, "alertStatus", "normal"))
-      if alert_text is not None and text and text != alert_text and status in ALERT_COUNTED:
+      if alert_text is not None and text and status in ALERT_COUNTED and (text != alert_text or alert_status not in ALERT_COUNTED):
         total["alerts"] += 1
         total["alerts_crit"] += status == "critical"
-      alert_text = text
+      alert_text, alert_status = text, status
       if en and not enabled and t0 is not None:
         out.append({"t": _r(t), "kind": "off", "text": "desengatou no freio" if brake else "desengatou"})
         total["off"] += 1
@@ -478,7 +479,8 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
       continue
     part = seg_data["summary"]
     version = version or seg_data.get("version") or {}
-    auto += [{"seg": seg, "t": e["t"], "kind": e["kind"]} for e in seg_data["events"] if e["kind"] in AUTO_TEXT]
+    # told from the end of the minute: a drive's last minute is short
+    auto += [{"seg": seg, "left": _r(part["s"] - e["t"]), "kind": e["kind"]} for e in seg_data["events"] if e["kind"] in AUTO_TEXT]
     first = first if first is not None else seg
     for p in seg_data["points"][::PATH_EVERY]:
       if p.get("lat") is not None:

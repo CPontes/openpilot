@@ -117,7 +117,6 @@
  "Desconectar este celular": "Desconectar este celular",
  "Desconectar este celular? Para voltar, será preciso parear de novo.": "¿Desconectar este celular? Para volver, tendrá que emparejar de nuevo.",
  "Desconectar {nome}? Para voltar, será preciso parear de novo.": "¿Desconectar {nome}? Para volver, tendrá que emparejar de nuevo.",
- "Desde sempre": "Desde siempre",
  "Desempenho por semana": "Semana a semana",
  "Desenvolvedor": "Desarrollador",
  "Desfazer": "Deshacer",
@@ -727,5 +726,9 @@
  "maior trecho sem intervenção ({m} min)": "tramo más largo sin intervención ({m} min)",
  "freada brusca": "frenada brusca",
  "(automática)": "(automática)",
- "automática": "automática"
+ "automática": "automática",
+ "ocultou uma viagem": "ocultó un viaje",
+ "mostrou uma viagem de novo": "volvió a mostrar un viaje",
+ "Todas as viagens estão ocultas.": "Todos los viajes están ocultos.",
+ "Guardadas no comma": "Guardados en el comma"
 }

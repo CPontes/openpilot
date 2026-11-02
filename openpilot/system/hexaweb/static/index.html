@@ -594,7 +594,7 @@ const API_TIMEOUT_MS = 8000;
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
 function store(k, v) { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }
 function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
-function saveToken(v) { token = v; store("hexaToken", v); }
+function saveToken(v) { token = v; store("hexaToken", v); if (v === null) store("lpTrips", null); }
 function toast(msg) { const e = $("toast"); e.textContent = msg; e.classList.add("show"); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove("show"), 2800); }
 const hhmm = (s) => new Date(s * 1000).toLocaleTimeString(L(), { hour: "2-digit", minute: "2-digit" });
 const hhmmss = (s) => new Date(s * 1000).toLocaleTimeString(L(), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -893,7 +893,7 @@ async function setOption(key, value, e, undo) {
 }
 
 const UPDATE_ACTIONS = { radars: "atualizou a lista de radares", check: "verificou", download: "baixou", install: "instalou", branch: "escolheu", reboot: "reiniciou" };
-const EVENTS = { paired: "pareou", logout: "desconectou", phone_revoked: "desconectou outro celular", pin_locked: "código bloqueado por tentativas erradas", reason_added: "adicionou motivo", reason_removed: "removeu motivo",
+const EVENTS = { trip_hidden: "ocultou uma viagem", trip_shown: "mostrou uma viagem de novo", paired: "pareou", logout: "desconectou", phone_revoked: "desconectou outro celular", pin_locked: "código bloqueado por tentativas erradas", reason_added: "adicionou motivo", reason_removed: "removeu motivo",
                  profile_saved: "salvou um perfil", profile_removed: "apagou um perfil", profiles_restored: "restaurou perfis" };
 const RADAR_ACTIONS = { edit: "conferiu", removed: "tirou", add: "adicionou", delete: "apagou", import: "restaurou pontos" };
 const COMMA_ACTIONS = { reboot: "reiniciou o comma", poweroff: "desligou o comma", recalibrate: "recalibrou o comma" };
@@ -1235,7 +1235,7 @@ async function refreshTrips(force) {
   if (carOn) { trips = null; renderTrips(); return; }
   const r = await api("/api/trips");
   tripsAt = r.status === 200 && r.data.pending ? Date.now() - 25000 : Date.now();  // still reading drives: ask again in 5 s
-  if (r.status === 200) { trips = r.data.trips; tripsPending = r.data.pending_n || 0; cacheTrips(); }
+  if (r.status === 200) { trips = r.data.trips; histMarks = r.data.marks || null; tripsPending = r.data.pending_n || 0; cacheTrips(); }
   else if (r.status !== 0) trips = null;  // no answer from the comma: the last list stays on the screen
   renderTrips(r.status === 200 ? "" : (r.data.error || ""));
   if (view === "inicio" && !driving) renderGarage();
@@ -1244,7 +1244,8 @@ async function refreshTrips(force) {
 // ----- Início: one drive with its map, and the whole history under it (owner, 02/11 01:53 and 02:02) -----
 const HIST_STEP = 20, MAP_PAD = 26;
 let tripSel = null, histQuery = "", histFilter = "todas", histShowHidden = false, histShown = HIST_STEP, histSig = "", lastHist = null;
-let tripsPending = 0, mapSig = "", tileFails = 0;
+let tripsPending = 0, mapSig = "", tileFails = 0, histMarks = null;
+function allMarks() { return LPL.mergeMarks(marksState.marks, histMarks); }  // /api/marks brings the newest, the history needs every one
 let streets = load("lpStreets") === "1";  // the street map behind the path: off unless turned on on this phone (CTO, 02/11)
 const paths = new Map();  // route → { points } or { status }: page memory only
 function cacheTrips() { if (trips) store("lpTrips", JSON.stringify({ at: Date.now(), trips })); }
@@ -1254,7 +1255,7 @@ function markText(m) {
 }
 function histNow() {
   lastHist = LPL.history(trips || [], { query: histQuery, filter: histFilter, showHidden: histShowHidden, locale: L(), nowS: Date.now() / 1000,
-    marks: marksState.marks.map((m) => ({ t: m.t, text: markText(m) })), words: { today: t("hoje"), yesterday: t("ontem") } });
+    marks: allMarks().map((m) => ({ t: m.t, text: markText(m) })), words: { today: t("hoje"), yesterday: t("ontem") } });
   return lastHist;
 }
 function tripPicked(h) { return h.list.find((tr) => tr.id === tripSel) || h.list[0] || null; }
@@ -1286,7 +1287,7 @@ function renderTripCard(h) {
     $("tripLegend").replaceChildren(...split.parts.flatMap((p) => [el("span", "sw " + p.key), el("span", "", t(p.label)),
       el("b", "", tf("{m} min", { m: p.min })), el("span", "km", `${num(p.km, 1)} km`)]));
   }
-  const nMarks = LPL.tripMarks(tr, marksState.marks).length;
+  const nMarks = LPL.tripMarks(tr, allMarks()).length;
   const big = (v, unit, color) => { const b = el("span", "big num", String(v)); if (color) b.style.color = color; b.append(" ", el("small", "", unit)); return b; };
   const nums = [big(nMarks, nMarks === 1 ? t("marca") : t("marcas"))];
   if (sm) nums.push(big(sm.off || 0, sm.off === 1 ? t("desengate") : t("desengates")), big(sm.alerts || 0, sm.alerts === 1 ? t("alerta") : t("alertas"), sm.alerts ? "var(--warn)" : ""));
@@ -1311,7 +1312,7 @@ function drawTrip(tr) {
   if (!got || (got.status === "none" && tr.summary && !got.summarized) || (got.status === "error" && Date.now() - got.at > 30000)) {
     got = { status: "loading" }; paths.set(tr.id, got); fetchPath(tr);
   }
-  const marks = LPL.tripMarks(tr, marksState.marks);
+  const marks = LPL.tripMarks(tr, allMarks());
   const sig = [tr.id, w, hgt, streets, got.points ? got.points.length : got.status, marks.map((m) => m.t).join(",")].join("|");
   if (sig === mapSig || !w) return;
   mapSig = sig;
@@ -1384,7 +1385,7 @@ function renderHistory(h) {
   if (!has) return;
   const sel = tripPicked(h);
   const sig = JSON.stringify([h.list.map((tr) => [tr.id, tr.hidden, !!tr.summary, tr.minutes]), h.counts, h.filter, histShown, sel && sel.id,
-                              marksState.marks.map((m) => [m.t, m.reason]), L(), tripsPending, h.hidden, h.idle, histShowHidden, !!histQuery]);
+                              allMarks().map((m) => [m.t, m.reason]), L(), tripsPending, h.hidden, h.idle, histShowHidden, !!histQuery]);
   if (sig === histSig) return;
   histSig = sig;
   $("historyCount").textContent = h.list.length === 1 ? t("1 viagem") : tf("{n} viagens", { n: h.list.length });
@@ -1427,7 +1428,7 @@ function histRow(tr, selected) {
   meta.append(el("span", "", `${tr.minutes} min`));
   if (sm) meta.append(el("span", "", `${num(sm.km, 1)} km`));
   if (split) meta.append(el("span", "", tf("{p}% openpilot", { p: Math.round(split.parts[0].pct) })));
-  const mk = LPL.tripMarks(tr, marksState.marks);
+  const mk = LPL.tripMarks(tr, allMarks());
   if (mk.length) { const x = el("span", mk.some((m) => !m.reason) ? "w" : "", mk.length === 1 ? t("1 marca") : tf("{n} marcas", { n: mk.length })); meta.append(x); }
   if (sm && sm.off) meta.append(el("span", "", sm.off === 1 ? t("1 desengate") : tf("{n} desengates", { n: sm.off })));
   if (sm && sm.alerts) meta.append(el("span", "w", sm.alerts === 1 ? t("1 alerta") : tf("{n} alertas", { n: sm.alerts })));
@@ -1469,13 +1470,15 @@ function swipeAway(row, done) {
   row.addEventListener("pointercancel", end);
 }
 async function hideTrip(tr, hidden) {
-  if (hidden && lastHist && tripPicked(lastHist) === tr) {  // the card moves to the next drive, not back to the newest
-    const i = lastHist.list.indexOf(tr), next = lastHist.list[i + 1] || lastHist.list[i - 1];
+  const picked = lastHist && tripPicked(lastHist);
+  if (hidden && picked && picked.id === tr.id) {  // the card moves to the next drive, not back to the newest
+    const i = lastHist.list.indexOf(picked), next = lastHist.list[i + 1] || lastHist.list[i - 1];
     tripSel = next ? next.id : null;
   }
   const r = await api("/api/trip/hide", { route: tr.id, hidden });
   histSig = ""; mapSig = "";
   if (r.status !== 200) { toast(r.data.error || t("Não deu para ocultar a viagem.")); renderGarage(); return; }
+  tr = LPL.currentTrip(trips, tr);  // the list may have been replaced since the row was drawn
   tr.hidden = hidden; cacheTrips();
   if (hidden) undo(t("Viagem oculta. O log continua no comma."), () => { tripSel = tr.id; hideTrip(tr, false); });
   else toast(t("A viagem voltou para a lista."));
@@ -1613,6 +1616,8 @@ function renderTrips(err) {
   if (carOn) { box.replaceChildren(el("div", "card desc", t("As viagens só abrem com o carro desligado."))); return; }
   if (!trips) { box.replaceChildren(el("div", "card desc", err || t("Carregando…"))); return; }
   if (!trips.length) { box.replaceChildren(el("div", "card desc", t("Nenhuma viagem gravada."))); return; }
+  const list = LPL.listed(trips);
+  if (!list.length) { box.replaceChildren(el("div", "card desc", t("Todas as viagens estão ocultas."))); return; }
   const week = LPL.weekTotal(trips, Date.now() / 1000), cards = [];
   if (week) {
     const c = el("section", "card ok stack"); c.style.gap = "4px";
@@ -1629,7 +1634,7 @@ function renderTrips(err) {
     const c = el("section", "card stack"); c.style.gap = "4px";
     c.append(el("span", "label", t("Totais"))); c.lastChild.style.margin = "0";
     if (month && month.trips < all.trips) c.append(totalLine(t("Este mês"), month));
-    c.append(totalLine(t("Desde sempre"), all));
+    c.append(totalLine(t("Guardadas no comma"), all));
     c.append(el("span", "small", t("Só as viagens com o resumo pronto.")));
     cards.push(c);
   }
@@ -1648,12 +1653,12 @@ function renderTrips(err) {
   cards.push(speedCard(trips));
   const carCard = carReportCard(trips);
   if (carCard) cards.push(carCard);
-  const shown = tripVersion ? trips.filter((tr) => LPL.versionOf(tr) === tripVersion) : trips;
+  const shown = tripVersion ? list.filter((tr) => LPL.versionOf(tr) === tripVersion) : list;
   box.replaceChildren(...cards, ...shown.slice(0, 15).map((tr) => {
     const start = tr.mtime - tr.minutes * 60;
     const a = el("a", "card stack"); a.href = "/viagens?trip=" + encodeURIComponent(tr.id); a.style.cssText = "text-decoration:none;color:inherit;gap:8px";
     const top = el("div", "row"); top.append(el("span", "title grow num", `${when(start)} → ${hhmm(tr.mtime)}`)); top.insertAdjacentHTML("beforeend", ICON_CHEV);
-    const nMarks = marksState.marks.filter((m) => m.t >= start - 60 && m.t <= tr.mtime + 60);
+    const nMarks = allMarks().filter((m) => m.t >= start - 60 && m.t <= tr.mtime + 60);
     const meta = el("div", "row desc num"); meta.style.gap = "16px";
     meta.append(el("span", "", `${tr.minutes} min`));
     if (nMarks.length) {

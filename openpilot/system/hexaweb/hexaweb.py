@@ -7,6 +7,7 @@ openpilot/selfdrive/hexa/phone.py; this file only parses HTTP and calls PanelBac
 import gzip
 import json
 import math
+import os
 import re
 import secrets
 import threading
@@ -62,6 +63,7 @@ TRIPS_LISTED = 300
 PATH_DIR = "hexa_trips"  # next to the log folder: each drive's path, for the map on the phone. Never leaves the comma
 HIDDEN_PARAM = "HexaTripsHidden"  # drives the owner hid from the phone's lists: the logs stay on the comma
 HIDDEN_KEEP = 600
+PRESERVE_ATTR = "user.preserve"  # system/loggerd/deleter.py: what keeps a flagged minute from being deleted
 SUMMARY_VERSION = 3  # 2: version, alerts. 3: the path for the map. An older summary is read again, the newest SUMMARY_NEWEST only
 ERRORS_EVERY_S = 30.
 CLIP_BEFORE_S = 10.  # the clip of a mark starts this long before it
@@ -641,7 +643,9 @@ class PanelBackend:
       self._summary_busy = True
       self._spawn(lambda: self._summarize_trips(todo))
     hidden = set(self.store.get(HIDDEN_PARAM) or [])
-    return 200, {"trips": [{"id": t["id"], "mtime": int(t["mtime"]), "minutes": len(t["files"]), "segments": sorted(t["files"]),
+    with self.lock:
+      marks = [hexa_marks.public(m) for m in self._marks()]  # /api/marks brings only the newest: the history covers every drive
+    return 200, {"marks": marks, "trips": [{"id": t["id"], "mtime": int(t["mtime"]), "minutes": len(t["files"]), "segments": sorted(t["files"]),
                             "summary": summaries[t["id"]], "hidden": t["id"] in hidden} for t in trips],
                  "pending": bool(todo), "pending_n": len(todo)}
 
@@ -661,7 +665,7 @@ class PanelBackend:
 
   def _summary_of(self, trip: dict, kept: dict | None = None, newest: set | None = None) -> dict | None:
     s = (kept if kept is not None else self.store.get(SUMMARY_PARAM) or {}).get(trip["id"])
-    if not isinstance(s, dict) or s.get("segments") != len(trip["files"]):  # a drive that grew is redone
+    if not isinstance(s, dict) or s.get("segments", 0) < len(trip["files"]):  # a drive that grew is redone, one the deleter trimmed is not
       return None
     if newest is None:
       newest = {t["id"] for t in self._trips()[:SUMMARY_NEWEST]}
@@ -676,7 +680,14 @@ class PanelBackend:
       return
     try:
       f.parent.mkdir(parents=True, exist_ok=True)
-      f.write_text(json.dumps(path, separators=(",", ":")))
+      tmp = f.with_suffix(".tmp")
+      tmp.write_text(json.dumps(path, separators=(",", ":")))
+      os.replace(tmp, f)
+      with self._replay_lock:
+        known = {t["id"] for t in self._trips()} | {route}
+      for old in f.parent.glob("*.json"):  # a path goes away with its logs: the deleter doesn't know this folder
+        if old.stem not in known:
+          old.unlink(missing_ok=True)
       for old in sorted(f.parent.glob("*.json"))[:-SUMMARY_KEEP]:  # route names grow with each drive
         old.unlink(missing_ok=True)
     except OSError:
@@ -720,14 +731,15 @@ class PanelBackend:
       self._summary_busy = False
 
   def _auto_marks(self, trip: dict, summary: dict) -> None:
-    """Very hard brakes found in a drive become marks. A minute's file is written last at the end of that
-    minute, so its time less SEGMENT_S is when the minute started [hipótese] give or take a second or two."""
+    """Very hard brakes found in a drive become marks, and their video stays, as a flag's does. A minute's file is
+    written last at the end of that minute: "left" is how long before it [hipótese] give or take a second or two."""
     found = []
     for a in summary.get("auto_marks") or []:
       path = trip["files"].get(a.get("seg"))
       try:
-        found.append((Path(path).stat().st_mtime - SEGMENT_S + float(a["t"]), a["kind"]))
-      except (TypeError, OSError, KeyError, ValueError):
+        found.append((Path(path).stat().st_mtime - float(a["left"]), a["kind"]))
+        os.setxattr(str(Path(path).parent), PRESERVE_ATTR, b"1")
+      except (AttributeError, TypeError, OSError, KeyError, ValueError):  # AttributeError: no xattrs on the Mac
         continue
     if found:
       with self.lock:

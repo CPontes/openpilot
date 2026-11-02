@@ -68,7 +68,7 @@ def auto_marks(marks: list[dict] | None, found: list[tuple[float, str]]) -> list
   marks = list(marks or [])
   for t, kind in found:
     reason = AUTO_REASON.get(kind)
-    if reason is None or any(m.get("reason") == reason and abs(m.get("t", 0) - t) < AUTO_SAME_S for m in marks):
+    if reason is None or any(m.get("source") == "auto" and abs(m.get("t", 0) - t) < AUTO_SAME_S for m in marks):  # the owner may have reclassified it
       continue
     marks = append(marks, new_mark("auto", "comma", reason=reason, label=dict(AUTO_REASONS)[reason], now=t))
   return marks

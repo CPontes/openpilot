@@ -146,9 +146,19 @@
     };
   }
 
+  // What the lists and the sums count: a hidden drive and one that didn't go anywhere are out of both.
+  function listed(trips) { return (trips || []).filter((t) => !t.hidden && !idle(t)); }
+  // The same drive in the list as it is now: each refresh replaces the list, and a row on the screen may hold the old one.
+  function currentTrip(trips, tr) { return (trips || []).find((t) => t.id === tr.id) || tr; }
+  // The screen's newest marks and every mark from the list of drives: the newest are the fresher copy.
+  function mergeMarks(recent, all) {
+    const seen = new Set((recent || []).map((m) => m.id));
+    return [...(recent || []), ...(all || []).filter((m) => !seen.has(m.id))];
+  }
+
   // The last 7 days added up: a sum, never a streak (a streak would reward not putting the hand on the wheel).
   function weekTotal(trips, nowS) {
-    const recent = (trips || []).filter((t) => t.summary && t.mtime >= nowS - 7 * 86400);
+    const recent = listed(trips).filter((t) => t.summary && t.mtime >= nowS - 7 * 86400);
     if (!recent.length) return null;
     const op = recent.reduce((a, t) => a + (t.summary.op_s || 0), 0), km = recent.reduce((a, t) => a + (t.summary.km || 0), 0);
     return { op: duration(minutes(op)), km, trips: recent.length };
@@ -157,7 +167,7 @@
   // Every drive with a summary since sinceS (0: all of them). Sums and rates, never a score or a streak.
   // Disengagements and alerts per 100 km only from 1 km on, so one short drive doesn't look like a trend.
   function totals(trips, sinceS) {
-    const ts = (trips || []).filter((t) => t.summary && t.mtime >= (sinceS || 0));
+    const ts = listed(trips).filter((t) => t.summary && t.mtime >= (sinceS || 0));
     if (!ts.length) return null;
     const sum = (k) => ts.reduce((a, t) => a + (t.summary[k] || 0), 0);
     const km = sum("km"), moving = sum("moving_s");
@@ -303,7 +313,7 @@
   // Shadow mode (selfdrive/hexa/shadow.py), added up over the last 7 days: what openpilot's longitudinal would have done
   // while the Haval ACC drove. Null until a drive has it (openpilot engaged with the ACC driving).
   function weekShadow(trips, nowS) {
-    const recent = (trips || []).filter((t) => t.summary && t.mtime >= nowS - 7 * 86400 && (t.summary.sh_on_s || 0) > 0);
+    const recent = listed(trips).filter((t) => t.summary && t.mtime >= nowS - 7 * 86400 && (t.summary.sh_on_s || 0) > 0);
     if (!recent.length) return null;
     const sum = (k) => recent.reduce((a, t) => a + (t.summary[k] || 0), 0);
     const gapT = sum("sh_gap_t");
@@ -312,7 +322,7 @@
   }
   // What the car went through in the last 7 days (selfdrive/hexa/sensors.py): maxima, minima and rates, never a score.
   function weekCar(trips, nowS) {
-    const recent = (trips || []).filter((t) => t.summary && t.mtime >= nowS - 7 * 86400 && (t.summary.se_grade_up || t.summary.se_v12_min));
+    const recent = listed(trips).filter((t) => t.summary && t.mtime >= nowS - 7 * 86400 && (t.summary.se_grade_up || t.summary.se_v12_min));
     if (!recent.length) return null;
     const S = (k) => recent.reduce((a, t) => a + (t.summary[k] || 0), 0);
     const M = (k) => { const v = recent.map((t) => t.summary[k] || 0).filter((x) => x > 0); return v.length ? Math.max(...v) : null; };
@@ -333,7 +343,7 @@
     return { ok, ask: !!car.on && !!car.moving && !ok };
   }
 
-  root.LPL = { FIXED_HOST, addressPlan, tripSplit, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
+  root.LPL = { FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, mergeMarks, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
                tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

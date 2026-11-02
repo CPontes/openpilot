@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import re
 import threading
 from types import SimpleNamespace
@@ -1171,14 +1172,14 @@ def test_a_very_hard_brake_found_in_a_drive_becomes_a_mark_once(panel, tmp_path)
   os.utime(f, (50_060., 50_060.))  # minute 1 ended at 50 060: it started at 50 000
   jobs = []
   panel.backend._spawn = jobs.append
-  panel.backend._summarize = lambda files, stop: {"segments": len(files), "auto_marks": [{"seg": 1, "t": 12.5, "kind": "hardbrake"},
-                                                                                     {"seg": 9, "t": 1., "kind": "hardbrake"}]}
+  panel.backend._summarize = lambda files, stop: {"segments": len(files), "auto_marks": [{"seg": 1, "left": 47.5, "kind": "hardbrake"},
+                                                                                     {"seg": 9, "left": 1., "kind": "hardbrake"}]}
   token = panel.pair()
   panel.json("/api/trips", token=token)
   jobs.pop()()
   auto = [m for m in panel.store.get(marks.MARKS_PARAM) or [] if m.get("reason") == "brusca"]
   assert len(auto) == 1 and auto[0]["t"] == 50_012 and auto[0]["label"] == "freada brusca" and auto[0]["source"] == "auto"
-  panel.backend._auto_marks(panel.backend._trips()[0], {"auto_marks": [{"seg": 1, "t": 13., "kind": "hardbrake"}]})  # read again
+  panel.backend._auto_marks(panel.backend._trips()[0], {"auto_marks": [{"seg": 1, "left": 47., "kind": "hardbrake"}]})  # read again
   assert len([m for m in panel.store.get(marks.MARKS_PARAM) if m.get("reason") == "brusca"]) == 1
 
 
@@ -1220,3 +1221,57 @@ def test_a_drive_can_be_hidden_from_the_lists_and_shown_again(panel, tmp_path):
   assert panel.json("/api/trip/hide", {"route": route})[0] == 401
   panel.vs = VehicleState(onroad=True)
   assert panel.json("/api/trip/hide", {"route": route}, token=token)[0] == 409
+
+
+def test_the_drive_history_stays_out_of_the_logs():
+  # logger.cc writes every param into initData of each minute, and the qlogs are uploaded on their own
+  keys = (Path(hexaweb.__file__).parents[2] / "common" / "params_keys.h").read_text()
+  for key in ("HexaTripSummaries", "HexaTripsHidden"):
+    assert re.search(rf'"{key}", {{PERSISTENT \| DONT_LOG, JSON}}', keys), key
+
+
+def test_a_path_goes_away_with_its_logs(panel, tmp_path):
+  logs = tmp_path / "realdata"
+  logs.mkdir()
+  trip_logs(panel, logs)
+  trips = tmp_path / hexaweb.PATH_DIR
+  trips.mkdir()
+  (trips / "00000001--aaaaaaaaaa.json").write_text("[[1.0, 2.0, 0, 0]]")  # its logs are gone
+  panel.backend._keep_path("0000000f--8784034901", [[1.0, 2.0, 0, 0]])
+  assert [f.name for f in trips.iterdir()] == ["0000000f--8784034901.json"]
+
+
+def test_a_path_is_written_whole(panel, tmp_path, monkeypatch):
+  logs = tmp_path / "realdata"
+  logs.mkdir()
+  trip_logs(panel, logs)
+  moved = []
+  real = hexaweb.os.replace
+  monkeypatch.setattr(hexaweb.os, "replace", lambda a, b: (moved.append(Path(b).name), real(a, b)))
+  panel.backend._keep_path("0000000f--8784034901", [[1.0, 2.0, 0, 0]])
+  assert moved == ["0000000f--8784034901.json"]
+
+
+def test_a_drive_that_lost_minutes_keeps_its_summary(panel):
+  # the deleter takes the oldest minutes: the numbers and the path of the whole drive stay
+  trip = {"id": "0000000f--8784034901", "files": {5: "a", 6: "b"}}
+  kept = {trip["id"]: {"segments": 30, "sv": hexaweb.SUMMARY_VERSION, "km": 30.}}
+  assert panel.backend._summary_of(trip, kept, {trip["id"]})["km"] == 30.
+  kept[trip["id"]]["segments"] = 1  # one that grew is redone
+  assert panel.backend._summary_of(trip, kept, {trip["id"]}) is None
+
+
+def test_the_list_of_drives_brings_every_mark(panel, tmp_path):
+  trip_logs(panel, tmp_path)
+  panel.store.put(marks.MARKS_PARAM, [{"id": str(i), "t": 1000 + i, "reason": "outro", "label": "outro", "source": "celular"} for i in range(80)])
+  token = panel.pair()
+  assert len(panel.json("/api/marks", token=token)[1]["marks"]) == 30  # the screen's list stays short
+  assert len(panel.json("/api/trips", token=token)[1]["marks"]) == 80
+
+
+def test_the_video_of_a_hard_brake_is_kept(panel, tmp_path, monkeypatch):
+  trip_logs(panel, tmp_path)
+  kept = []
+  monkeypatch.setattr(hexaweb.os, "setxattr", lambda path, name, value: kept.append((Path(path).name, name, value)), raising=False)
+  panel.backend._auto_marks(panel.backend._trips()[0], {"auto_marks": [{"seg": 1, "left": 5., "kind": "hardbrake"}]})
+  assert kept == [("0000000f--8784034901--1", "user.preserve", b"1")]
