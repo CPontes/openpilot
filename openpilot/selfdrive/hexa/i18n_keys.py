@@ -9,7 +9,7 @@ import re
 import sys
 from pathlib import Path
 
-from openpilot.selfdrive.hexa import comma_ctl, i18n, live, marks, options
+from openpilot.selfdrive.hexa import comma_ctl, i18n, live, marks, missions, options
 
 HEXA = Path(__file__).parent
 ROOT = HEXA.parents[1]  # openpilot/openpilot
@@ -18,7 +18,7 @@ PY_SOURCES = [ROOT / "system/hexaweb/hexaweb.py", HEXA / "phone.py", HEXA / "upd
 PAGES = [ROOT / "system/hexaweb/static" / n for n in ("index.html", "viagens.html", "replay.html", "lp-logic.js")]
 # objects in the pages whose values are passed through t() by name
 PAGE_TABLES = ("UPDATE_ACTIONS", "EVENTS", "RADAR_ACTIONS", "RESUME", "SIDES", "SIDE_CHIPS", "POINT", "KINDS",
-               "COMMA_ACTIONS", "LEVEL_TEXT", "SAFETY_TEXT", "SAFETY_NAMES", "MARK_POINTS")
+               "COMMA_ACTIONS", "LEVEL_TEXT", "SAFETY_TEXT", "SAFETY_NAMES", "MARK_POINTS", "HOW_TEXT", "HOW_LONG")
 FIELD = re.compile(r"\{[^{}]*\}")
 PT = re.compile(r"[a-zà-ú]", re.I)
 
@@ -74,7 +74,18 @@ def option_texts() -> set[str]:
   out |= {label for _, label in marks.DEFAULT_REASONS + marks.AUTO_REASONS}
   out |= comma_ctl_texts()
   out |= set(live.EVENT_TEXT.values())
+  out |= mission_texts()
   return out
+
+
+def mission_texts() -> set[str]:
+  """The missions as the phone shows them (missions.py)."""
+  out = {title for _, title in missions.TRAILS} | {name for _, name in missions.LEVELS}
+  for m in missions.CATALOG:
+    out |= {m.title, m.note, m.why, m.proof, m.lock, *m.steps}
+  for pk in missions.PACKS.values():
+    out |= {pk["intro"], pk["during"], pk["back"], pk["after"], *pk["before"], *pk["stop_if"]}
+  return {x for x in out if x}
 
 
 def comma_ctl_texts() -> set[str]:

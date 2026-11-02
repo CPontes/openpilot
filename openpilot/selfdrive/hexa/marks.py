@@ -32,7 +32,7 @@ DEFAULT_REASONS: tuple[tuple[str, str], ...] = (
 )
 
 # Marks the comma makes by itself from a drive's sensors (selfdrive/hexa/sensors.py). Not offered on the Marcar sheet.
-AUTO_REASONS: tuple[tuple[str, str], ...] = (("brusca", "freada brusca"),)
+AUTO_REASONS: tuple[tuple[str, str], ...] = (("brusca", "freada brusca"), ("missao", "missão feita"))  # "missao": the phone's "Fiz agora"
 AUTO_REASON = {"hardbrake": "brusca"}
 AUTO_SAME_S = 30.  # an automatic mark this close to another of the same kind is the same event
 

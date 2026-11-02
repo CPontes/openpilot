@@ -1,0 +1,259 @@
+"""Hexa missions: the tests the car still needs, as missions the owner takes along on a drive (owner, 02/11).
+
+Each mission is one real test. What counts as done, and who says so:
+- "auto": the phone sees it in the drive summaries the comma already keeps (lp-logic.js missionProgress), with the car off;
+- "marca": it happens while driving and the comma can't tell by itself yet. The owner taps "Fiz agora": a mark with the hour,
+  the place and the mission, so the CTO finds the minute in the log. A mark never completes a mission by itself;
+- "parado": the owner does it parked and answers on the phone (HexaMissions keeps the answer);
+- "cto": the CTO measures it in a log;
+- "decisao": not a test, a choice of the owner's.
+
+The CTO completes a "marca" or "cto" mission by raising `done` here, with the route that proved it in `proof`.
+Keys never change once in use: the phone's answers point to them.
+
+Nothing here runs with the car on: the catalog is static, the state is one small param, and the phone does the counting.
+"""
+from dataclasses import dataclass
+
+MISSIONS_PARAM = "HexaMissions"
+MAX_ACTIVE = 3  # missions taken along on the next drive, one by one
+MAX_PACK = 12  # or a version's whole route
+MAX_PENDING = 50  # "Fiz agora" marks waiting for the CTO
+HOW = ("auto", "marca", "parado", "cto", "decisao")
+DETECT = ("slow10", "night30", "highway", "km200", "marks10", "installed")
+
+TRAILS: tuple[tuple[str, str], ...] = (
+  ("direcao", "Direção"),
+  ("acc", "Velocidade e ACC"),
+  ("long", "Longitudinal do comma"),
+  ("avisos", "Avisos e atenção"),
+  ("celular", "Celular e painel"),
+  ("coleta", "Coleta para a comma"),
+  ("cobertura", "Cobertura"),
+  ("versao", "Versão e envio à comma"),
+)
+
+# The system's level, by missions done out of all: the LizPilot's, never the driver's
+LEVELS: tuple[tuple[float, str], ...] = ((0., "Garagem"), (.15, "Bairro"), (.29, "Cidade"), (.44, "Rodovia"), (.62, "Trânsito"),
+                                         (.81, "Todos os climas"), (1., "Pronto para a comma"))
+
+
+@dataclass(frozen=True)
+class Mission:
+  key: str
+  trail: str
+  title: str
+  total: int
+  how: str
+  note: str = ""  # what is still missing, or where it was proved
+  why: str = ""
+  steps: tuple[str, ...] = ()
+  option: str = ""  # an option to turn on parked before the drive (options.py key)
+  lock: str = ""  # why it can't be taken yet
+  drive: bool = False  # a "parado" answer about something that happens driving: asked after the drive
+  detect: str = ""  # "auto": what the phone looks for in the summaries
+  arg: str = ""  # the detector's argument (a commit)
+  done: int = 0  # proved so far, by the CTO (raise it with the proof)
+  proof: str = ""
+  version: str = ""  # part of this version's pack
+
+
+CATALOG: tuple[Mission, ...] = (
+  # *** Direção ***
+  Mission("base", "direcao", "Primeira volta com a versão base", 1, "cto", done=1, proof="30/10 · melhor que a do Sato"),
+  Mission("ajuda-mesmo-sentido", "direcao", "Ajuda no mesmo sentido não solta o volante", 1, "cto", done=1, proof="rota 07 · torque mantido em 88–95%"),
+  Mission("estrada", "direcao", "Estrada de 60 a 90 km/h sem cair", 1, "cto", done=1, proof="rota 16 · 98,8% engajado"),
+  Mission("filtro-baixa", "direcao", "Filtro de baixa velocidade agindo", 1, "cto", done=1, proof="rota 14 · sem falhas"),
+  Mission("balanco-normal", "direcao", "Balanço normal de novo", 1, "cto", done=1, proof="rota 2c · nota 9"),
+  Mission("mao-na-curva", "direcao", "O volante segue a sua mão na curva", 1, "cto", done=1, proof="rota 29 · 0 de 55 contra a mão"),
+  Mission("sinuosa", "direcao", "Rua sinuosa da rota diária medida", 1, "cto", done=1, proof="rota 0f · falta força em 9 de 19"),
+  Mission("curva-fechada", "direcao", "Curva fechada medida", 1, "cto", done=1, proof="rota 16 · não é o torque"),
+  Mission("asfalto-ruim", "direcao", "Asfalto ruim medido", 1, "cto", done=1, proof="176 min · apertos 4 a 7 vezes mais"),
+  Mission("transito-lento", "direcao", "Trânsito lento atrás de outro carro", 1, "auto", detect="slow10",
+          note="10 min abaixo de 30 km/h com o openpilot no volante",
+          why="É a dúvida mais antiga da direção: o balanço abaixo de 30 km/h.",
+          steps=("Siga um carro no trânsito lento por 10 minutos.", "Não precisa fazer nada diferente: o comma conta sozinho.")),
+  Mission("posicao-faixa", "direcao", "Posição na faixa ligada, sem balanço", 1, "marca", option="LaneOffsetEnabled",
+          note="1 viagem com ela ligada", why="Ela foi corrigida depois da rota 2b. Falta uma viagem com ela ligada.",
+          steps=("Ligue a posição na faixa, parado.", "Dirija normalmente. Se balançar, marque.")),
+  Mission("sempre-ativa", "direcao", "Direção sempre ativa", 4, "parado", option="AlwaysOnLateral", drive=True,
+          note="frear, volante ativo, alavanca, cancelar", why="Com ela, frear não desliga a direção. Só o cancelar desliga.",
+          steps=("Parado, ligue e reinicie o comma.", "Andando, freie: o volante continua ativo?", "Puxe a alavanca: o ACC volta?",
+                 "Empurre a alavanca: tudo desliga?")),
+  Mission("ponto-cego", "direcao", "Troca de faixa: o ponto cego bate", 1, "parado", drive=True,
+          note="a luz do retrovisor bate com o aviso", why="Sem isso, a seta em via de mão dupla pode levar à contramão.",
+          steps=("Com um carro no ponto cego, veja se a luz do retrovisor e o aviso no comma acendem juntos.",)),
+  Mission("assistente-haval", "direcao", "Curva com o assistente da Haval agindo", 1, "marca",
+          note="openpilot desligado, com marca", why="Diz se a direção aceita mais força que hoje.",
+          steps=("Com o openpilot desligado e o assistente de faixa da Haval ligado, faça uma curva.", "Toque em «Fiz agora».")),
+  Mission("falha-falsa", "direcao", "Sem falha falsa ao forçar contra", 1, "marca", note="1 viagem sem falha com a sua mão"),
+  Mission("perto-de-zero", "direcao", "Direção perto de 0 km/h", 1, "marca", note="falta a ida e volta perto do 0"),
+  Mission("modo-sombra", "direcao", "Sinuosa com o modo sombra", 3, "marca", note="3 passagens", lock="Depende do modo sombra (LEARN-01)"),
+  # *** Velocidade e ACC ***
+  Mission("alavanca-parada", "acc", "A alavanca tira o carro da parada", 4, "cto", done=4, proof="rota 16 · sem acelerador"),
+  Mission("cancelar-alavanca", "acc", "Cancelar pela alavanca", 5, "cto", done=5, proof="rota 16 · com o ACC ativo"),
+  Mission("retomar", "acc", "Retomar sem falha de ACC", 6, "cto", done=6, proof="rota 29"),
+  Mission("descida", "acc", "Sem freada falsa em descida", 1, "cto", done=1, proof="rota 2c"),
+  Mission("sair-sozinho", "acc", "Sair sozinho quando o da frente anda", 5, "marca", option="AutoResume", done=1, proof="rota 1c",
+          why="Já deu certo 1 vez. Com 5, o CTO tira o «sem prova».",
+          steps=("Pare atrás de um carro com o ACC ativo.", "Espere ele andar. Pé pronto no freio.", "Se não sair, acelere: vale como tentativa.")),
+  Mission("cancelar-comma", "acc", "Cancelar pelo comma", 5, "marca", lock="Depende do CTO liberar o teste"),
+  # the CTO's route for b3ac6fe (02/11), in its order
+  Mission("parar-de-vez", "acc", "Sinal vermelho sem carro à frente", 3, "marca", option="StopFinish", version="b3ac6fe",
+          why="O principal desta versão: sem carro à frente, o comma termina a parada e espera o gás.",
+          steps=("Deixe o modelo frear sozinho, sem carro atrás colado.",
+                 "Certo: ele para de vez e só sai quando você tocar no acelerador.",
+                 "O aviso «Parado: toque no acelerador para sair» só aparece se o modelo quiser sair. Sem aviso também é normal.",
+                 "A regra só atua abaixo de 3 km/h: ele ainda pode passar da faixa. Se for passar, freie.")),
+  Mission("freio-alavanca", "acc", "Freio e alavanca na parada", 1, "marca", option="StopFinish", version="b3ac6fe",
+          why="A parada de vez precisa aguentar o freio e a alavanca.",
+          steps=("Só no vermelho, depois de o teste do sinal ter parado o carro sozinho, sem você pisar antes.", "Toque no freio e puxe a alavanca.",
+                 "Certo: o carro continua parado até você tocar no acelerador.")),
+  Mission("sinal-abrindo", "acc", "Sinal abrindo", 1, "marca", option="StopFinish", version="b3ac6fe",
+          steps=("Ainda sem carro à frente, quando abrir, toque de leve no acelerador.", "Certo: ele sai normalmente.")),
+  Mission("fila", "acc", "Fila atrás de carro", 1, "marca", version="b3ac6fe",
+          steps=("Pare atrás de um carro e deixe ele sair.", "Certo: o seu sai junto, sem você tocar em nada. Se ficar parado, marque.")),
+  Mission("lombada-faixa", "acc", "Lombada e faixa de pedestre", 1, "marca", version="b3ac6fe",
+          steps=("Certo: ele reduz e segue.", "Se ficar parado sem motivo, marque.")),
+  Mission("frear-antes", "acc", "Carro da frente freando", 3, "marca", option="LeadClosing", version="b3ac6fe",
+          why="Usa a distância que a Haval mede para começar a frear mais cedo.",
+          steps=("Siga um carro a 40–60 km/h em avenida.", "Marque «freada estranha» se frear à toa ou muito em cima.")),
+  Mission("parada-longa", "acc", "Parada longa e subida", 1, "marca", version="b3ac6fe", note="se acontecer naturalmente",
+          steps=("Parada de 1 a 2 minutos, ou parada em subida.", "Certo: fica firme, sem soltar nem descer. Se for descer ou soltar, freie e marque.")),
+  Mission("ruas-casa", "direcao", "Ruas perto de casa", 1, "marca", version="b3ac6fe",
+          why="Nenhuma mudança na direção nesta versão. As marcas servem para comparar depois.",
+          steps=("Só marque «balançou» quando acontecer.",)),
+  Mission("lombada", "acc", "Reduzir na lombada", 3, "marca", option="BumpSlowdown"),
+  Mission("aviso-acc", "acc", "Aviso de ACC que saiu sozinho", 1, "parado", option="AccLostAlert", drive=True,
+          note="o som tocou numa queda real", why="O ACC da Haval às vezes sai sozinho. O aviso precisa tocar quando isso acontece."),
+  Mission("arrancada", "acc", "Arrancada com ritmo", 3, "marca", note="rota 29: falta ritmo"),
+  Mission("rota-diaria", "acc", "Gravar a rota de todo dia", 1, "marca", note="base para reduzir antes da curva"),
+  # *** Longitudinal do comma ***
+  Mission("long-primeira", "long", "Primeira volta com ele", 1, "cto", done=1, proof="rota 23"),
+  Mission("long-re", "long", "Ré com freio", 1, "cto", done=1, proof="rota 26"),
+  Mission("long-sinal", "long", "Sinal vermelho visto", 5, "cto", done=3, proof="rota 26", lock="Só com o longitudinal do comma ligado"),
+  Mission("long-sem-freada", "long", "Uma viagem sem freada forte sua", 1, "cto", lock="Só com o longitudinal do comma ligado"),
+  Mission("long-aeb", "long", "O AEB da Haval segue ativo", 1, "cto", lock="Só no log. Nunca provoque o AEB"),
+  # *** Avisos e atenção ***
+  Mission("aviso-radar", "avisos", "Aviso de radar antes do radar", 3, "marca", option="RadarAlert"),
+  Mission("aviso-saiu", "avisos", "Aviso de que o carro da frente saiu", 3, "marca", option="LeadDepartAlert"),
+  Mission("atencao", "avisos", "Atenção: sem óculos, escuros, celular", 3, "parado", note="em P, com a câmera interna gravando",
+          steps=("Olhe à frente, para o rádio e para o comma.", "Repita de óculos escuros.", "Repita com o celular na mão.")),
+  # *** Celular e painel ***
+  Mission("marcar-10", "celular", "Marcar 10 momentos numa viagem", 1, "auto", detect="marks10", done=1, proof="rota 26 · 27 marcas"),
+  Mission("parear-casa", "celular", "Parear no Wi-Fi de casa", 1, "parado"),
+  Mission("parear-hotspot", "celular", "Parear pelo hotspot do comma", 1, "parado"),
+  Mission("ponto-radar", "celular", "Salvar um ponto de radar", 1, "parado", note="parado, com GPS"),
+  Mission("ajuste-sincroniza", "celular", "Ajuste no celular muda no comma", 1, "parado"),
+  Mission("replay", "celular", "Replay de uma viagem", 1, "parado"),
+  Mission("sem-conexao", "celular", "Sem conexão e volta sozinho", 1, "parado", note="Wi-Fi fora por 10 s"),
+  Mission("lizpilot-local", "celular", "lizpilot.local abre o painel", 1, "parado"),
+  Mission("perfil", "celular", "Perfil e cópia dos ajustes", 2, "parado"),
+  Mission("video-marca", "celular", "Vídeo da marca", 1, "parado", note="com o carro desligado"),
+  Mission("ssh", "celular", "SSH com os 4 números", 2, "parado", note="e expira em 60 s"),
+  Mission("historico", "celular", "Histórico, mapa e ocultar", 1, "parado"),
+  Mission("android", "celular", "Android", 1, "parado", note="se tiver um"),
+  # *** Coleta para a comma (VALID-01) ***
+  Mission("cinto", "coleta", "Cinto: tirar e pôr", 1, "parado", note="o comma grava o sinal"),
+  Mission("portas", "coleta", "Portas: abrir e fechar cada uma", 4, "parado"),
+  Mission("freio-mao", "coleta", "Freio de mão e auto hold", 2, "parado"),
+  Mission("cambio", "coleta", "Câmbio: P, R, N, D", 1, "parado", note="pé no freio"),
+  Mission("pedais", "coleta", "Pedais: freio e acelerador", 2, "parado", note="em P"),
+  Mission("piscas", "coleta", "Piscas: esquerda, direita, alerta", 3, "parado"),
+  Mission("cego-coleta", "coleta", "Ponto cego: um carro de cada lado", 2, "marca", note="andando, só observar"),
+  # *** Cobertura ***
+  Mission("rodovia", "cobertura", "Rodovia", 1, "auto", detect="highway", done=1, proof="rota 16"),
+  Mission("cidade", "cobertura", "Cidade", 1, "cto", done=1, proof="rota 29"),
+  Mission("tunel", "cobertura", "Túnel", 1, "cto", done=1, proof="rota 0f"),
+  Mission("noite", "cobertura", "Noite", 1, "auto", detect="night30", note="30 min depois do pôr do sol"),
+  Mission("chuva", "cobertura", "Chuva", 1, "parado", drive=True, note="você diz que choveu"),
+  Mission("km200", "cobertura", "200 km numa mesma versão", 1, "auto", detect="km200", note="para a comparação de versões"),
+  # *** Versão e envio à comma ***
+  Mission("instalar", "versao", "Instalar a versão nova", 1, "auto", detect="installed", arg="b3ac6fe", version="b3ac6fe",
+          note="Software, Check for update"),
+  Mission("subir-logs", "versao", "Subir as viagens dos testes", 1, "parado", note="para o CTO medir"),
+  Mission("branches", "versao", "Apagar as branches arquivadas", 1, "decisao"),
+  Mission("rota-publica", "versao", "Rota pública para a comma", 1, "decisao", note="privacidade: você escolhe"),
+  Mission("checklist-comma", "versao", "Checklist da comma", 52, "cto", done=2, proof="UP-01"),
+)
+BY_KEY = {m.key: m for m in CATALOG}
+
+# What each version asks before, during and to stop (the CTO's route). The pack's missions carry `version`.
+PACKS: dict[str, dict] = {
+  "b3ac6fe": {
+    "minutes": 20,
+    "intro": "Pé pronto no freio o tempo todo. As opções novas estão em teste e não leem o sinal: quem garante a parada é você.",
+    "before": ("Em Software, Check for update, instale b3ac6fe.", "Ligue «parar de vez sem carro à frente» e «frear antes com a distância da haval».",
+               "Desligue e ligue o carro para as opções valerem."),
+    "during": "Só faça cada teste quando o trânsito permitir, e marque pelo celular logo depois.",
+    "stop_if": ("O carro sair sem você tocar no acelerador num teste de parada.", "O carro soltar o freio ou descer parado.",
+                "O carro frear forte sem motivo mais de uma vez."),
+    "back": "Para voltar, desligue a opção com o carro parado e reinicie. Se ainda ficar ruim, a versão anterior é a635314 + bf02b93.",
+    "after": "Quando terminar, avise o CTO: ele baixa os logs e confere tudo.",
+  },
+}
+
+
+def public() -> dict:
+  """What the phone needs, texts in Portuguese: the phone translates them."""
+  return {"trails": [{"key": k, "title": t} for k, t in TRAILS], "levels": [list(lv) for lv in LEVELS], "max_active": MAX_ACTIVE,
+          "packs": {v: {k: list(x) if isinstance(x, tuple) else x for k, x in p.items()} for v, p in PACKS.items()},
+          "missions": [{"key": m.key, "trail": m.trail, "title": m.title, "total": m.total, "how": m.how, "note": m.note, "why": m.why,
+                        "steps": list(m.steps), "option": m.option, "lock": m.lock, "drive": m.drive, "detect": m.detect, "arg": m.arg,
+                        "done": m.done, "proof": m.proof, "version": m.version} for m in CATALOG]}
+
+
+def clean(raw) -> dict:
+  """The phone's part of the state: what it takes along, what the owner answered, and the marks waiting for the CTO."""
+  raw = raw if isinstance(raw, dict) else {}
+  active = [k for k in raw.get("active", []) if isinstance(k, str) and k in BY_KEY]
+  answers = raw.get("answers") if isinstance(raw.get("answers"), dict) else {}
+  answers = {k: max(0, min(int(v), BY_KEY[k].total)) for k, v in answers.items()
+             if k in BY_KEY and isinstance(v, int) and not isinstance(v, bool)}
+  pending = [p for p in raw.get("pending", []) if isinstance(p, dict) and p.get("key") in BY_KEY][-MAX_PENDING:]
+  return {"active": list(dict.fromkeys(active))[:MAX_PACK], "answers": answers, "pending": pending}
+
+
+def can_take(m: Mission) -> bool:
+  return not m.lock and (m.how in ("auto", "marca") or (m.how == "parado" and m.drive))
+
+
+def take(state: dict, key: str) -> dict:
+  """Raises ValueError with the reason the owner reads."""
+  m = BY_KEY.get(key)
+  if m is None:
+    raise ValueError("Missão não encontrada.")
+  if not can_take(m):
+    raise ValueError("Esta missão não vai na viagem.")
+  if key in state["active"]:
+    return state
+  if len(state["active"]) >= MAX_ACTIVE:
+    raise ValueError(f"No máximo {MAX_ACTIVE} missões por viagem.")
+  return dict(state, active=state["active"] + [key])
+
+
+def take_pack(state: dict, version: str) -> dict:
+  """The version's whole route goes on the next drive, in its order, in place of what was there."""
+  if version not in PACKS:
+    raise ValueError("Versão sem roteiro.")
+  return dict(state, active=[m.key for m in CATALOG if m.version == version and can_take(m)][:MAX_PACK])
+
+
+def drop(state: dict, key: str) -> dict:
+  return dict(state, active=[k for k in state["active"] if k != key])
+
+
+def answer(state: dict, key: str, ok: bool) -> dict:
+  """The owner's answer, parked: one more done when it went well. A drive question leaves the trip list once answered."""
+  m = BY_KEY.get(key)
+  if m is None or m.how != "parado" or m.lock:
+    raise ValueError("Esta missão não se responde no celular.")
+  answers = dict(state["answers"])
+  if ok:
+    answers[key] = min(m.total, max(answers.get(key, 0), m.done) + 1)
+  active = [k for k in state["active"] if k != key] if m.drive else state["active"]
+  return dict(state, answers=answers, active=active)
+
+
+def add_pending(state: dict, key: str, mark_id: str, t: int) -> dict:
+  return dict(state, pending=(state["pending"] + [{"key": key, "mark": mark_id, "t": int(t)}])[-MAX_PENDING:])

@@ -23,6 +23,7 @@ from openpilot.selfdrive.hexa import i18n
 from openpilot.selfdrive.hexa import live as hexa_live
 from openpilot.selfdrive.hexa import marks as hexa_marks
 from openpilot.selfdrive.hexa import mdns as hexa_mdns
+from openpilot.selfdrive.hexa import missions as hexa_missions
 from openpilot.selfdrive.hexa import radars
 from openpilot.selfdrive.hexa import phone
 from openpilot.selfdrive.hexa import timeline
@@ -65,7 +66,8 @@ PATH_PRUNE_S = 600.  # paths of drives the comma already deleted go too, looked 
 HIDDEN_PARAM = "HexaTripsHidden"  # drives the owner hid from the phone's lists: the logs stay on the comma
 HIDDEN_KEEP = 600
 PRESERVE_ATTR = "user.preserve"  # system/loggerd/deleter.py: what keeps a flagged minute from being deleted
-SUMMARY_VERSION = 4  # 2: version, alerts. 3: the path. 4: the KPIs (wobble, lane seen, where it let go).
+SUMMARY_VERSION = 5  # 2: version, alerts. 3: the path. 4: the KPIs (wobble, lane seen, where it let go).
+# 5: time in slow traffic (the missions).
 # An older summary is read again, the newest SUMMARY_NEWEST only
 ERRORS_EVERY_S = 30.
 CLIP_BEFORE_S = 10.  # the clip of a mark starts this long before it
@@ -594,6 +596,56 @@ class PanelBackend:
       self._audit({"event": "reason_removed", "who": who.get("name", ""), "key": key})
     return 200, {"ok": True}
 
+  # *** missions (owner, 02/11): the tests the car still needs ***
+
+  def missions_state(self) -> dict:
+    with self.lock:
+      st = hexa_missions.clean(self.store.get(hexa_missions.MISSIONS_PARAM))
+    return dict(hexa_missions.public(), state=st)
+
+  def missions_action(self, who: dict, body: dict) -> tuple[int, dict]:
+    """take / drop: what goes on the next drive, any time (it changes nothing in the car).
+    answer: the owner says how it went, parked only. mark: "Fiz agora", a mark with the mission, any time, like Marcar."""
+    action, key = str(body.get("action", "")), str(body.get("key", ""))
+    if action == "pack":
+      with self.lock:
+        try:
+          st = hexa_missions.take_pack(hexa_missions.clean(self.store.get(hexa_missions.MISSIONS_PARAM)), key)
+        except ValueError as e:
+          return 400, {"error": str(e)}
+        self.store.put(hexa_missions.MISSIONS_PARAM, st)
+      return 200, {"ok": True, "state": st}
+    m = hexa_missions.BY_KEY.get(key)
+    if m is None:
+      return 404, {"error": "Missão não encontrada."}
+    if action == "answer":
+      vs = self.vehicle_state()
+      if vs.onroad and not (vs.parked and vs.standstill and not vs.engaged):
+        return 409, {"error": "Responda com o carro parado."}
+    if action == "mark":
+      if m.how not in ("marca", "auto"):
+        return 400, {"error": "Esta missão não vai na viagem."}
+      code, data = self.mark(who, "missao", note=m.title)
+      if code != 200:
+        return code, data
+    with self.lock:
+      st = hexa_missions.clean(self.store.get(hexa_missions.MISSIONS_PARAM))
+      try:
+        if action == "take":
+          st = hexa_missions.take(st, key)
+        elif action == "drop":
+          st = hexa_missions.drop(st, key)
+        elif action == "answer":
+          st = hexa_missions.answer(st, key, body.get("ok") is True)
+        elif action == "mark":
+          st = hexa_missions.add_pending(st, key, data["mark"]["id"], data["mark"]["t"])
+        else:
+          return 400, {"error": "Ação desconhecida."}
+      except ValueError as e:
+        return 400, {"error": str(e)}
+      self.store.put(hexa_missions.MISSIONS_PARAM, st)
+    return 200, {"ok": True, "state": st}
+
   # *** replay ***
 
   def replay_list(self) -> tuple[int, dict]:
@@ -1089,6 +1141,9 @@ def make_handler(backend: PanelBackend):
         who = self._who()
         if who is not None:
           self._json(200, backend.export_marks())
+      elif path == "/api/missions":
+        if self._who() is not None:
+          self._json(200, backend.missions_state())
       elif path == "/api/replay/list":
         if self._who() is not None:
           self._json(*backend.replay_list())
@@ -1183,6 +1238,7 @@ def make_handler(backend: PanelBackend):
         "/api/radars/import": lambda who, b: backend.radars_import(who, b.get("edits")),
         "/api/options/import": lambda who, b: backend.options_import(who, b.get("options"), bool(b.get("apply")), b.get("profiles")),
         "/api/mark/clip": lambda who, b: backend.clip_ticket(who, str(b.get("id", ""))),
+        "/api/missions": lambda who, b: backend.missions_action(who, b),
         "/api/trip/hide": lambda who, b: backend.trip_hide(who, str(b.get("route", "")), b.get("hidden") is not False),
         "/api/profiles/save": lambda who, b: backend.profile_save(who, b.get("name", "")),
         "/api/profiles/delete": lambda who, b: backend.profile_delete(who, str(b.get("name", ""))),

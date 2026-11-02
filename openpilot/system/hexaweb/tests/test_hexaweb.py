@@ -1270,3 +1270,41 @@ def test_an_empty_list_of_drives_deletes_no_path(panel, tmp_path):
   kept.write_text("[]")
   panel.backend._prune_paths(set())
   assert kept.exists()
+
+
+# ----- missions (owner, 02/11)
+
+def test_missions_need_pairing_and_come_with_the_state(panel):
+  assert panel.request("/api/missions")[0] == 401
+  tok = panel.pair()
+  status, body = panel.json("/api/missions", token=tok)
+  assert status == 200 and body["state"] == {"active": [], "answers": {}, "pending": []} and len(body["missions"]) > 50
+  assert body["packs"]["b3ac6fe"]["before"]
+
+
+def test_take_while_driving_but_answer_only_parked(panel):
+  tok = panel.pair()
+  panel.vs = VehicleState(onroad=True, parked=False, standstill=False, engaged=True)
+  status, body = panel.json("/api/missions", {"action": "take", "key": "noite"}, token=tok)
+  assert status == 200 and body["state"]["active"] == ["noite"]  # changes nothing in the car
+  status, body = panel.json("/api/missions", {"action": "answer", "key": "portas", "ok": True}, token=tok)
+  assert status == 409
+  panel.vs = VehicleState(onroad=True, parked=True, standstill=True, engaged=False)
+  status, body = panel.json("/api/missions", {"action": "answer", "key": "portas", "ok": True}, token=tok)
+  assert status == 200 and body["state"]["answers"] == {"portas": 1}
+  assert panel.json("/api/missions", {"action": "take", "key": "x"}, token=tok)[0] == 404
+  assert panel.json("/api/missions", {"action": "voar", "key": "noite"}, token=tok)[0] == 400
+  assert panel.json("/api/missions", {"action": "pack", "key": "b3ac6fe"}, token=tok)[0] == 200
+
+
+def test_did_it_now_is_a_real_mark_with_the_mission(panel):
+  tok = panel.pair()
+  panel.vs = VehicleState(onroad=True, parked=False, standstill=False, engaged=True)
+  status, body = panel.json("/api/missions", {"action": "mark", "key": "fila"}, token=tok)
+  assert status == 200
+  pend = body["state"]["pending"]
+  mk = [m for m in panel.store.get(marks.MARKS_PARAM) if m["id"] == pend[0]["mark"]][0]
+  assert pend[0]["key"] == "fila" and mk["reason"] == "missao" and mk["note"] == "Fila atrás de carro" and mk["source"] == "celular"
+  assert panel.store.get_bool(marks.BOOKMARK_REQUEST_PARAM)  # the comma raises its own bookmark: the minute is in the log
+  assert panel.json("/api/missions", {"action": "mark", "key": "fila"}, token=tok)[0] == 429  # same pace as Marcar
+  assert panel.json("/api/missions", {"action": "mark", "key": "portas"}, token=tok)[0] == 400  # done parked, answered, not marked

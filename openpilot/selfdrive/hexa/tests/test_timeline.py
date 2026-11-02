@@ -8,7 +8,7 @@ from openpilot.selfdrive.hexa import timeline as tl
 NS = int(1e9)
 
 
-def write_rlog(path, seconds=8.0, bookmark_at=None, mark=None, oscillate=(2.0, 6.0), limit=(6.5, 7.5), pressed=None, acc=None, stop=None,
+def write_rlog(path, seconds=8.0, bookmark_at=None, mark=None, oscillate=(2.0, 6.0), limit=(6.5, 7.5), pressed=None, acc=None, stop=None, speed=10.,
                lat_from=0.5, lat_off=None, gas=None, lanes=None):
   """A small rlog made of real cereal messages, as the comma would record it."""
   import zstandard
@@ -29,7 +29,7 @@ def write_rlog(path, seconds=8.0, bookmark_at=None, mark=None, oscillate=(2.0, 6
     tq = (1 if (i // 25) % 2 else -1) * 0.6 if osc else (1.0 if limit[0] <= s < limit[1] else 0.1)
 
     def cs(c, s=s, osc=osc):
-      c.vEgo = 0. if stop and stop[0] <= s < stop[1] else 10.
+      c.vEgo = 0. if stop and stop[0] <= s < stop[1] else speed
       if pressed:
         c.steeringPressed = pressed[0] <= s < pressed[1]
       if gas:
@@ -352,3 +352,12 @@ def test_the_kpis_wobble_lane_seen_and_where_it_let_go(tmp_path):
   assert abs(wavy["lane_ok"] / wavy["lane_n"] - .5) < .1
   off = tl.trip_summary({2: str(write_rlog(d / "c.zst", seconds=8., oscillate=(0., 0.)))})  # write_rlog's TAKE CONTROL; enabled from 0.5 s
   assert off["off_at"] == [] and calm["off_at"] == []
+
+
+def test_slow_traffic_counts_only_with_openpilot_steering_below_30(tmp_path):
+  d = tmp_path / "00000001--abc--3"
+  d.mkdir()
+  slow = tl.trip_summary({3: str(write_rlog(d / "a.zst", seconds=8., lat_from=0., speed=5.))})
+  fast = tl.trip_summary({3: str(write_rlog(d / "b.zst", seconds=8., lat_from=0.))})
+  mine = tl.trip_summary({3: str(write_rlog(d / "c.zst", seconds=8., lat_from=99., speed=5.))})
+  assert slow["slow_s"] > 7 and fast["slow_s"] == 0 and mine["slow_s"] == 0

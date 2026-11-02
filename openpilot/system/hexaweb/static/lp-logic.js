@@ -403,6 +403,59 @@
              v12: mins.length ? Math.min(...mins) : null, wheels: wheelT > 30 ? S("se_wheel_s") / wheelT : null };
   }
 
+  // Missions (selfdrive/hexa/missions.py): the tests the car still needs. What counts as done comes from the CTO (done),
+  // from the owner's answers, or from the drive summaries the comma already keeps, read here with the car off.
+  // A "Fiz agora" mark is a clue for the CTO, never done by itself. The level is the system's, never the driver's.
+  const SLOW_MISSION_S = 600, NIGHT_MIN_S = 1800, HIGHWAY_KMH = 90, HIGHWAY_KM = 15, MISSION_VERSION_KM = 200, MARKS_IN_A_TRIP = 10;
+  function missionAuto(m, trips) {
+    const ts = (trips || []).filter((t) => t.summary && !t.hidden), S = (t) => t.summary;
+    const night = (t) => { const h = new Date(tripStart(t) * 1000).getHours(); return h >= 19 || h < 5; };
+    switch (m.detect) {
+      case "slow10": return ts.some((t) => (S(t).slow_s || 0) >= SLOW_MISSION_S) ? 1 : 0;
+      case "night30": return ts.some((t) => (S(t).moving_s || 0) >= NIGHT_MIN_S && night(t)) ? 1 : 0;
+      case "highway": return ts.some((t) => (S(t).v_max || 0) >= HIGHWAY_KMH && (S(t).km || 0) >= HIGHWAY_KM) ? 1 : 0;
+      case "marks10": return ts.some((t) => (S(t).marks || 0) >= MARKS_IN_A_TRIP) ? 1 : 0;
+      case "installed": return m.arg && ts.some((t) => versionOf(t).startsWith(m.arg)) ? 1 : 0;
+      case "km200": { const km = {}; ts.forEach((t) => { const v = versionOf(t); if (v) km[v] = (km[v] || 0) + (S(t).km || 0); });
+        return Object.values(km).some((x) => x >= MISSION_VERSION_KM) ? 1 : 0; }
+      default: return 0;
+    }
+  }
+  function missionProgress(cat, state, trips) {
+    const st = state || {}, answers = st.answers || {}, out = {};
+    for (const m of (cat && cat.missions) || []) {
+      const d = Math.min(m.total, Math.max(m.done || 0, answers[m.key] || 0, m.how === "auto" ? missionAuto(m, trips) : 0));
+      const marks = (st.pending || []).filter((p) => p.key === m.key).length;
+      out[m.key] = { d, total: m.total, full: d >= m.total, locked: !!m.lock && d < m.total, toCheck: Math.min(marks, m.total - d),
+                     active: (st.active || []).includes(m.key) };
+    }
+    return out;
+  }
+  function missionLevel(cat, prog) {
+    const keys = Object.keys(prog), n = keys.filter((k) => prog[k].full).length, total = keys.length || 1, levels = (cat && cat.levels) || [[0, ""]];
+    let i = 0;
+    levels.forEach((l, k) => { if (n >= Math.ceil(l[0] * total)) i = k; });
+    const nx = levels[i + 1];
+    return { n, total, i, name: levels[i][1], next: nx ? { name: nx[1], left: Math.ceil(nx[0] * total) - n } : null };
+  }
+  // A trail's missions, what is left first: half done, open, the CTO's, locked, done
+  function missionOrder(list, prog) {
+    const rank = (m) => { const p = prog[m.key]; return p.full ? 4 : p.locked ? 3 : m.how === "cto" ? 2 : p.d || p.toCheck ? 0 : 1; };  // the CTO's open ones after the owner's
+    return list.slice().sort((a, b) => rank(a) - rank(b));
+  }
+  function missionTrails(cat, prog) {
+    return ((cat && cat.trails) || []).map((tr) => {
+      const ms = cat.missions.filter((m) => m.trail === tr.key), d = ms.filter((m) => prog[m.key].full).length;
+      const next = missionOrder(ms, prog).find((m) => !prog[m.key].full && !prog[m.key].locked);
+      return { key: tr.key, title: tr.title, d, total: ms.length, seal: d === ms.length, next: next ? next.title : null };
+    });
+  }
+  // What moved between two looks (before the drive, after it): for the result screen
+  function missionDiff(before, after) {
+    return Object.keys(after).filter((k) => before[k] && (after[k].d > before[k].d || after[k].toCheck > before[k].toCheck))
+      .map((k) => ({ key: k, from: before[k].d, to: after[k].d, total: after[k].total, full: after[k].full, checks: after[k].toCheck - before[k].toCheck }));
+  }
+
   // openpilot's three following distances (longitudinal_mpc_lib/long_mpc.py:71-79), in seconds and in meters at a speed
   const PERSONALITIES = [[T("perto"), 1.25], [T("padrão"), 1.45], [T("folgada"), 1.75]];
   function gapMeters(gapS, kmh) { return Math.round(gapS * kmh / 3.6); }
@@ -414,7 +467,7 @@
     return { ok, ask: !!car.on && !!car.moving && !ok };
   }
 
-  root.LPL = { kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
+  root.LPL = { missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
                tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

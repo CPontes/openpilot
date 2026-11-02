@@ -445,3 +445,46 @@ def test_a_drive_against_its_average():
   me = kdrive(SAT, off=0, driver=0)
   v = run("tripVsAverage", me, trips + [me], SAT + 60)
   assert v["kmPerInt"]["word"] == "melhor que a sua média" and v["opPct"]["word"] == "na sua média"
+
+
+# ----- missions
+
+def _m(key, how, total=1, done=0, lock="", **kw):
+  return {"key": key, "trail": "a", "title": key.capitalize(), "total": total, "how": how, "done": done, "lock": lock, **kw}
+
+
+CAT = {"levels": [[0, "Garagem"], [.5, "Cidade"], [1, "Pronta"]], "trails": [{"key": "a", "title": "A"}],
+       "missions": [_m("lento", "auto", detect="slow10"), _m("noite", "auto", detect="night30"),
+                    _m("inst", "auto", detect="installed", arg="b3ac6fe"), _m("fila", "marca", 3, 1),
+                    _m("portas", "parado", 4), _m("aeb", "cto", lock="Só no log")]}
+
+
+def trip(km=10, moving=900, slow=0, commit="a635314", hour_end=12, hidden=False):
+  import datetime
+  end = datetime.datetime(2026, 11, 2, hour_end, 0).timestamp()
+  return {"mtime": end, "minutes": round(moving / 60), "hidden": hidden,
+          "summary": {"km": km, "moving_s": moving, "slow_s": slow, "commit": commit, "v_max": 60, "marks": 0}}
+
+
+def test_missions_seen_in_the_summaries_and_never_from_a_mark():
+  st = {"active": ["fila"], "answers": {"portas": 2}, "pending": [{"key": "fila", "mark": "x", "t": 1}, {"key": "fila", "mark": "y", "t": 2}]}
+  p = run("missionProgress", CAT, st, [trip(slow=650, commit="b3ac6fe1234")])
+  assert p["lento"]["full"] and p["inst"]["full"] and not p["noite"]["full"]
+  assert p["fila"]["d"] == 1 and p["fila"]["toCheck"] == 2 and p["fila"]["active"]  # marks wait for the CTO
+  assert p["portas"]["d"] == 2 and p["aeb"]["locked"]
+  assert not run("missionProgress", CAT, st, [trip(slow=650, hidden=True)])["lento"]["full"]  # a hidden drive doesn't count
+  assert run("missionProgress", CAT, st, [trip(moving=1900, hour_end=21)])["noite"]["full"]
+  assert not run("missionProgress", CAT, st, [trip(moving=1200, hour_end=21)])["noite"]["full"]
+
+
+def test_the_level_and_what_moved_after_a_drive():
+  before = run("missionProgress", CAT, {}, [])
+  after = run("missionProgress", CAT, {"pending": [{"key": "fila"}]}, [trip(slow=650, commit="b3ac6fe")])
+  lv = run("missionLevel", CAT, after)
+  assert lv["n"] == 2 and lv["i"] == 0 and lv["next"] == {"name": "Cidade", "left": 1}
+  moved = {d["key"]: d for d in run("missionDiff", before, after)}
+  assert set(moved) == {"lento", "inst", "fila"} and moved["fila"]["checks"] == 1 and moved["lento"]["full"]
+  order = [m["key"] for m in run("missionOrder", CAT["missions"], after)]
+  assert order[0] == "fila" and order[-2:] == ["lento", "inst"] and order.index("aeb") > order.index("portas")
+  tr = run("missionTrails", CAT, after)[0]
+  assert tr["d"] == 2 and tr["next"] == "Fila" and not tr["seal"]

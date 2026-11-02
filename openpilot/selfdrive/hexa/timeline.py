@@ -51,7 +51,8 @@ SPLIT_KEYS = ("op_s", "help_s", "you_s", "stop_s", "op_km", "help_km", "you_km",
 #   wob_ss, wob_n  the wheel going back and forth: steering angle around its own 1 s average, openpilot steering above 20 km/h
 #                  (RMS = sqrt(ss / n), degrees). [hipótese] at the qlog's 10 Hz it tells the same as the 100 Hz measured on 02/11
 #   lane_n, lane_ok  drivingModelData samples, openpilot steering above 20 km/h, and how many saw both lines at 0.5 or more
-KPI_KEYS = ("wob_ss", "wob_n", "lane_n", "lane_ok")
+KPI_KEYS = ("wob_ss", "wob_n", "lane_n", "lane_ok", "slow_s")  # slow_s: openpilot steering below SLOW_MAX (the slow-traffic mission)
+SLOW_MAX = 30 / 3.6
 WOBBLE_MIN_SPEED = 20 / 3.6
 WOBBLE_WINDOW_S = 1.
 LANE_OK = 0.5
@@ -448,6 +449,7 @@ def trip_segment(events: Iterable) -> dict:
         total[part + "_s"] += dt
         total[part + "_km"] += cs.vEgo * dt / 1e3
         total["acc_s"] += dt if getattr(getattr(cs, "cruiseState", None), "driving", False) else 0.  # logs before the field: 0, shown only when > 0
+        kpi["slow_s"] += dt if lat and cs.vEgo < SLOW_MAX else 0.
       else:
         total["stop_s"] += dt
       if en and cs.steeringPressed:

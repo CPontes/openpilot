@@ -218,6 +218,24 @@
            border-radius: 26px 26px 0 0; padding: 10px 18px calc(18px + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto; }
   .sheet .grab { display: block; width: 44px; height: 5px; border-radius: 3px; background: #3A4550; margin: 0 auto 12px; }
   .sheet h2 { margin: 0; font-size: 28px; }
+  .mhead { display: flex; align-items: center; gap: 14px; width: 100%; background: none; border: 0; color: inherit; text-align: left; padding: 0; font: inherit; }
+  .mlevel { display: block; font-family: var(--font-display); font-weight: 700; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  .mrow { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 56px; width: 100%; padding: 8px 0;
+          border: 0; border-top: 1px solid #222A32; background: none; color: inherit; font: inherit; text-align: left; }
+  .list > .mrow:first-child { border-top: 0; }
+  .mrow b { display: block; font-weight: 600; font-size: 15px; }
+  .mrow.done b { color: var(--muted); }
+  .mrow .n { font-size: 13px; font-weight: 700; white-space: nowrap; color: var(--dim); }
+  .mrow .n.half { color: var(--warn); } .mrow .n.full { color: var(--accent); }
+  .mtag { display: block; font-size: 12px; font-weight: 700; }
+  .mbar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; display: flex; }
+  .mbar span { height: 8px; }
+  .msteps { margin: 0; padding-left: 22px; color: var(--muted); font-size: 15px; display: flex; flex-direction: column; gap: 6px; }
+  .seals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .seal { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 10px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+  .seal.no { opacity: .7; }
+  .mfiz { min-width: 104px; min-height: 52px; border-radius: 26px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); font-weight: 700; font-size: 15px; }
+  .mfiz[disabled] { background: var(--ok-bg); border-color: var(--ok-line); color: var(--accent); opacity: 1; }
   .toast { position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 20; max-width: calc(100% - 32px);
            background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 15px; font-weight: 600; opacity: 0; transition: opacity .2s; pointer-events: none; }
   .toast.show { opacity: .96; }
@@ -292,6 +310,15 @@
           <div class="row" style="margin:6px 4px 8px;align-items:baseline"><span class="label grow" style="margin:0" data-t>Últimas 4 semanas</span><span class="small" data-t>contra as 4 antes</span></div>
           <div class="kpis" id="kpiGrid"></div>
           <button class="link hidden" id="kpiVersion" type="button" style="margin:2px 4px 0"></button>
+        </section>
+        <section class="card stack hidden" id="missionCard" style="gap:12px">
+          <button class="mhead" id="missionOpen" type="button"><span id="missionRing"></span>
+            <span class="grow" style="min-width:0"><span class="mlevel" id="missionLevel"></span><span class="big" id="missionCount" style="display:block"></span><span class="desc" id="missionNext"></span></span></button>
+          <div id="missionResultBox"></div>
+          <div id="missionPackBox"></div>
+          <div class="row" style="margin-top:4px"><span class="label grow" style="margin:0" data-t>Na próxima viagem</span><span class="small" id="missionActiveN"></span></div>
+          <div class="list" id="missionActive"></div>
+          <button class="btn" id="missionGo" type="button" data-t>Vou dirigir</button>
         </section>
         <a class="card att row hidden" id="updateCard" href="#" style="text-decoration:none;color:inherit">
           <span class="grow"><span class="title" data-t>Versão nova pronta</span><br><span class="desc" id="updateCardDesc"></span></span>
@@ -373,6 +400,11 @@
           <div class="row"><span class="grow desc" id="laneText"></span><span class="pill hidden" id="bsPill"></span></div>
           <canvas id="road" data-t-aria="Posição do carro na faixa" aria-label="Posição do carro na faixa"></canvas>
         </section>
+        <section class="card hidden" id="driveMissions" style="margin-top:10px">
+          <div class="label" style="margin:0 0 4px" data-t>Missões desta viagem</div>
+          <div class="list" id="driveMissionList"></div>
+          <div class="small" style="margin-top:6px" data-t>O comma conta sozinho o que consegue. Toque em Fiz agora só para garantir: marca a hora e o lugar.</div>
+        </section>
         <details class="card" id="driveMore">
           <summary data-t>Detalhes: volante e força</summary>
           <div class="grid2" id="driveDetails"></div>
@@ -410,6 +442,12 @@
         <div class="chips" id="mineList" style="margin-top:6px"></div>
         <button class="link" id="exportBtn" type="button" data-t>Exportar marcas (para análise)</button>
       </details>
+    </div>
+
+    <!-- Missões -->
+    <div data-view="missoes" class="hidden">
+      <p class="sub" style="margin:0 0 8px"><button class="back" id="mBack" type="button" style="border:0;color:var(--text);font:inherit;font-weight:700"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span id="mBackText"></span></button></p>
+      <div id="mBody" class="stack" style="gap:10px"></div>
     </div>
 
     <!-- Pontos -->
@@ -726,7 +764,7 @@ function setOnline(on) {
 
 // ----- areas: the last one opened stays; nothing switches by itself -----
 let view = load("lpView") || "inicio", sub = load("lpSub") || "opcoes";
-if (!["inicio", "viagens", "pontos", "ajustes"].includes(view)) view = "inicio";
+if (!["inicio", "viagens", "pontos", "ajustes", "missoes"].includes(view)) view = "inicio";
 
 function showView(name) {
   view = name; store("lpView", name);
@@ -737,6 +775,7 @@ function showView(name) {
   if (name === "viagens") { refreshTrips(true); refreshMarks(); }
   if (name === "pontos") { refreshRadars(); refreshNear(); }
   if (name === "ajustes") showSub(sub);
+  if (name === "missoes") { renderMissions(); refreshMissions(); }
   window.scrollTo(0, 0);
 }
 
@@ -752,6 +791,7 @@ function refreshView() {
   ticks += 1;
   if (view === "inicio") refreshHome(false);
   if (view === "viagens") { refreshMarks(); refreshTrips(false); }
+  if (view === "missoes" && ticks % 3 === 0) refreshMissions();
   if (view === "ajustes" && sub === "comma") { refreshUpdate(); refreshHealth(); if (ticks % 3 === 0) refreshCommaCtl(); }
   if (view === "ajustes" && sub === "celulares") refreshPhones();
   if (view === "pontos" || (carOn && view !== "inicio" && ticks % 3 === 0)) refreshNear();  // the dot on the tab, while driving
@@ -947,7 +987,8 @@ function refreshHome(full) {
   $("garage").classList.toggle("hidden", driving);
   $("drive").classList.toggle("hidden", !driving);
   document.body.classList.toggle("driving", driving && view === "inicio");
-  if (driving) { refreshLive(); if (full || ticks % 3 === 0) refreshNear(); return; }
+  if (driving) { refreshLive(); if (full || ticks % 3 === 0) refreshNear(); if (full || !missions) refreshMissions(); return; }
+  if (full || ticks % 3 === 0) refreshMissions();
   if (full || ticks % 3 === 0) refreshHealth();
   if (full || ticks % 4 === 0) refreshUpdate();
   refreshMarks();
@@ -1013,6 +1054,7 @@ function renderGarage() {
     return row;
   }));
   renderKpis();
+  renderMissionCard();
   // a new version waiting
   const u = update;
   $("updateCard").classList.toggle("hidden", !(u && (u.ready || u.fetch_available)));
@@ -1077,6 +1119,7 @@ function renderDrive() {
     ...(car.roll != null ? [tileOf(num(Math.abs(car.roll), 1), "°", t("inclinação lateral"))] : []));
   renderLane(l);
   renderResume(l.resume);
+  renderDriveMissions();
   const off = l.last_off;
   $("liveOff").textContent = off ? tf("Último desengate às {hora}", { hora: hhmm(off.t) }) + (off.why.length ? ": " + off.why.map(t).join(", ") : "") : "";
 }
@@ -1291,6 +1334,308 @@ function askPassenger(next) {  // true: the question is open and next() runs on 
 }
 
 function closePassenger() { passNext = null; $("passScrim").classList.add("hidden"); $("passSheet").classList.add("hidden"); }
+
+
+// ----- missions (selfdrive/hexa/missions.py): the tests the car still needs, taken along on a drive -----
+// The level and the seals are the LizPilot's, never the driver's. The comma never changes anything because of a mission:
+// options are turned on by the owner, parked, with the same rules as Ajustes. "Fiz agora" is a mark, like Marcar.
+let missions = null, mScreen = { s: "trilhas" }, missionsAt = 0;
+const HOW_TEXT = { drive: "você responde depois, parado", auto: "o comma reconhece", marca: "você marca, o CTO confere", parado: "você faz, parado", cto: "o CTO mede no log", decisao: "decisão sua" };
+const HOW_COLOR = { auto: "var(--accent)", marca: "var(--warn)", parado: "var(--you)", cto: "var(--gas)", decisao: "var(--muted)" };
+const HOW_LONG = { auto: "O comma reconhece sozinho nas viagens. Se não reconhecer, o seu toque em Fiz agora guarda a hora e o lugar.",
+                   marca: "Acontece andando. Toque em Fiz agora logo depois: a marca guarda a hora e o lugar, e o CTO confere no log.",
+                   parado: "Com o carro parado. A sua resposta fica guardada no comma.", cto: "Fica completa quando o CTO mede no log.",
+                   decisao: "Não é teste: é uma escolha sua." };
+const MISSION_SNAP = "lpMissionSnap";
+async function refreshMissions() {
+  if (Date.now() - missionsAt < 2500) return;
+  missionsAt = Date.now();
+  const r = await api("/api/missions");
+  if (r.status !== 200) return;
+  missions = r.data;
+  renderMissionCard();
+  if (view === "missoes") renderMissions();
+  if (driving) renderDriveMissions();
+}
+function mProg() { return LPL.missionProgress(missions, missions.state, trips || []); }
+function mOf(key) { return missions.missions.find((m) => m.key === key); }
+function howOf(m) { return m.how === "parado" && m.drive ? HOW_TEXT.drive : HOW_TEXT[m.how]; }
+function ringSvg(d, total, size, label) {
+  const c = 2 * Math.PI * 40, f = total ? Math.min(1, d / total) : 0;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true" style="flex:none"><circle cx="50" cy="50" r="40" fill="none" stroke="var(--line)" stroke-width="9"/>`
+    + `<circle cx="50" cy="50" r="40" fill="none" stroke="var(--accent)" stroke-width="9" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 50 50)" stroke-linecap="round"/>`
+    + (label ? `<text x="50" y="58" text-anchor="middle" font-size="24" font-weight="700" fill="var(--text)" font-family="Barlow Semi Condensed, Barlow, sans-serif">${label}</text>` : "") + "</svg>";
+}
+const HEX_DONE = '<svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true" style="flex:none"><path d="M12 1.8l8.8 5.1v10.2L12 22.2l-8.8-5.1V6.9z" fill="var(--accent)"/><path d="M7.8 12.3l2.8 2.8 5.6-5.8" fill="none" stroke="var(--bg)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const LOCK = '<svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true" style="flex:none"><rect x="5" y="10.5" width="14" height="10" rx="2" fill="none" stroke="var(--dim)" stroke-width="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" fill="none" stroke="var(--dim)" stroke-width="2"/></svg>';
+function mIcon(p) {
+  if (p.full) return HEX_DONE;
+  if (p.locked) return LOCK;
+  const c = 2 * Math.PI * 9;
+  return `<svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true" style="flex:none"><circle cx="12" cy="12" r="9" fill="none" stroke="var(--line)" stroke-width="3"/>`
+    + (p.d ? `<circle cx="12" cy="12" r="9" fill="none" stroke="var(--warn)" stroke-width="3" stroke-dasharray="${(c * p.d / p.total).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 12 12)" stroke-linecap="round"/>` : "") + "</svg>";
+}
+function mCount(p) {
+  if (p.full) return t("completa");
+  if (p.locked) return t("trancada");
+  const base = p.total > 1 ? tf("{d} de {n}", { d: p.d, n: p.total }) : t("a fazer");
+  return p.toCheck ? base + " · " + tf("{n} a conferir", { n: p.toCheck }) : base;
+}
+function mRow(m, p, onClick) {
+  const b = el("button", "mrow" + (p.full ? " done" : "")); b.type = "button";
+  b.insertAdjacentHTML("beforeend", mIcon(p));
+  const mid = el("span"); mid.style.minWidth = "0";
+  mid.append(el("b", "", t(m.title)));
+  const sub = p.full ? m.proof : p.locked ? m.lock : m.note;
+  if (sub) mid.append(el("span", "small", t(sub)));
+  const tag = el("span", "mtag", t(howOf(m))); tag.style.color = HOW_COLOR[m.how]; mid.append(tag);
+  b.append(mid, el("span", "n" + (p.full ? " full" : p.d || p.toCheck ? " half" : ""), mCount(p)));
+  b.addEventListener("click", onClick);
+  return b;
+}
+function openMission(key, from) { mScreen = { s: "missao", key, from: from || mScreen }; showView("missoes"); }
+function openMissions(scr) { mScreen = scr || { s: "trilhas" }; showView("missoes"); }
+function packOf(prog) {  // the newest version route still open
+  for (const [v, pk] of Object.entries(missions.packs || {})) {
+    const ms = missions.missions.filter((m) => m.version === v), d = ms.filter((m) => prog[m.key].full).length;
+    if (d < ms.length) return { v, pk, ms, d };
+  }
+  return null;
+}
+function snapLoad() { const x = load(MISSION_SNAP); try { return x ? JSON.parse(x) : null; } catch (e) { return null; } }
+function missionResult(prog) {  // after the drive: what moved since "Pronto, vou dirigir"
+  const snap = snapLoad();
+  if (!snap || driving || !trips) return null;
+  const after = trips.find((x) => x.mtime > snap.at && x.summary);
+  if (!after) return null;
+  return { snap, rows: LPL.missionDiff(snap.prog, prog), asks: snap.active.map(mOf).filter((m) => m && m.how === "parado" && m.drive && !prog[m.key].full) };
+}
+
+function renderMissionCard() {
+  const card = $("missionCard");
+  card.classList.toggle("hidden", !missions);
+  if (!missions) return;
+  const prog = mProg(), lv = LPL.missionLevel(missions, prog);
+  $("missionRing").innerHTML = ringSvg(lv.n, lv.total, 76, `${Math.round(100 * lv.n / lv.total)}%`);
+  $("missionLevel").textContent = tf("Nível {n} · {nome}", { n: lv.i + 1, nome: t(lv.name) });
+  $("missionCount").textContent = tf("{d} de {n} missões", { d: lv.n, n: lv.total });
+  $("missionNext").textContent = lv.next ? tf(lv.next.left === 1 ? "Falta 1 para o nível {n}, {nome}" : "Faltam {k} para o nível {n}, {nome}", { k: lv.next.left, n: lv.i + 2, nome: t(lv.next.name) }) : t("Tudo provado no seu carro.");
+  const res = missionResult(prog), rb = $("missionResultBox"); rb.replaceChildren();
+  if (res) {
+    const a = el("button", "card ok row"); a.type = "button"; a.style.cssText = "width:100%;margin:0;text-align:left;color:inherit;font:inherit";
+    const g = el("span", "grow"); g.append(el("span", "title", res.rows.length ? tf(res.rows.length === 1 ? "A viagem avançou 1 missão" : "A viagem avançou {n} missões", { n: res.rows.length }) : t("A viagem acabou")),
+      el("br"), el("span", "desc", res.asks.length ? tf(res.asks.length === 1 ? "e 1 pergunta, parado" : "e {n} perguntas, parado", { n: res.asks.length }) : t("Ver o resultado")));
+    a.append(g, el("span", "link", t("Ver"))); a.addEventListener("click", () => openMissions({ s: "resultado" })); rb.append(a);
+  }
+  const pb = $("missionPackBox"); pb.replaceChildren();
+  const pack = packOf(prog);
+  if (pack) {
+    const b = el("button", "card att row"); b.type = "button"; b.style.cssText = "width:100%;margin:0;text-align:left;color:inherit;font:inherit";
+    const g = el("span", "grow"); g.append(el("span", "mlevel", tf("Roteiro da versão {v}", { v: pack.v })), el("span", "title", tf("{d} de {n} testes · uns {m} min", { d: pack.d, n: pack.ms.length, m: pack.pk.minutes })));
+    g.lastChild.style.display = "block";
+    b.append(g, el("span", "link", t("Ver"))); b.addEventListener("click", () => openMissions({ s: "roteiro", v: pack.v })); pb.append(b);
+  }
+  const act = missions.state.active.map(mOf).filter((m) => m && !prog[m.key].full);
+  $("missionActiveN").textContent = act.length ? String(act.length) : "";
+  const list = $("missionActive"); list.replaceChildren();
+  for (const m of act) list.append(mRow(m, prog[m.key], () => openMission(m.key, { s: "inicio" })));
+  const add = el("button", "link", act.length ? t("+ Escolher missões") : t("Escolher missões")); add.type = "button";
+  add.addEventListener("click", () => openMissions()); list.append(add);
+  $("missionGo").classList.toggle("hidden", !act.length);
+}
+
+function renderDriveMissions() {
+  const box = $("driveMissions");
+  const done = (m) => m.how === "cto" || (m.done || 0) >= m.total;  // while driving there are no summaries: the catalog decides
+  const act = missions ? missions.state.active.map(mOf).filter((m) => m && !done(m)) : [];
+  box.classList.toggle("hidden", !act.length);
+  if (!act.length) return;
+  const snap = snapLoad(), since = snap ? snap.at : Date.now() / 1000 - 6 * 3600;
+  const list = $("driveMissionList");
+  const sig = JSON.stringify([act.map((m) => m.key), missions.state.pending.length, L()]);
+  if (list.dataset.sig === sig) return;
+  list.dataset.sig = sig; list.replaceChildren();
+  for (const m of act) {
+    const row = el("div", "line"); const mid = el("span", "stack"); mid.style.gap = "0"; mid.append(el("b", "", t(m.title)));
+    const marked = missions.state.pending.filter((x) => x.key === m.key && x.t >= since).pop();
+    if (m.how === "parado") { mid.append(el("span", "small", t("pergunto no fim, parado"))); row.append(mid); list.append(row); continue; }
+    mid.append(el("span", "small", marked ? tf("marcado às {hora}", { hora: hhmm(marked.t) }) : t("o comma está olhando")));
+    const b = el("button", "mfiz", marked ? t("Marcado") : t("Fiz agora")); b.type = "button";
+    b.addEventListener("click", () => { if (!askPassenger(() => missionMark(m.key, b))) missionMark(m.key, b); });
+    row.append(mid, b); list.append(row);
+  }
+}
+async function missionMark(key, b) {
+  b.disabled = true;
+  const r = await api("/api/missions", { action: "mark", key });
+  toast(r.status === 200 ? t("Marcado: o CTO acha a hora e o lugar no log.") : (r.data.error || t("Não foi possível salvar.")));
+  if (r.status === 200) { missions.state = r.data.state; $("driveMissionList").dataset.sig = ""; renderDriveMissions(); }
+  else b.disabled = false;
+}
+async function missionAct(body) {
+  const r = await api("/api/missions", body);
+  if (r.status === 200) { missions.state = r.data.state; renderMissionCard(); renderMissions(); }
+  else toast(r.data.error || t("Não foi possível salvar."));
+  return r.status === 200;
+}
+
+function mBack(label, scr) { $("mBackText").textContent = label; $("mBack").onclick = () => scr === "inicio" ? showView("inicio") : openMissions(scr); }
+function renderMissions() {
+  const body = $("mBody");
+  if (!missions) { body.replaceChildren(el("div", "small", t("Carregando…"))); mBack("LizPilot", "inicio"); return; }
+  const prog = mProg(), s = mScreen, out = [];
+  const h1 = (x) => { const h = el("h1", "page", x); return h; };
+  if (s.s === "trilhas") {
+    mBack("LizPilot", "inicio");
+    const lv = LPL.missionLevel(missions, prog);
+    out.push(h1(t("Missões")), el("p", "sub", t("Cada missão é um teste que deixa o LizPilot mais confiável. Cada trilha completa vira um selo.")));
+    for (const tr of LPL.missionTrails(missions, prog)) {
+      const b = el("button", "card row"); b.type = "button"; b.style.cssText = "width:100%;text-align:left;color:inherit;font:inherit;margin:0";
+      b.insertAdjacentHTML("beforeend", ringSvg(tr.d, tr.total, 48, ""));
+      const g = el("span", "grow"); g.append(el("span", "title", t(tr.title)), el("br"), el("span", "desc", tr.seal ? t("Selo conquistado") : tr.next ? tf("Próxima: {m}", { m: t(tr.next) }) : t("O que falta depende do CTO")));
+      const n = el("span", "title", `${tr.d}/${tr.total}`); n.style.color = tr.seal ? "var(--accent)" : "var(--warn)";
+      b.append(g, n); b.addEventListener("click", () => openMissions({ s: "trilha", tr: tr.key })); out.push(b);
+    }
+    const sb = el("button", "btn dark", tf("Selos · {d} de {n}", { d: LPL.missionTrails(missions, prog).filter((x) => x.seal).length, n: missions.trails.length })); sb.type = "button";
+    sb.addEventListener("click", () => openMissions({ s: "selos" })); out.push(sb);
+    out.push(el("div", "small", tf("Nível {n} · {nome}. O nível é do LizPilot: sobe com o que já foi provado no carro, não com como você dirige.", { n: lv.i + 1, nome: t(lv.name) })));
+  } else if (s.s === "trilha") {
+    mBack(t("Missões"), { s: "trilhas" });
+    const tr = missions.trails.find((x) => x.key === s.tr), ms = missions.missions.filter((m) => m.trail === s.tr);
+    out.push(h1(t(tr.title)), el("p", "sub", tf("{d} de {n} completas. O que falta vem primeiro.", { d: ms.filter((m) => prog[m.key].full).length, n: ms.length })));
+    const list = el("div", "card list"); list.style.padding = "4px 16px";
+    for (const m of LPL.missionOrder(ms, prog)) list.append(mRow(m, prog[m.key], () => openMission(m.key, s)));
+    out.push(list);
+  } else if (s.s === "missao") {
+    const m = mOf(s.key), p = prog[m.key], back = s.from && s.from.s ? s.from : { s: "trilha", tr: m.trail };
+    mBack(back.s === "inicio" ? "LizPilot" : back.s === "roteiro" ? t("Roteiro") : back.s === "resultado" ? t("Resultado") : t("Trilha"), back.s === "inicio" ? "inicio" : back);
+    const head = el("div", "row"); head.insertAdjacentHTML("beforeend", ringSvg(p.d, p.total, 76, p.full ? "✓" : `${p.d}/${p.total}`));
+    const g = el("div", "grow"); g.append(el("div", "small", t(missions.trails.find((x) => x.key === m.trail).title)));
+    const tt = el("div", "big", t(m.title)); g.append(tt);
+    const tag = el("span", "mtag", t(howOf(m))); tag.style.color = HOW_COLOR[m.how]; g.append(tag); head.append(g); out.push(head);
+    if (p.full) { const c = el("section", "card ok"); c.append(el("span", "title", t("Completa.")), document.createTextNode(" " + t(m.proof || ""))); out.push(c); }
+    if (m.why) { const c = el("section", "card stack"); c.style.gap = "4px"; c.append(el("b", "", t("Por que importa")), el("span", "desc", t(m.why))); out.push(c); }
+    if (m.steps.length) {
+      const c = el("section", "card stack"); c.style.gap = "8px"; c.append(el("b", "", t("Como fazer")));
+      const ol = el("ol", "msteps"); m.steps.forEach((x) => ol.append(el("li", "", t(x)))); c.append(ol);
+      const hl = el("span", "small", t(m.how === "parado" && m.drive ? "Acontece andando. No fim da viagem, parado, o celular pergunta como foi." : HOW_LONG[m.how])); c.append(hl); out.push(c);
+    } else if (!p.full) out.push(el("div", "small", t(m.how === "parado" && m.drive ? "Acontece andando. No fim da viagem, parado, o celular pergunta como foi." : HOW_LONG[m.how])));
+    if (m.option && !p.full) out.push(optionLine(m.option));
+    if (p.toCheck) out.push(el("div", "small", tf(p.toCheck === 1 ? "1 marca sua espera o CTO conferir no log." : "{n} marcas suas esperam o CTO conferir no log.", { n: p.toCheck })));
+    if (p.locked) { const c = el("section", "card"); c.style.borderStyle = "dashed"; c.append(el("b", "", t("Ainda trancada.")), document.createTextNode(" " + t(m.lock))); out.push(c); }
+    const act = missions.state.active.includes(m.key), can = !p.full && !m.lock && (m.how === "auto" || m.how === "marca" || (m.how === "parado" && m.drive));
+    if (can && !act) {
+      const full = missions.state.active.length >= missions.max_active;
+      const b = el("button", "btn", t("Levar na próxima viagem")); b.type = "button"; b.disabled = full;
+      b.addEventListener("click", () => missionAct({ action: "take", key: m.key })); out.push(b);
+      if (full) out.push(el("div", "small", t("Já há 3 missões na próxima viagem. Tire uma para levar esta.")));
+    }
+    if (act) { const b = el("button", "btn dark", t("Na próxima viagem ✓ · tirar")); b.type = "button"; b.addEventListener("click", () => missionAct({ action: "drop", key: m.key })); out.push(b); }
+    if (!p.full && !m.lock && m.how === "parado" && !m.drive) {
+      const parkedNow = !carOn || carStopped;
+      const row = el("div", "grid2");
+      for (const [label, ok, cls] of [[t("Fiz, deu certo"), true, "btn"], [t("Fiz, não deu"), false, "btn dark"]]) {
+        const b = el("button", cls, label); b.type = "button"; b.disabled = !parkedNow;
+        b.addEventListener("click", async () => { if (await missionAct({ action: "answer", key: m.key, ok })) toast(ok ? t("Guardado. Uma a menos.") : t("Guardado. Fica para depois.")); });
+        row.append(b);
+      }
+      out.push(row, el("div", "small", parkedNow ? t("Com o carro parado. A resposta fica guardada no comma.") : t("Responda com o carro parado.")));
+    }
+    if (m.version && missions.packs[m.version]) { const b = el("button", "link", tf("Ver o roteiro da versão {v}", { v: m.version })); b.type = "button"; b.addEventListener("click", () => openMissions({ s: "roteiro", v: m.version })); out.push(b); }
+  } else if (s.s === "roteiro") {
+    mBack("LizPilot", "inicio");
+    const v = s.v || (packOf(prog) || {}).v, pk = v && missions.packs[v];
+    const act = missions.state.active.map(mOf).filter(Boolean);
+    out.push(h1(v ? tf("Roteiro da versão {v}", { v }) : t("Antes de sair")));
+    if (pk) {
+      const warn = el("section", "card att"); warn.append(el("span", "desc", t(pk.intro))); out.push(warn);
+      out.push(el("div", "label", t("Antes de sair, com o carro parado")));
+      const ol = el("ol", "msteps"); pk.before.forEach((x) => ol.append(el("li", "", t(x)))); out.push(ol);
+    } else out.push(el("p", "sub", t("Com o carro em P. Depois que ele andar, o celular não muda mais nada.")));
+    const opts = [...new Set(act.concat(v ? missions.missions.filter((m) => m.version === v) : []).filter((m) => !prog[m.key].full).map((m) => m.option).filter(Boolean))];
+    for (const k of opts) out.push(optionLine(k));
+    if (pk) {
+      out.push(el("div", "label", t("Durante a volta")), el("div", "desc", t(pk.during)));
+      const ms = missions.missions.filter((m) => m.version === v && !(m.detect === "installed"));
+      const list = el("div", "card list"); list.style.padding = "4px 16px";
+      ms.forEach((m) => list.append(mRow(m, prog[m.key], () => openMission(m.key, s)))); out.push(list);
+      out.push(el("div", "label", t("Pare o teste e desligue a opção se")));
+      const ul = el("ul", "msteps"); pk.stop_if.forEach((x) => ul.append(el("li", "", t(x)))); out.push(ul);
+      out.push(el("div", "small", t(pk.back)));
+      const onPack = ms.filter((m) => !prog[m.key].full && !m.lock).every((m) => missions.state.active.includes(m.key));
+      if (!onPack) { const b = el("button", "btn dark", t("Levar este roteiro na próxima viagem")); b.type = "button"; b.addEventListener("click", () => missionAct({ action: "pack", key: v })); out.push(b); }
+    }
+    if (act.length) {
+      const go = el("button", "btn", t("Pronto, vou dirigir")); go.type = "button";
+      go.addEventListener("click", () => { store(MISSION_SNAP, JSON.stringify({ at: Math.floor(Date.now() / 1000), prog, active: missions.state.active })); toast(t("Boa viagem. O comma conta sozinho o que consegue.")); showView("inicio"); });
+      out.push(go);
+    }
+  } else if (s.s === "resultado") {
+    mBack("LizPilot", "inicio");
+    const res = missionResult(prog);
+    out.push(el("div", "label", t("Viagem de agora")));
+    if (!res) out.push(h1(t("Nenhuma viagem nova ainda")), el("p", "sub", t("O resultado aparece quando o carro desliga e o comma resume a viagem.")));
+    else {
+      const before = LPL.missionLevel(missions, res.snap.prog), now = LPL.missionLevel(missions, prog);
+      out.push(h1(res.rows.length ? tf(res.rows.length === 1 ? "1 missão avançou" : "{n} missões avançaram", { n: res.rows.length }) : t("Nenhuma missão avançou sozinha")));
+      if (now.i > before.i) {
+        const c = el("section", "card ok row"); c.insertAdjacentHTML("beforeend", HEX_DONE.replace(/28/g, "52"));
+        const g = el("span", "grow"); g.append(el("span", "mlevel", t("Subiu de nível")), el("span", "big", tf("Nível {n} · {nome}", { n: now.i + 1, nome: t(now.name) })));
+        g.lastChild.style.display = "block"; c.append(g); out.push(c);
+      }
+      for (const r of res.rows) {
+        const m = mOf(r.key), c = el("section", "card stack"); c.style.gap = "6px";
+        const top = el("div", "row"); top.append(el("b", "grow", t(m.title)), el("b", "", r.full ? t("completa") : r.to > r.from ? tf("{d} de {n}", { d: r.to, n: r.total }) : tf("{n} a conferir", { n: r.checks })));
+        top.lastChild.style.color = r.full ? "var(--accent)" : "var(--warn)";
+        const bar = el("div", "mbar"), a = el("span"), gain = el("span"), chk = el("span");
+        a.style.cssText = `width:${100 * r.from / r.total}%;background:var(--accent)`; gain.style.cssText = `width:${100 * (r.to - r.from) / r.total}%;background:#5BE39D`;
+        chk.style.cssText = `width:${100 * Math.min(r.checks, r.total - r.to) / r.total}%;background:var(--warn)`; bar.append(a, gain, chk);
+        c.append(top, bar, el("span", "small", r.to > r.from ? (r.full ? t("Missão completa.") : t("Reconhecida pelo comma.")) : t("A sua marca guardou a hora e o lugar: o CTO confere no log e completa.")));
+        out.push(c);
+      }
+      const marked = new Set(res.rows.map((r) => r.key));
+      const missed = res.snap.active.map(mOf).filter((m) => m && m.how !== "parado" && !marked.has(m.key) && !prog[m.key].full);
+      if (missed.length) out.push(el("div", "small", tf("Não apareceram nesta viagem: {lista}. Ficam para a próxima.", { lista: missed.map((m) => t(m.title)).join(", ") })));
+      for (const m of res.asks) {
+        const c = el("section", "card stack"); c.append(el("div", "mlevel", t("Só você sabe")), el("b", "", tf("«{m}»: deu certo?", { m: t(m.title) })));
+        const row = el("div", "grid2");
+        for (const [label, ok, cls] of [[t("Sim, deu certo"), true, "btn"], [t("Não deu"), false, "btn dark"]]) {
+          const b = el("button", cls, label); b.type = "button"; b.disabled = carOn && !carStopped;
+          b.addEventListener("click", () => missionAct({ action: "answer", key: m.key, ok })); row.append(b);
+        }
+        c.append(row); out.push(c);
+      }
+      const pk = Object.values(missions.packs || {})[0];
+      if (pk && res.snap.active.some((k) => (mOf(k) || {}).version)) out.push(el("section", "card att", t(pk.after)));
+      const ok = el("button", "btn dark", t("Ok, escolher as próximas")); ok.type = "button";
+      ok.addEventListener("click", () => { store(MISSION_SNAP, null); openMissions(); }); out.push(ok);
+    }
+  } else if (s.s === "selos") {
+    mBack(t("Missões"), { s: "trilhas" });
+    out.push(h1(t("Selos")), el("p", "sub", t("Um por trilha completa. O selo é do LizPilot: diz o que já foi provado no seu carro.")));
+    const grid = el("div", "seals");
+    LPL.missionTrails(missions, prog).forEach((tr, i) => {
+      const c = el("section", "seal" + (tr.seal ? "" : " no"));
+      c.insertAdjacentHTML("beforeend", `<svg width="56" height="56" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.8l8.8 5.1v10.2L12 22.2l-8.8-5.1V6.9z" fill="${tr.seal ? "var(--accent)" : "var(--card-2)"}" stroke="${tr.seal ? "var(--accent)" : "var(--line-2)"}" stroke-width="1.2"/><text x="12" y="15.5" text-anchor="middle" font-size="8" font-weight="700" fill="${tr.seal ? "var(--bg)" : "var(--muted)"}" font-family="Barlow, sans-serif">${tr.seal ? "✓" : i + 1}</text></svg>`);
+      c.append(el("b", "", t(tr.title)), el("span", "small", tf("{d} de {n}", { d: tr.d, n: tr.total }))); grid.append(c);
+    });
+    out.push(grid);
+  }
+  body.replaceChildren(...out);
+}
+// An option a mission needs, with its state and the switch, parked only (the comma checks it too)
+function optionLine(key) {
+  const o = optionOf(key), row = el("section", "card row");
+  const g = el("span", "grow"); g.append(el("span", "title", o ? t(o.title) : key), el("br"), el("span", "desc", o && o.value ? t("ligada") : t("desligada")));
+  row.append(g);
+  if (o && typeof o.value === "boolean") {
+    const parkedNow = !carOn || carStopped, b = el("button", o.value ? "link" : "chip", o.value ? t("Desligar") : t("Ligar")); b.type = "button";
+    b.disabled = !parkedNow;
+    b.addEventListener("click", () => setOption(key, !o.value, b, () => {}).then(() => setTimeout(renderMissions, 800)));
+    row.append(b);
+  }
+  return row;
+}
 
 // ----- trips -----
 function textOf(x) { return x.vars ? tf(x.text, x.vars) : t(x.text); }
@@ -2195,6 +2540,8 @@ $("pointSave").addEventListener("click", savePoint);
 $("pointCancel").addEventListener("click", closePoint);
 $("pointScrim").addEventListener("click", closePoint);
 $("passCheck").addEventListener("change", () => { $("passGo").disabled = !$("passCheck").checked; });
+$("missionOpen").addEventListener("click", () => openMissions());
+$("missionGo").addEventListener("click", () => openMissions({ s: "roteiro" }));
 $("optSearch").addEventListener("input", (e) => { optQuery = e.target.value; if (state) renderGroups(state.groups); });
 $("profileSave").addEventListener("click", async () => {
   const res = await api("/api/profiles/save", { name: $("profileName").value });
