@@ -695,7 +695,7 @@ class PanelBackend:
 
   def _prune_paths(self, routes: set[str]) -> None:
     """A path whose drive the comma already deleted (loggerd's deleter) goes too: no location stays behind its log."""
-    if not self.log_root or self.mono() - self._paths_pruned < PATH_PRUNE_S:
+    if not routes or not self.log_root or self.mono() - self._paths_pruned < PATH_PRUNE_S:  # no drives at all: the folder, not the logs
       return
     self._paths_pruned = self.mono()
     try:

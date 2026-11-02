@@ -305,6 +305,8 @@
     }
     return out;
   }
+  // A wall clock time as the path counts it, from minute 0 of the route: the deleter may have taken the first minutes of the list
+  function pathSecond(t, at) { return at - tripStart(t) + ((t.segments && t.segments[0]) || 0) * 60; }
   // The path point closest in time to s seconds from the start of the drive
   function nearestAt(points, s) {
     let best = -1, gap = Infinity;
@@ -345,7 +347,7 @@
     return { ok, ask: !!car.on && !!car.moving && !ok };
   }
 
-  root.LPL = { FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, mergeMarks, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
+  root.LPL = { FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
                tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

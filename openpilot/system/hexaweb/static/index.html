@@ -1364,9 +1364,8 @@ function drawTrip(tr) {
   const dot = ([x, y], r, fill, ring) => { g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = fill; g.fill(); if (ring) { g.lineWidth = 3; g.strokeStyle = ring; g.stroke(); } };
   dot(fit.xy[0], 7, css("--bg"), css("--text"));  // start: a ring
   dot(fit.xy[fit.xy.length - 1], 7, css("--text"), css("--bg"));  // end: filled
-  const start = LPL.tripStart(tr);
   for (const m of marks) {
-    const k = LPL.nearestAt(pts, m.t - start);
+    const k = LPL.nearestAt(pts, LPL.pathSecond(tr, m.t));
     if (k >= 0) dot(fit.xy[k], 8, css("--warn"), css("--bg"));
   }
 }

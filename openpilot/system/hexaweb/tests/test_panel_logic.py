@@ -395,3 +395,11 @@ def test_no_path_yet_is_not_no_gps():
   assert run("pathSettled", drive_read, 0) is True
   assert run("pathSettled", drive_read, 12) is False
   assert run("pathSettled", {"summary": None}, 0) is False
+
+
+def test_a_mark_finds_its_place_on_the_path_of_a_trimmed_drive():
+  # the path counts from minute 0 of the route, and the deleter may have taken the first minutes of the list
+  whole = {"mtime": 1000, "minutes": 10, "segments": list(range(10))}
+  trimmed = {"mtime": 1000, "minutes": 2, "segments": [8, 9]}
+  assert run("pathSecond", whole, 700) == 300  # 5 min into the drive
+  assert run("pathSecond", trimmed, 900) == 8 * 60 + 20  # 20 s into what's left, which starts at minute 8

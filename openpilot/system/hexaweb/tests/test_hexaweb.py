@@ -1259,3 +1259,14 @@ def test_the_video_of_a_hard_brake_is_kept(panel, tmp_path, monkeypatch):
   monkeypatch.setattr(hexaweb.os, "setxattr", lambda path, name, value: kept.append((Path(path).name, name, value)), raising=False)
   panel.backend._auto_marks(panel.backend._trips()[0], {"auto_marks": [{"seg": 1, "left": 5., "kind": "hardbrake"}]})
   assert kept == [("0000000f--8784034901--1", "user.preserve", b"1")]
+
+
+def test_an_empty_list_of_drives_deletes_no_path(panel, tmp_path):
+  # a folder that can't be read right now isn't every drive deleted
+  panel.backend.log_root = str(tmp_path / "realdata")
+  trips = tmp_path / hexaweb.PATH_DIR
+  trips.mkdir()
+  kept = trips / "0000000f--8784034901.json"
+  kept.write_text("[]")
+  panel.backend._prune_paths(set())
+  assert kept.exists()
