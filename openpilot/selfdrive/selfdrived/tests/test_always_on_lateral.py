@@ -2,13 +2,13 @@ from types import SimpleNamespace
 
 from opendbc.car.gwm.tests.test_always_on import ALWAYS_ON
 from opendbc.car.gwm.tests.test_carstate import Car
-from openpilot.selfdrive.selfdrived.always_on_lateral import EventName, LongitudinalPause, ButtonType, reverse_is_parking
+from openpilot.selfdrive.selfdrived.always_on_lateral import EventName, RESUME_WAIT, LongitudinalPause, ButtonType, reverse_is_parking
 from openpilot.selfdrive.selfdrived.events import ET, Events
 
 
-def cs(brake=False, resume=False):
+def cs(brake=False, resume=False, v=0., driving=False):
   events = [SimpleNamespace(type=ButtonType.resumeCruise)] if resume else []
-  return SimpleNamespace(brakePressed=brake, buttonEvents=events)
+  return SimpleNamespace(brakePressed=brake, buttonEvents=events, vEgo=v, cruiseState=SimpleNamespace(driving=driving))
 
 
 def reverse_events():
@@ -54,6 +54,39 @@ class TestLongitudinalPause:
     p.update(True, True, cs(brake=True))
     p.update(False, False, cs())
     assert not p.update(True, False, cs())
+
+
+class TestAResumeTheAccHasToTake:
+  def paused(self):
+    p = LongitudinalPause()
+    p.update(True, True, cs(brake=True, v=7.))
+    return p
+
+  def test_moving_it_waits_for_the_acc(self):
+    p = self.paused()
+    assert p.update(True, False, cs(resume=True, v=7.))
+    assert p.update(True, False, cs(v=7.))
+    assert not p.update(True, False, cs(v=7., driving=True))
+
+  def test_a_pull_the_acc_refused_stays_paused(self):
+    p = self.paused()
+    p.update(True, False, cs(resume=True, v=7.))
+    for _ in range(int(RESUME_WAIT * 100) + 2):
+      assert p.update(True, False, cs(v=7.))
+    assert p.update(True, False, cs(v=7., driving=True))  # too late: it takes a new pull
+
+  def test_the_acc_already_driving_needs_no_wait(self):
+    assert not self.paused().update(True, False, cs(resume=True, v=7., driving=True))
+
+  def test_slow_it_resumes_at_once(self):
+    assert not self.paused().update(True, False, cs(resume=True, v=4.))
+
+  def test_the_brake_ends_the_wait(self):
+    p = self.paused()
+    p.update(True, False, cs(resume=True, v=7.))
+    p.update(True, True, cs(brake=True, v=7.))
+    p.update(True, False, cs(v=7.))
+    assert p.update(True, False, cs(v=7., driving=True))
 
 
 class TestThroughTheCar:
