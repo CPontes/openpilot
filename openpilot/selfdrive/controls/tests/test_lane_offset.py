@@ -1,8 +1,13 @@
 from types import SimpleNamespace
 
+import numpy as np
+
 from openpilot.cereal import log
 from openpilot.common.realtime import DT_CTRL
-from openpilot.selfdrive.controls.lib.lane_offset import LINES_STEADY_TIME, LaneOffset, MAX_OFFSET, HOLD_TIME, RELEASE_TIME, MAX_LEARN_LAT_ACCEL
+from openpilot.selfdrive.controls.lib.lane_offset import (
+  BLEND_TIME, LINES_LOST_TIME, LINES_STEADY_TIME, LaneOffset, MAX_OFFSET, HOLD_TIME,
+  RELEASE_TIME, MAX_LEARN_LAT_ACCEL,
+)
 
 LaneChangeState = log.LaneChangeState
 
@@ -185,15 +190,18 @@ class TestLaneOffset:
   def _taught(self):
     lo = LaneOffset()
     hold(lo, -0.35, LINES_STEADY_TIME + 0.1)
-    return lo, lo.update(True, True, car_state(), model(-0.1))
+    for _ in range(int(BLEND_TIME / DT_CTRL) + 10):
+      correction = lo.update(True, True, car_state(), model(-0.1))
+    return lo, correction
 
   def test_correction_fades_when_lanes_are_lost(self):
     lo, correction = self._taught()
-    faded = lo.update(True, True, car_state(), model(-0.1, prob=0.1))
-    assert abs(faded) == abs(correction) * 0.995
-    for _ in range(1000):
+    for _ in range(int(LINES_LOST_TIME / DT_CTRL) + 1):  # a short gap changes nothing
       faded = lo.update(True, True, car_state(), model(-0.1, prob=0.1))
-    assert abs(faded) < abs(correction) * 0.01
+    assert abs(faded) >= abs(correction) * 0.85
+    for _ in range(int(BLEND_TIME / DT_CTRL) + 1):
+      faded = lo.update(True, True, car_state(), model(-0.1, prob=0.1))
+    assert faded == 0.
 
   def test_correction_fades_when_lateral_is_off(self):
     lo, correction = self._taught()
@@ -343,6 +351,22 @@ class TestFlickeringLines:
     assert abs(road.position - -0.3) < 0.05
 
 
+class TestSlowSpeedStability:
+  # a rate limit on the correction weaved the car past 1 m below 20 km/h: the dose must not change the loop
+  def test_no_weaving_at_low_speed(self):
+    rng = np.random.default_rng(1)
+    for v in (3.6, 4.2, 5., 6.):
+      lo = LaneOffset()
+      road = Road(-0.3, v_ego=v)
+      hold(lo, -0.3, LINES_STEADY_TIME + 1., v_ego=v)
+      worst = 0.
+      for _ in range(int(60 / DT_CTRL)):
+        seen = road.position + rng.normal(0., .017)
+        road.step(lo.update(True, True, car_state(v_ego=v), model(seen)))
+        worst = max(worst, abs(road.position))
+      assert worst < .6
+
+
 class TestItGoesToTheLog:
   # a curve the driver marked couldn't be told apart: the model cutting it, or the taught position. Nothing logged either
   def events(self, monkeypatch):
@@ -367,6 +391,12 @@ class TestItGoesToTheLog:
     for _ in range(500):
       lo.update(True, True, car_state(), model(0.))
     assert seen == []
+
+  def test_a_nan_from_the_model_does_not_stay(self):
+    lo = LaneOffset()
+    lo.update(True, True, car_state(), model(float("nan")))
+    assert not lo.valid
+    assert lo.update(True, True, car_state(), model(0.)) == 0.
 
   def test_a_bad_measure_does_not_stop_the_process(self, monkeypatch):
     seen = self.events(monkeypatch)
