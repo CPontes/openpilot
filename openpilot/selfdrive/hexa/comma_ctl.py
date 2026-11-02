@@ -2,8 +2,6 @@
 
 Three levels, owner's request and CTO review (UI-09):
 - "cel": the phone changes it, with the car off or in P.
-- "conf": the phone asks and the driver confirms on the comma's screen, with the same 4-digit number (confirm.py).
-  For what opens the device (SSH) or changes how openpilot behaves.
 - "so": the phone only shows it. Changed on the comma alone.
 - "trav": locked for now, with the reason and what is missing.
 
@@ -12,7 +10,7 @@ comma doesn't say everything. Keys are the same Params the comma screen writes, 
 """
 from dataclasses import dataclass, field
 
-LEVELS = ("cel", "conf", "so", "trav")
+LEVELS = ("cel", "so", "trav")
 GROUPS: tuple[tuple[str, str], ...] = (
   ("prefs", "Preferências do comma"),
   ("dev", "Desenvolvedor"),
@@ -29,9 +27,7 @@ class CommaItem:
   lock: str = ""  # a Param that locks it on the comma too (e.g. RecordFrontLock)
   restart: bool = False  # applies on the next start of the car
   reboot: bool = False  # applies when the comma restarts
-  clears: tuple[str, ...] = ()  # turned off when this one is turned on (the comma does the same)
   dev_only: bool = False  # hidden on release builds, like the comma screen
-  offroad_only: bool = False  # the comma allows it only with the car off
   warnings: tuple[str, ...] = field(default_factory=tuple)
   blocked: str = ""  # for "trav": why
 
@@ -41,19 +37,12 @@ ITEMS: tuple[CommaItem, ...] = (
   CommaItem("IsMetric", "prefs", "usar unidades métricas", "Velocidades em km/h na tela do comma.", "cel"),
   CommaItem("AlwaysOnDM", "prefs", "monitor do motorista sempre ligado", "Monitora o motorista mesmo com o openpilot desligado.", "cel",
             lock="AlwaysOnDMLock"),
-  CommaItem("RecordFront", "prefs", "gravar e enviar a câmera interna", "Envia a câmera interna para melhorar o monitor do motorista.", "cel",
-            lock="RecordFrontLock", restart=True),
-  CommaItem("RecordAudio", "prefs", "gravar e enviar o áudio do microfone",
-            "Grava o áudio do microfone enquanto dirige. O áudio vai junto nos vídeos do comma connect.", "cel", restart=True),
   CommaItem("OpenpilotEnabledToggle", "prefs", "ligar o openpilot",
-            "Ligado: usa a assistência do openpilot. Desligado: usa a assistência original do carro.", "conf", restart=True),
+            "Ligado: usa a assistência do openpilot. Desligado: usa a assistência original do carro. Só na tela do comma.", "so"),
   # *** Desenvolvedor: selfdrive/ui/mici/layouts/settings/developer.py ***
   CommaItem("ShowDebugInfo", "dev", "depuração da tela", "Mostra toques e quadros por segundo na tela do comma.", "cel", reboot=True),
   CommaItem("NavigationEnabled", "dev", "navegação (alfa)", "Rota com mapa. O destino é escolhido no comma connect.", "cel",
             restart=True, dev_only=True),
-  CommaItem("SshEnabled", "dev", "acesso SSH", "Acesso remoto ao comma com as suas chaves SSH.", "conf"),
-  CommaItem("LateralManeuverMode", "dev", "modo de manobra lateral", "Manobras automáticas para testar a direção.", "conf",
-            restart=True, dev_only=True, offroad_only=True, clears=("JoystickDebugMode", "LongitudinalManeuverMode")),
   CommaItem("AdbEnabled", "dev", "ADB", "Abre o comma por USB ou pela rede (Android Debug Bridge). Só na tela do comma.", "so"),
   CommaItem("JoystickDebugMode", "dev", "joystick", "Dirigir o carro com um joystick, para depuração. Só na tela do comma.", "so",
             dev_only=True),
@@ -87,13 +76,6 @@ DEVICE_ACTIONS: tuple[tuple[str, str, str], ...] = (
 # device_layout.py:162-166: what "reset calibration" removes, then a new onroad cycle
 RECALIBRATE_REMOVES = ("CalibrationParams", "LiveTorqueParameters", "LiveParametersV2", "LiveDelay")
 
-# what the comma's confirmation says before the item ("ligar: acesso SSH"); hexaweb._ask_comma uses these only
-CONFIRM_VERBS = ("ligar", "desligar", "chaves SSH do GitHub", "apagar", "chaves SSH")
-
-SSH_USER = "GithubUsername"
-SSH_KEYS = "GithubSshKeys"
-
-
 def get_item(key: str) -> CommaItem | None:
   return next((i for i in ITEMS if i.key == key), None)
 
@@ -108,8 +90,8 @@ def can_change(item: CommaItem, vs, store) -> tuple[bool, str]:
     return False, item.blocked or "Só na tela do comma."
   if item.lock and store.get_bool(item.lock):
     return False, "Travado no comma."
-  if vs.onroad and (item.offroad_only or not (vs.parked and vs.standstill and not vs.engaged)):
-    return False, "Desligue o carro." if item.offroad_only else "Só com o carro em P ou desligado."
+  if vs.onroad and not (vs.parked and vs.standstill and not vs.engaged):
+    return False, "Só com o carro em P ou desligado."
   return True, ""
 
 
@@ -122,8 +104,5 @@ def effect(item: CommaItem) -> str:
 
 
 def apply(item: CommaItem, value: bool, store) -> None:
-  """Write it as the comma screen does, side effects included (developer.py:_on_*_mode)."""
+  """Write it as the comma screen does."""
   store.put_bool(item.key, value)
-  if value:
-    for other in item.clears:
-      store.put_bool(other, False)

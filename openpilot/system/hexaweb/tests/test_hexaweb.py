@@ -8,7 +8,6 @@ import urllib.request
 import pytest
 
 from openpilot.selfdrive.hexa import comma_net as comma_net_mod
-from openpilot.selfdrive.hexa import confirm as confirm_mod
 from openpilot.selfdrive.hexa import marks, phone
 from openpilot.selfdrive.hexa.phone import VehicleState
 from openpilot.system.hexaweb import hexaweb
@@ -1112,7 +1111,7 @@ def test_comma_state_lists_levels_and_the_locked_longitudinal(panel):
   assert {a["action"] for a in body["actions"]} == {"reboot", "poweroff", "recalibrate"}
   panel.store.put_bool("IsReleaseBranch", True)
   keys = {i["key"] for i in panel.json("/api/comma", token=token)[1]["items"]}
-  assert "AlphaLongitudinalEnabled" not in keys and "SshEnabled" in keys
+  assert "AlphaLongitudinalEnabled" not in keys and "AdbEnabled" in keys
 
 
 def test_a_phone_level_setting_applies_at_once_and_is_audited(panel):
@@ -1127,66 +1126,6 @@ def test_a_phone_level_setting_applies_at_once_and_is_audited(panel):
   panel.vs = VehicleState(onroad=True, parked=False, standstill=False, engaged=True)
   assert panel.json("/api/comma/set", {"key": "IsMetric", "value": False}, token=token)[0] == 409
   assert panel.store.get_bool("IsMetric") is True
-
-
-def test_ssh_needs_the_driver_at_the_comma(panel):
-  token = panel.pair()
-  status, body = panel.json("/api/comma/set", {"key": "SshEnabled", "value": True}, token=token)
-  assert status == 202 and len(body["confirm"]["code"]) == 4
-  req_id = body["confirm"]["id"]
-  assert not panel.store.get_bool("SshEnabled")
-  stored = panel.store.get(confirm_mod.REQUEST_PARAM)
-  assert stored["code"] == body["confirm"]["code"] and stored["verb"] == "ligar" and stored["what"] == "acesso SSH"
-  assert panel.json(f"/api/comma/confirm?id={req_id}", token=token)[1]["state"] == "waiting"
-  other = panel.pair("outro celular")
-  assert panel.json(f"/api/comma/confirm?id={req_id}", token=other)[0] == 404  # only the phone that asked
-  panel.store.put(confirm_mod.ANSWER_PARAM, "a wrong id")
-  assert panel.json(f"/api/comma/confirm?id={req_id}", token=token)[1]["state"] == "waiting"
-  panel.store.put(confirm_mod.ANSWER_PARAM, req_id)  # the slide on the comma
-  status, body = panel.json(f"/api/comma/confirm?id={req_id}", token=token)
-  assert (status, body["state"]) == (200, "done") and panel.store.get_bool("SshEnabled")
-  assert panel.store.get(confirm_mod.REQUEST_PARAM) is None and panel.store.get(confirm_mod.ANSWER_PARAM) is None
-  assert panel.store.get(phone.AUDIT_PARAM)[-1]["confirmed"] is True
-
-
-def test_a_confirmation_expires_or_is_cancelled(panel):
-  token = panel.pair()
-  req_id = panel.json("/api/comma/set", {"key": "SshEnabled", "value": True}, token=token)[1]["confirm"]["id"]
-  panel.now += confirm_mod.CONFIRM_S + 1
-  panel.store.put(confirm_mod.ANSWER_PARAM, req_id)  # too late
-  assert panel.json(f"/api/comma/confirm?id={req_id}", token=token)[1]["state"] == "expired"
-  assert not panel.store.get_bool("SshEnabled")
-  req_id = panel.json("/api/comma/set", {"key": "SshEnabled", "value": True}, token=token)[1]["confirm"]["id"]
-  assert panel.json("/api/comma/confirm/cancel", {"id": req_id}, token=token)[0] == 200
-  assert panel.store.get(confirm_mod.REQUEST_PARAM) is None
-
-
-def test_a_confirmed_change_is_refused_if_the_car_started_moving(panel):
-  token = panel.pair()
-  req_id = panel.json("/api/comma/set", {"key": "OpenpilotEnabledToggle", "value": False}, token=token)[1]["confirm"]["id"]
-  panel.store.put(confirm_mod.ANSWER_PARAM, req_id)
-  panel.vs = VehicleState(onroad=True, parked=False, standstill=False, engaged=False)
-  status, body = panel.json(f"/api/comma/confirm?id={req_id}", token=token)
-  assert status == 409 and body["state"] == "refused"
-
-
-def test_ssh_keys_from_github_after_the_comma_confirms(panel):
-  token = panel.pair()
-  panel.backend._spawn = lambda job: job()
-  panel.backend.fetch_ssh_keys = lambda user: f"ssh-ed25519 AAAA {user}\n"
-  assert panel.json("/api/comma/ssh", {"username": "bad user!"}, token=token)[0] == 400
-  req_id = panel.json("/api/comma/ssh", {"username": "cpontes"}, token=token)[1]["confirm"]["id"]
-  panel.store.put(confirm_mod.ANSWER_PARAM, req_id)
-  assert panel.json(f"/api/comma/confirm?id={req_id}", token=token)[1]["state"] == "done"
-  assert panel.store.get("GithubUsername") == "cpontes" and "cpontes" in panel.store.get("GithubSshKeys")
-  def fail(user):
-    raise ValueError("Usuário do GitHub não encontrado.")
-  panel.backend.fetch_ssh_keys = fail
-  req_id = panel.json("/api/comma/ssh", {"username": "ghost"}, token=token)[1]["confirm"]["id"]
-  panel.store.put(confirm_mod.ANSWER_PARAM, req_id)
-  panel.json(f"/api/comma/confirm?id={req_id}", token=token)
-  ssh = panel.json("/api/comma", token=token)[1]["ssh"]
-  assert ssh == {"user": "cpontes", "busy": False, "error": "Usuário do GitHub não encontrado.", "writable": True}
 
 
 def test_device_actions_only_with_the_car_off(panel):
@@ -1283,7 +1222,6 @@ def test_network_rules(panel):
   token = panel.pair()
   net = panel.backend.net = FakeNet()
   panel.backend.guard_thread = False
-  assert panel.json("/api/comma/net", {"op": "reveal"}, token=token) == (200, {"password": "segredo123"})
   assert panel.json("/api/comma/net", {"op": "tethering_password", "password": "1234567"}, token=token)[0] == 400
   assert panel.json("/api/comma/net", {"op": "forget", "ssid": "Casa"}, token=token)[0] == 409  # the one in use
   assert panel.json("/api/comma/net", {"op": "metered", "value": 3}, token=token)[0] == 400

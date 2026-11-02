@@ -6,7 +6,6 @@ openpilot/selfdrive/hexa/phone.py; this file only parses HTTP and calls PanelBac
 """
 import gzip
 import json
-import re
 import math
 import secrets
 import threading
@@ -18,7 +17,6 @@ from pathlib import Path
 from urllib.parse import parse_qs
 
 from openpilot.selfdrive.hexa import comma_ctl, comma_net
-from openpilot.selfdrive.hexa import confirm as hexa_confirm
 from openpilot.selfdrive.hexa import i18n
 from openpilot.selfdrive.hexa import live as hexa_live
 from openpilot.selfdrive.hexa import marks as hexa_marks
@@ -64,8 +62,6 @@ CLIP_BEFORE_S = 10.  # the clip of a mark starts this long before it
 CLIP_TICKET_S = 600.  # a clip link works this long, for that clip only
 FIXED_NONCE_S = 60.  # a same-comma check for lizpilot.local works this long, once
 NET_GUARD_MIN_S = 10.  # the phone counts as back on the new network only after this long
-GITHUB_USER = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")
-SSH_FETCH_TIMEOUT = 10.
 MAX_FIXED_NONCES = 8
 CLIP_VIDEO = "qcamera.ts"  # the light video loggerd keeps for each minute
 SEGMENT_S = 60.
@@ -83,18 +79,6 @@ SECURITY_HEADERS = {
   "Content-Security-Policy": "; ".join(("default-src 'self'", "script-src 'self' 'unsafe-inline'", "style-src 'self' 'unsafe-inline'",
                                          "img-src 'self' data:", f"connect-src 'self' http://{hexa_mdns.NAME}:{phone.PORT}")),
 }
-
-
-def fetch_github_keys(username: str) -> str:
-  """The public SSH keys of a GitHub user, as the comma screen fetches them (selfdrive/ui/widgets/ssh_key.py)."""
-  import requests
-  r = requests.get(f"https://github.com/{username}.keys", timeout=SSH_FETCH_TIMEOUT)
-  if r.status_code == 404:
-    raise ValueError("Usuário do GitHub não encontrado.")
-  r.raise_for_status()
-  if not r.text.strip():
-    raise ValueError("Esse usuário não tem chaves SSH no GitHub.")
-  return r.text
 
 
 class PanelBackend:
@@ -139,8 +123,6 @@ class PanelBackend:
     self.net = comma_net.CommaNetwork()
     self._net_guard: dict | None = None  # {snap, token, start, deadline}: go back if the phone doesn't come back
     self.guard_thread = True  # tests check the guard by hand
-    self._ssh_job = {"busy": False, "error": "", "user": ""}
-    self.fetch_ssh_keys: Callable[[str], str] = fetch_github_keys
 
   def vehicle_state(self) -> VehicleState:
     with self._vs_lock:
@@ -278,13 +260,7 @@ class PanelBackend:
   def _release(self) -> bool:
     return bool(self.store.get_bool("IsReleaseBranch"))
 
-  def _confirm_pending(self, who: dict) -> dict | None:
-    req = hexa_confirm.parse(self.store.get(hexa_confirm.REQUEST_PARAM))
-    if req is None or req.get("token") != who.get("id") or not hexa_confirm.fresh(req, self.mono()):
-      return None
-    return {"id": req["id"], "code": req["code"], "seconds": hexa_confirm.seconds_left(req, self.mono()), "what": req["label"]}
-
-  def comma_state(self, who: dict) -> dict:
+  def comma_state(self) -> dict:
     vs = self.vehicle_state()
     release = self._release()
     items = []
@@ -298,20 +274,7 @@ class PanelBackend:
     off = not vs.onroad
     return {"groups": [list(g) for g in comma_ctl.GROUPS], "items": items, "onroad": vs.onroad,
             "actions": [{"action": a, "title": t, "description": d, "allowed": off} for a, t, d in comma_ctl.DEVICE_ACTIONS],
-            "ssh": {"user": self.store.get(comma_ctl.SSH_USER) or "", "busy": self._ssh_job["busy"], "error": self._ssh_job["error"],
-                    "writable": comma_ctl.can_change(comma_ctl.get_item("SshEnabled"), vs, self.store)[0]},
-            "long": {"steps": [{"key": k, "label": label, "done": k == "calibrado" and LONG_CALIBRATED} for k, label in comma_ctl.LONG_STEPS]},
-            "confirm": self._confirm_pending(who)}
-
-  def _ask_comma(self, who: dict, action: dict, verb: str, what: str, translate: bool = True) -> tuple[int, dict]:
-    req = hexa_confirm.new_request(action, f"{verb}: {what}", who.get("name", ""), now=self.mono())
-    req.update(token=who.get("id"), verb=verb, what=what, translate=translate)
-    with self.lock:
-      self.store.remove(hexa_confirm.ANSWER_PARAM)
-      self.store.put(hexa_confirm.REQUEST_PARAM, req)
-      self._audit({"event": "confirm_asked", "who": who.get("name", ""), "new": req["label"]})
-    return 202, {"confirm": {"id": req["id"], "code": req["code"], "seconds": int(hexa_confirm.CONFIRM_S), "what": req["label"]},
-                 "message": "Confirme na tela do comma."}
+            "long": {"steps": [{"key": k, "label": label, "done": k == "calibrado" and LONG_CALIBRATED} for k, label in comma_ctl.LONG_STEPS]}}
 
   def comma_set(self, who: dict, key: str, value) -> tuple[int, dict]:
     it = comma_ctl.get_item(key)
@@ -322,87 +285,11 @@ class PanelBackend:
     ok, reason = comma_ctl.can_change(it, self.vehicle_state(), self.store)
     if not ok:
       return 409, {"error": reason}
-    if it.level == "conf":
-      return self._ask_comma(who, {"kind": "set", "key": key, "value": value}, "ligar" if value else "desligar", it.title)
     with self.lock:
       old = bool(self.store.get_bool(key))
       comma_ctl.apply(it, value, self.store)
       self._audit({"event": "comma_set", "who": who.get("name", ""), "key": key, "old": old, "new": value})
     return 200, {"ok": True, "message": comma_ctl.effect(it)}
-
-  def comma_ssh(self, who: dict, username: str) -> tuple[int, dict]:
-    username = str(username or "").strip()
-    if username and not GITHUB_USER.match(username):
-      return 400, {"error": "Usuário do GitHub inválido."}
-    if not comma_ctl.can_change(comma_ctl.get_item("SshEnabled"), self.vehicle_state(), self.store)[0]:
-      return 409, {"error": "Só com o carro em P ou desligado."}
-    if username:
-      return self._ask_comma(who, {"kind": "ssh_user", "username": username}, "chaves SSH do GitHub", username, translate=False)
-    return self._ask_comma(who, {"kind": "ssh_user", "username": ""}, "apagar", "chaves SSH")
-
-  def comma_confirm(self, who: dict, req_id: str) -> tuple[int, dict]:
-    """Polled by the phone that asked: waiting, done (and applied now) or expired."""
-    with self.lock:
-      req = hexa_confirm.parse(self.store.get(hexa_confirm.REQUEST_PARAM))
-      if req is None or req.get("id") != req_id or req.get("token") != who.get("id"):
-        return 404, {"state": "gone", "error": "Pedido não encontrado."}
-      answer = self.store.get(hexa_confirm.ANSWER_PARAM)
-      if not hexa_confirm.confirmed(req, answer, self.mono()):
-        if hexa_confirm.fresh(req, self.mono()):
-          return 200, {"state": "waiting", "seconds": hexa_confirm.seconds_left(req, self.mono())}
-        self.store.remove(hexa_confirm.REQUEST_PARAM)
-        self.store.remove(hexa_confirm.ANSWER_PARAM)
-        return 200, {"state": "expired", "message": "Ninguém confirmou no comma. Nada mudou."}
-      self.store.remove(hexa_confirm.REQUEST_PARAM)
-      self.store.remove(hexa_confirm.ANSWER_PARAM)
-    return self._confirmed(who, req["action"])
-
-  def _confirmed(self, who: dict, action: dict) -> tuple[int, dict]:
-    vs = self.vehicle_state()
-    if action.get("kind") == "set":
-      it = comma_ctl.get_item(str(action.get("key", "")))
-      if it is None:
-        return 404, {"state": "gone", "error": "Ajuste desconhecido."}
-      ok, reason = comma_ctl.can_change(it, vs, self.store)  # the car may have moved in the meantime
-      if not ok:
-        return 409, {"state": "refused", "error": reason}
-      with self.lock:
-        old = bool(self.store.get_bool(it.key))
-        comma_ctl.apply(it, bool(action.get("value")), self.store)
-        self._audit({"event": "comma_set", "who": who.get("name", ""), "key": it.key, "old": old, "new": bool(action.get("value")),
-                     "confirmed": True})
-      return 200, {"state": "done", "message": comma_ctl.effect(it)}
-    if action.get("kind") == "ssh_user":
-      username = str(action.get("username", ""))
-      with self.lock:
-        self._audit({"event": "ssh_keys", "who": who.get("name", ""), "new": username or "-", "confirmed": True})
-        if not username:
-          self.store.remove(comma_ctl.SSH_USER)
-          self.store.remove(comma_ctl.SSH_KEYS)
-          return 200, {"state": "done", "message": "Chaves SSH apagadas."}
-        self._ssh_job = {"busy": True, "error": "", "user": username}
-      self._spawn(lambda: self._ssh_fetch(username))
-      return 200, {"state": "done", "message": "Buscando as chaves no GitHub."}
-    return 400, {"state": "gone", "error": "Pedido inválido."}
-
-  def _ssh_fetch(self, username: str) -> None:
-    error = ""
-    try:
-      keys = self.fetch_ssh_keys(username)
-      with self.lock:
-        self.store.put(comma_ctl.SSH_USER, username)
-        self.store.put(comma_ctl.SSH_KEYS, keys)
-    except Exception as e:
-      error = str(e)[:120] or "Não foi possível buscar as chaves."
-    self._ssh_job = {"busy": False, "error": error, "user": username}
-
-  def comma_cancel(self, who: dict, req_id: str) -> tuple[int, dict]:
-    with self.lock:
-      req = hexa_confirm.parse(self.store.get(hexa_confirm.REQUEST_PARAM))
-      if req is not None and req.get("id") == req_id and req.get("token") == who.get("id"):
-        self.store.remove(hexa_confirm.REQUEST_PARAM)
-        self.store.remove(hexa_confirm.ANSWER_PARAM)
-    return 200, {"ok": True}
 
   def comma_action(self, who: dict, action: str) -> tuple[int, dict]:
     if action not in {a for a, _, _ in comma_ctl.DEVICE_ACTIONS}:
@@ -500,10 +387,6 @@ class PanelBackend:
           return 400, {"error": "Valor inválido."}
         self.net.set_metered(value)
         return 200, {"ok": True, "message": "Vale agora."}
-      if op == "reveal":
-        with self.lock:
-          self._audit({"event": "net", "who": who.get("name", ""), "key": "reveal"})
-        return 200, {"password": self.net.tethering_password()}
       if op == "connect":
         ssid, password = body.get("ssid"), body.get("password", "")
         if not isinstance(ssid, str) or not 0 < len(ssid.encode()) <= 32 or not isinstance(password, str) or len(password) > 63 \
@@ -1262,16 +1145,11 @@ def make_handler(backend: PanelBackend):
         if self._who() is not None:
           self._json(200, backend.radars_export())
       elif path == "/api/comma":
-        who = self._who()
-        if who is not None:
-          self._json(200, backend.comma_state(who))
+        if self._who() is not None:
+          self._json(200, backend.comma_state())
       elif path == "/api/comma/net":
         if self._who() is not None:
           self._json(*backend.comma_net_state())
-      elif path == "/api/comma/confirm":
-        who = self._who()
-        if who is not None:
-          self._json(*backend.comma_confirm(who, (parse_qs(query).get("id") or [""])[0]))
       elif path == "/api/fixed/nonce":  # before pairing: carries no secret and opens nothing
         self._json(200, backend.fixed_nonce(self.client_address[0]))
       elif path == "/api/fixed/check":  # asked by a page served by address: it may read only this yes or no
@@ -1342,8 +1220,6 @@ def make_handler(backend: PanelBackend):
         "/api/comma/set": lambda who, b: backend.comma_set(who, str(b.get("key", "")), b.get("value")),
         "/api/comma/action": lambda who, b: backend.comma_action(who, str(b.get("action", ""))),
         "/api/comma/net": lambda who, b: backend.comma_net(who, b),
-        "/api/comma/ssh": lambda who, b: backend.comma_ssh(who, b.get("username", "")),
-        "/api/comma/confirm/cancel": lambda who, b: backend.comma_cancel(who, str(b.get("id", ""))),
       }
       if path not in routes and path != "/api/logout":
         self._json(404, {"error": "Não encontrado."})

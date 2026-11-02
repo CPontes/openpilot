@@ -68,7 +68,6 @@
   .ctl-form input { width: 100%; min-width: 0; box-sizing: border-box; }
   .safety { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px 8px; align-items: center; font-size: 15px; }
   .safety .tag { justify-self: start; }
-  .bigcode { font-size: 48px; font-weight: 700; letter-spacing: .18em; color: var(--warn); text-align: center; font-variant-numeric: tabular-nums; margin: 10px 0; }
   .pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 700; background: var(--tag-warn); color: var(--warn); }
   .switch { flex: none; position: relative; width: 56px; height: 44px; border: 0; padding: 0; background: none; }
   .switch::before { content: ""; position: absolute; left: 2px; top: 6px; width: 52px; height: 32px; border-radius: 999px; background: var(--switch-off); transition: background .15s; }
@@ -468,17 +467,6 @@
   <button class="btn ghost" id="clipClose" type="button" data-t>Fechar</button>
 </section>
 
-<!-- Confirmar no comma: the phone asks, the driver slides on the comma's screen, the same 4 digits on both -->
-<div class="scrim hidden" id="confirmScrim"></div>
-<section class="sheet hidden" id="confirmSheet" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
-  <span class="grab"></span>
-  <h2 id="confirmTitle" data-t>Confirme no comma</h2>
-  <p class="desc" id="confirmWhat" style="margin:8px 0 0"></p>
-  <div class="bigcode" id="confirmCode">0000</div>
-  <p class="desc" style="margin:0" data-t>Deslize na tela do comma em até 60 s e confira se o número é o mesmo. Assim ninguém muda isso só com um celular pareado.</p>
-  <p class="small" id="confirmLeft" style="text-align:center;margin-top:12px"></p>
-  <button class="btn ghost" id="confirmCancel" type="button" data-t>Cancelar</button>
-</section>
 
 <!-- Passageiro: moving, asked once per trip before Marcar or a point. What was tapped is already kept. -->
 <div class="scrim hidden" id="passScrim"></div>
@@ -835,7 +823,7 @@ const EVENTS = { paired: "pareou", logout: "desconectou", phone_revoked: "descon
 const RADAR_ACTIONS = { edit: "conferiu", removed: "tirou", add: "adicionou", delete: "apagou", import: "restaurou pontos" };
 const COMMA_ACTIONS = { reboot: "reiniciou o comma", poweroff: "desligou o comma", recalibrate: "recalibrou o comma" };
 const NET_ACTIONS = { connect: "conectou na rede", forget: "esqueceu a rede", tethering: "hotspot", tethering_password: "trocou a senha do hotspot",
-                      metered: "uso de dados", roaming: "roaming", gsm_metered: "chip medido", reveal: "viu a senha do hotspot" };
+                      metered: "uso de dados", roaming: "roaming", gsm_metered: "chip medido" };
 function auditText(a) {
   const head = dayTime(a.t) + " · " + (a.who ? a.who + ": " : "");
   const name = t(titles[a.key] || a.key);
@@ -850,14 +838,12 @@ function auditText(a) {
   if (a.event === "profile_saved") return head + tf("salvou o perfil \"{nome}\"", { nome: a.new });
   if (a.event === "profile_removed") return head + tf("apagou o perfil \"{nome}\"", { nome: a.new });
   if (a.event === "profiles_restored") return head + tf("restaurou os perfis {nomes}", { nomes: a.new });
-  if (a.event === "comma_set") return head + tf(a.new ? "ligou {nome}" : "desligou {nome}", { nome: name }) + (a.confirmed ? " " + t("(confirmado no comma)") : "");
+  if (a.event === "comma_set") return head + tf(a.new ? "ligou {nome}" : "desligou {nome}", { nome: name });
   if (a.event === "comma_action") return head + t(COMMA_ACTIONS[a.new] || a.new);
   if (a.event === "net") {
     const what = typeof a.new === "boolean" ? t(a.new ? "ligado" : "desligado") : (a.new || "");
     return head + t(NET_ACTIONS[a.key] || a.key) + (what ? ": " + what : "");
   }
-  if (a.event === "confirm_asked") return head + tf("pediu confirmação no comma: {o_que}", { o_que: confirmText({ what: a.new }) });
-  if (a.event === "ssh_keys") return head + tf("chaves SSH: {usuario}", { usuario: a.new });
   if (a.event === "net_restored") return head + tf("a rede voltou sozinha para {rede}", { rede: a.new });
   return head + t(EVENTS[a.event] || a.event);
 }
@@ -1557,15 +1543,14 @@ function saveFile(name, data) {
 }
 
 // ----- the comma's own settings, from the phone (UI-09): each says where it can be changed -----
-const LEVEL_TEXT = { cel: "pelo celular", conf: "confirma no comma", so: "só no comma", trav: "travado" };
-const LEVEL_CLASS = { cel: "tag ok", conf: "tag warn", so: "tag", trav: "tag bad" };
-let commaCtl = null, netState = null, confirmReq = null, confirmTimer = null, netForm = null, netPassword = null;
+const LEVEL_TEXT = { cel: "pelo celular", so: "só no comma", trav: "travado" };
+const LEVEL_CLASS = { cel: "tag ok", so: "tag", trav: "tag bad" };
+let commaCtl = null, netState = null, netForm = null;
 async function refreshCommaCtl() {
   const r = await api("/api/comma");
   if (r.status !== 200) return;
   commaCtl = r.data;
   renderCommaCtl();
-  if (r.data.confirm && !confirmReq) openConfirm(r.data.confirm);
   if ($("ctlNet").open) refreshNet();
 }
 function levelTag(level) { return el("span", LEVEL_CLASS[level] || "tag", t(LEVEL_TEXT[level] || LEVEL_TEXT.so)); }
@@ -1578,7 +1563,7 @@ function ctlRow(it) {
   else if (!it.writable && it.reason && it.level !== "so") text.append(lockLine(it.reason));
   else if (it.level !== "so") text.append(el("span", "small", t(it.effect)));
   head.append(text);
-  if (it.level === "cel" || it.level === "conf") {
+  if (it.level === "cel") {
     const sw = el("button", "switch"); sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", it.value ? "true" : "false");
     sw.setAttribute("aria-label", t(it.title)); sw.disabled = !it.writable;
     sw.addEventListener("click", () => commaSet(it, !it.value, sw));
@@ -1597,21 +1582,7 @@ function renderCommaCtl() {
   $("prefsBox").replaceChildren(...c.items.filter((i) => i.group === "prefs").map(ctlRow));
   const dev = c.items.filter((i) => i.group === "dev");
   dev.sort((a, b) => (b.key === "AlphaLongitudinalEnabled") - (a.key === "AlphaLongitudinalEnabled"));  // the locked one first: the owner looks for it
-  const keysRow = el("div", "opt"), kh = el("div", "head"), kt = el("div", "text");
-  const kTitle = el("span", "title", t("chaves SSH")); kTitle.append(" ", levelTag("conf"));
-  kt.append(kTitle, el("span", "sum", c.ssh.user ? tf("GitHub: {usuario}. Só use o seu próprio usuário.", { usuario: c.ssh.user }) : t("Nenhuma. Só use o seu próprio usuário do GitHub.")));
-  if (c.ssh.busy) kt.append(el("span", "small", t("Buscando as chaves no GitHub.")));
-  else if (c.ssh.error) kt.append(el("span", "small", t(c.ssh.error)));
-  kh.append(kt); keysRow.append(kh);
-  const form = el("div", "row"); form.style.gap = "8px";
-  const inp = el("input"); inp.type = "text"; inp.maxLength = 39; inp.autocomplete = "off"; inp.placeholder = t("usuário do GitHub"); inp.setAttribute("aria-label", t("usuário do GitHub")); inp.style.cssText = "flex:1;min-width:0"; inp.value = c.ssh.user || "";
-  const go = el("button", "btn", t("Usar")); go.type = "button"; go.style.cssText = "width:auto;min-height:48px;padding:0 18px;font-size:17px"; go.disabled = !c.ssh.writable;
-  go.addEventListener("click", async () => { const r = await api("/api/comma/ssh", { username: inp.value.trim() }); afterAsk(r); });
-  form.append(inp, go); keysRow.append(form);
-  const devRows = dev.map(ctlRow);
-  const sshAt = dev.findIndex((i) => i.key === "SshEnabled");
-  devRows.splice(sshAt + 1, 0, keysRow);
-  $("devBox").replaceChildren(...devRows);
+  $("devBox").replaceChildren(...dev.map(ctlRow));
   $("deviceBox").replaceChildren(...c.actions.map((a) => {
     const row = el("div", "opt"), head = el("div", "head"), text = el("div", "text");
     const title = el("span", "title", t(a.title)); title.append(" ", levelTag("cel"));
@@ -1631,49 +1602,9 @@ async function commaSet(it, value, sw) {
   sw.disabled = true;
   const r = await api("/api/comma/set", { key: it.key, value });
   sw.disabled = false;
-  if (r.status === 200) { toast(t(r.data.message)); refreshCommaCtl(); }
-  else afterAsk(r);
-}
-function afterAsk(r) {
-  if (r.status === 202 && r.data.confirm) openConfirm(r.data.confirm);
-  else if (r.status === 200 && r.data.message) { toast(t(r.data.message)); refreshCommaCtl(); }
-  else toast(r.data.error || t("Não foi possível."));
-}
-function confirmText(c) {
-  const [verb, ...rest] = String(c.what || "").split(": ");
-  return rest.length ? `${t(verb)}: ${t(rest.join(": "))}` : t(verb);
-}
-function openConfirm(c) {
-  confirmReq = c;
-  $("confirmWhat").textContent = confirmText(c);
-  $("confirmCode").textContent = c.code;
-  $("confirmLeft").textContent = tf("esperando o comma · {s} s", { s: c.seconds });
-  $("confirmScrim").classList.remove("hidden"); $("confirmSheet").classList.remove("hidden");
-  clearTimeout(confirmTimer);
-  confirmTimer = setTimeout(pollConfirm, 1000);
-}
-function closeConfirm() {
-  clearTimeout(confirmTimer); confirmReq = null;
-  $("confirmScrim").classList.add("hidden"); $("confirmSheet").classList.add("hidden");
-}
-async function pollConfirm() {
-  if (!confirmReq) return;
-  const r = await api("/api/comma/confirm?id=" + encodeURIComponent(confirmReq.id));
-  if (!confirmReq) return;
-  if (r.status === 200 && r.data.state === "waiting") {
-    $("confirmLeft").textContent = tf("esperando o comma · {s} s", { s: r.data.seconds });
-    confirmTimer = setTimeout(pollConfirm, 1000);
-    return;
-  }
-  if (r.status === 0) { confirmTimer = setTimeout(pollConfirm, 2000); return; }
-  closeConfirm();
-  toast(r.data.message ? t(r.data.message) : r.data.error || t("Não foi possível."));
+  toast(r.status === 200 ? t(r.data.message) : r.data.error || t("Não foi possível."));
   refreshCommaCtl();
 }
-$("confirmCancel").addEventListener("click", async () => {
-  const c = confirmReq; closeConfirm();
-  if (c) await api("/api/comma/confirm/cancel", { id: c.id });
-});
 
 // ----- the comma's network: every change that can take this phone off the comma goes back by itself -----
 async function refreshNet() {
@@ -1743,12 +1674,7 @@ function renderNet() {
     out.push(el("div", "label", t("Hotspot do comma")));
     out.push(netRow(t("Hotspot"), t("O celular entra nele e abre lizpilot.local."),
       netSwitch(w.tethering, t("Hotspot"), () => netDo({ op: "tethering", on: !w.tethering }))));
-    const reveal = el("button", "link", netPassword ? t("Esconder") : t("Mostrar")); reveal.type = "button";
-    reveal.addEventListener("click", async () => {
-      if (netPassword) { netPassword = null; renderNet(); return; }
-      const r = await api("/api/comma/net", { op: "reveal" }); if (r.status === 200) { netPassword = r.data.password; renderNet(); }
-    });
-    const pwRow = netRow(t("Senha"), netPassword || "••••••••", reveal);
+    const pwRow = netRow(t("Senha"), "••••••••");
     const change = el("button", "link", t("Trocar")); change.type = "button";
     change.addEventListener("click", () => { netForm = netForm === "password" ? null : "password"; renderNet(); });
     pwRow.querySelector(".head").append(change);
