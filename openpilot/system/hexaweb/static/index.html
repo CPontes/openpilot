@@ -288,7 +288,7 @@
             <div class="tiles" id="tripTiles"></div>
             <canvas id="tripCanvas" role="img" data-t-aria="Caminho da viagem" aria-label="Caminho da viagem"></canvas>
             <div class="mapmsg hidden" id="tripMapMsg"></div>
-            <button class="mapchip" id="streetsBtn" type="button" aria-pressed="true" data-t>Ruas</button>
+            <button class="mapchip" id="streetsBtn" type="button" aria-pressed="false" data-t>Ruas</button>
             <a class="attrib hidden" id="tripAttrib" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a>
           </div>
           <div class="maplegend" id="tripMapLegend">
@@ -297,7 +297,7 @@
             <span><i class="sw you"></i><span data-t>você</span></span>
             <span><i class="pin"></i><span data-t>marca</span></span>
           </div>
-          <div class="small hidden" id="streetsNote" data-t>As ruas vêm do OpenStreetMap pela internet: ele vê a região do mapa, não o caminho. O caminho fica no comma.</div>
+          <div class="small hidden" id="streetsNote"></div>
           <div class="stack hidden" id="tripSplit" style="gap:12px">
             <div class="stack" style="gap:4px"><span class="hero" id="tripBig"></span><span class="title" id="tripLine"></span><span class="desc" id="tripSub"></span></div>
             <div class="split" id="tripBar" role="img"></div>
@@ -1244,12 +1244,12 @@ async function refreshTrips(force) {
 const HIST_STEP = 20, MAP_PAD = 26;
 let tripSel = null, histQuery = "", histFilter = "todas", histShowHidden = false, histShown = HIST_STEP, histSig = "", lastHist = null;
 let tripsPending = 0, mapSig = "", tileFails = 0;
-let streets = load("lpStreets") !== "0";  // the street map behind the path, on unless turned off on this phone
+let streets = load("lpStreets") === "1";  // the street map behind the path: off unless turned on on this phone (CTO, 02/11)
 const paths = new Map();  // route → { points } or { status }: page memory only
 function cacheTrips() { if (trips) store("lpTrips", JSON.stringify({ at: Date.now(), trips })); }
 try { const c = JSON.parse(load("lpTrips") || "null"); if (c && Array.isArray(c.trips)) trips = c.trips; } catch (e) {}  // opens with the last list
 function markText(m) {
-  return [t(m.label || ""), m.note || "", m.source === "auto" ? t("automática") : "", m.source === "comma" ? t("bandeira") : ""].join(" ");
+  return [t(m.label || ""), m.note || "", m.source === "comma" ? t("bandeira") : ""].join(" ");
 }
 function histNow() {
   lastHist = LPL.history(trips || [], { query: histQuery, filter: histFilter, showHidden: histShowHidden, locale: L(), nowS: Date.now() / 1000,
@@ -1297,7 +1297,7 @@ function renderTripCard(h) {
     const tile = (v, unit, label) => { const d = el("div", "tile"); const b = el("b", "num", v == null ? "—" : String(v)); if (v != null && unit) b.append(" ", el("small", "", unit)); d.append(b, el("span", "", label)); return d; };
     const tiles = [tile(f.avg, "km/h", t("média andando")), tile(f.vmax, "km/h", t("máxima")),
                    tile(f.movingMin, "min", t("andando")), tile(f.stopMin, "min", t("parado"))];
-    if (f.runKm != null) tiles.push(tile(num(f.runKm, 1), "km", tf("maior trecho do openpilot sem a sua mão ({m} min)", { m: f.runMin })));
+    if (f.runKm != null) tiles.push(tile(num(f.runKm, 1), "km", tf("maior trecho sem intervenção ({m} min)", { m: f.runMin })));
     $("tripFigures").replaceChildren(...tiles);
   }
   drawTrip(tr);
@@ -1333,7 +1333,10 @@ function drawTrip(tr) {
   $("tripAttrib").classList.toggle("hidden", !tiles.length);
   $("streetsBtn").classList.toggle("hidden", !fit);
   $("streetsBtn").setAttribute("aria-pressed", streets ? "true" : "false");
-  $("streetsNote").classList.toggle("hidden", !(streets && fit));
+  $("streetsNote").classList.toggle("hidden", !fit);
+  $("streetsNote").textContent = streets  // what the tiles tell OpenStreetMap, in both states
+    ? t("Ruas ligadas: o OpenStreetMap recebe o IP deste celular e a área de cada viagem aberta. O caminho em si fica no comma.")
+    : t("Ruas desligadas. Ligadas, vêm do OpenStreetMap pela internet, que recebe o IP deste celular e a área de cada viagem aberta.");
   if (!fit) {
     say(got.status === "loading" ? t("Carregando o caminho…") : got.status === "none"
       ? (tr.summary ? t("Sem GPS nesta viagem: sem mapa.") : t("O mapa aparece quando o comma terminar de ler esta viagem."))

@@ -325,7 +325,7 @@ def trip_segment(events: Iterable) -> dict:
   pedal_at = {"gas": -1e9, "brake": -1e9}
   shadow = ShadowCounter()
   car = hexa_sensors.CarSensors()
-  run = [0., 0.]  # km and s of openpilot alone (steering, no hand on the wheel) without a break, now
+  run = [0., 0.]  # km and s of openpilot steering with no intervention (no driver torque: steeringPressed), now
   run_head: list | None = None  # the run the minute started with, until its first break
   run_best = [0., 0.]
   v_max = 0.
@@ -441,7 +441,7 @@ def trip_segment(events: Iterable) -> dict:
     total[k] = _r(total[k], 3)
   total.update(shadow.result())
   total.update(car.result())
-  # the longest stretch with openpilot alone; head and tail join with the minutes around it (trip_summary)
+  # the longest stretch with no intervention; head and tail join with the minutes around it (trip_summary)
   total.update({"v_max": _r(v_max * 3.6, 1), "run_best": [_r(x, 3) for x in max(run_best, run)], "run_tail": [_r(x, 3) for x in run],
                 "run_head": [_r(x, 3) for x in (run_head if run_head is not None else run)], "run_whole": run_head is None})
   return {"points": points, "events": out, "summary": total, "shadow": shadow.events, "version": version}

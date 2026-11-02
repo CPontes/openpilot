@@ -271,7 +271,7 @@ def test_trip_summary_keeps_a_light_path_with_who_drove():
 
 
 def test_trip_summary_has_the_numbers_anyone_wants(tmp_path):
-  # top speed, and the longest stretch with openpilot alone: it goes on into the next minute, and a hand on the wheel ends it
+  # top speed, and the longest stretch with no intervention: it goes on into the next minute, and torque on the wheel ends it
   files = {}
   for n, kw in ((0, {"pressed": (3., 4.)}), (1, {"lat_from": 0.}), (2, {"pressed": (2., 3.), "lat_from": 0.})):
     d = tmp_path / f"00000001--abc--{n}"

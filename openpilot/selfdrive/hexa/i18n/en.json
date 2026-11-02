@@ -49,7 +49,6 @@
  "Aqui o comma só avisa.": "Here the comma only warns.",
  "Arquivo .ts, abre no VLC. Nada sai do comma sozinho.": ".ts file, opens in VLC. Nothing leaves the comma by itself.",
  "Arraste a barra para percorrer o caminho.": "Drag the bar to follow the route.",
- "As ruas vêm do OpenStreetMap pela internet: ele vê a região do mapa, não o caminho. O caminho fica no comma.": "The streets come from OpenStreetMap over the internet: it sees the map's area, not the path. The path stays on the comma.",
  "As viagens só abrem com o carro desligado.": "Trips only open with the car off.",
  "Atenção no comma": "Comma needs attention",
  "Atualizador: {estado}": "Updater: {estado}",
@@ -464,7 +463,6 @@
  "atualização: {acao}": "update: {acao}",
  "atualizou a lista de radares": "updated the camera list",
  "até o carro à frente: {d} m, ele a {v} km/h": "to the car ahead: {d} m, it at {v} km/h",
- "automática": "automatic",
  "aviso de acc saiu sozinho": "acc dropped alert",
  "aviso de carro da frente saiu": "car ahead moved alert",
  "aviso de radar e lombada": "speed camera and bump alert",
@@ -564,7 +562,6 @@
  "maior freada": "hardest braking",
  "maior inclinação lateral": "largest side lean",
  "maior subida": "steepest uphill",
- "maior trecho do openpilot sem a sua mão ({m} min)": "longest stretch of openpilot without your hand ({m} min)",
  "marca": "mark",
  "marcas": "marks",
  "marcha à ré": "reverse gear",
@@ -724,5 +721,8 @@
  "Esta viagem está oculta no celular.": "This drive is hidden on the phone.",
  "Mostrar de novo nas listas": "Show again in the lists",
  "Ocultar esta viagem": "Hide this drive",
- "Sai das listas do celular. O log continua no comma: dá para mostrar de novo no Início.": "It leaves the phone's lists. The log stays on the comma: you can show it again on Home."
+ "Sai das listas do celular. O log continua no comma: dá para mostrar de novo no Início.": "It leaves the phone's lists. The log stays on the comma: you can show it again on Home.",
+ "Ruas ligadas: o OpenStreetMap recebe o IP deste celular e a área de cada viagem aberta. O caminho em si fica no comma.": "Streets on: OpenStreetMap gets this phone's IP and the area of each drive you open. The path itself stays on the comma.",
+ "Ruas desligadas. Ligadas, vêm do OpenStreetMap pela internet, que recebe o IP deste celular e a área de cada viagem aberta.": "Streets off. When on, they come from OpenStreetMap over the internet, which gets this phone's IP and the area of each drive you open.",
+ "maior trecho sem intervenção ({m} min)": "longest stretch with no intervention ({m} min)"
 }

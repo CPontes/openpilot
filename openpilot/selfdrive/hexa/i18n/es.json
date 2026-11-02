@@ -49,7 +49,6 @@
  "Aqui o comma só avisa.": "Aquí el comma solo avisa.",
  "Arquivo .ts, abre no VLC. Nada sai do comma sozinho.": "Archivo .ts, se abre en VLC. Nada sale del comma solo.",
  "Arraste a barra para percorrer o caminho.": "Arrastre la barra para recorrer el camino.",
- "As ruas vêm do OpenStreetMap pela internet: ele vê a região do mapa, não o caminho. O caminho fica no comma.": "Las calles vienen de OpenStreetMap por internet: ve la zona del mapa, no el recorrido. El recorrido queda en el comma.",
  "As viagens só abrem com o carro desligado.": "Los viajes solo se abren con el auto apagado.",
  "Atenção no comma": "Atención en el comma",
  "Atualizador: {estado}": "Actualizador: {estado}",
@@ -464,7 +463,6 @@
  "atualização: {acao}": "actualización: {acao}",
  "atualizou a lista de radares": "actualizó la lista de radares",
  "até o carro à frente: {d} m, ele a {v} km/h": "al auto de adelante: {d} m, él a {v} km/h",
- "automática": "automática",
  "aviso de acc saiu sozinho": "aviso de que el acc se apagó",
  "aviso de carro da frente saiu": "aviso de que el auto de adelante avanzó",
  "aviso de radar e lombada": "aviso de radar y reductor",
@@ -564,7 +562,6 @@
  "maior freada": "mayor frenada",
  "maior inclinação lateral": "mayor inclinación lateral",
  "maior subida": "mayor subida",
- "maior trecho do openpilot sem a sua mão ({m} min)": "tramo más largo de openpilot sin tu mano ({m} min)",
  "marca": "marca",
  "marcas": "marcas",
  "marcha à ré": "marcha atrás",
@@ -724,5 +721,8 @@
  "Esta viagem está oculta no celular.": "Este viaje está oculto en el celular.",
  "Mostrar de novo nas listas": "Mostrar de nuevo en las listas",
  "Ocultar esta viagem": "Ocultar este viaje",
- "Sai das listas do celular. O log continua no comma: dá para mostrar de novo no Início.": "Sale de las listas del celular. El log sigue en el comma: se puede mostrar de nuevo en Inicio."
+ "Sai das listas do celular. O log continua no comma: dá para mostrar de novo no Início.": "Sale de las listas del celular. El log sigue en el comma: se puede mostrar de nuevo en Inicio.",
+ "Ruas ligadas: o OpenStreetMap recebe o IP deste celular e a área de cada viagem aberta. O caminho em si fica no comma.": "Calles encendidas: OpenStreetMap recibe la IP de este celular y la zona de cada viaje abierto. El recorrido en sí queda en el comma.",
+ "Ruas desligadas. Ligadas, vêm do OpenStreetMap pela internet, que recebe o IP deste celular e a área de cada viagem aberta.": "Calles apagadas. Encendidas, vienen de OpenStreetMap por internet, que recibe la IP de este celular y la zona de cada viaje abierto.",
+ "maior trecho sem intervenção ({m} min)": "tramo más largo sin intervención ({m} min)"
 }
