@@ -240,6 +240,8 @@
   .seal.no { opacity: .7; }
   .mfiz { min-width: 104px; min-height: 52px; border-radius: 26px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); font-weight: 700; font-size: 15px; }
   .mfiz[disabled] { background: var(--ok-bg); border-color: var(--ok-line); color: var(--accent); opacity: 1; }
+  .mfiz.bad[disabled] { background: var(--card-2); border-color: var(--line-2); color: var(--warn); }
+  #passScrim { z-index: 13; } #passSheet { z-index: 14; }  /* the passenger question goes over the copilot */
   .cop { position: fixed; inset: 0; z-index: 12; overflow-y: auto; background: var(--bg); display: flex; flex-direction: column; gap: 12px;
          padding: calc(14px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
   .cop .now { font-family: var(--font-display); font-weight: 700; font-size: 28px; line-height: 1.1; }
@@ -252,7 +254,7 @@
   .undo { position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 21; width: min(528px, calc(100% - 32px));
           display: flex; align-items: center; gap: 12px; background: #1C242B; border: 1px solid var(--line-2); color: var(--text); padding: 4px 8px 4px 16px; border-radius: 14px;
           font-size: 15px; font-weight: 600; box-shadow: 0 10px 28px rgba(0, 0, 0, .55); }
-  .readonly :is(#fab, #tripHide, #addRadar, #addSignal, #addBump, #radarUpdate, #radarImport, #exportBtn, #addReasonBtn, #pendingBtn, #phoneList button, #missionGo,
+  .readonly :is(#fab, #tripHide, #addRadar, #addSignal, #addBump, #radarUpdate, #radarImport, #exportBtn, #addReasonBtn, #pendingBtn, #phoneList button,
     [data-subview="opcoes"] :is(button, select, .switch, input:not(#optSearch)), [data-subview="comma"] :is(button, select, input)) { opacity: .45; }
   .steps { list-style: none; margin: 18px 0 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }
   .steps li { display: flex; gap: 14px; align-items: flex-start; }
@@ -570,8 +572,9 @@
           <div class="title" id="baseWhat">—</div>
           <div class="desc" data-t>Viagens, marcas e Missões ficam guardadas neste celular, para abrir sem o comma. Nada vai para a internet.</div>
           <div class="desc hidden" id="baseAddr" style="color:var(--warn)" data-t>Esta cópia fica presa a este endereço. Se o endereço do comma mudar, ela some: abra pelo lizpilot.local.</div>
-          <label class="confirm" style="margin:4px 0 0"><input type="checkbox" id="noMap"><span data-t>Guardar sem o mapa</span></label>
-          <div class="small" data-t>Os caminhos mostram por onde o carro passou. Ligado, o celular não guarda nenhum: o mapa só aparece com o comma por perto.</div>
+          <div class="desc hidden" id="baseMem" style="color:var(--warn)" data-t>Este celular não deixou guardar os dados: eles ficam só enquanto a página estiver aberta.</div>
+          <label class="confirm" style="margin:4px 0 0"><input type="checkbox" id="keepMap"><span data-t>Guardar os mapas neste celular</span></label>
+          <div class="small" data-t>Os caminhos mostram por onde o carro passou. Desligado, o celular não guarda nenhum: o mapa só aparece com o comma por perto.</div>
           <button class="link danger" id="wipeBtn" type="button" data-t>Apagar dados deste celular</button>
           <div class="small" data-t>Apaga só a cópia deste celular. No comma fica tudo, e ele manda de novo na próxima vez.</div>
         </section>
@@ -684,6 +687,7 @@ const POINT_SVG = {
 let tripVersion = null;  // Viagens filtered by the installed version (its commit), null = all
 let trips = null, tripsAt = 0, update = null, health = null, near = null, live = null, liveAt = 0, latSince = null;
 let passengerOk = false, passNext = null;  // the passenger question: page memory only, never stored
+let copOpen = false, stopSince = null, copSkip = [];  // the copilot: page memory, for this drive only
 const API_TIMEOUT_MS = 8000;
 
 // ----- helpers -----
@@ -761,47 +765,73 @@ function langPickers() {
 // ----- the phone's own copy (APP-01): IndexedDB, on this address only. Nothing leaves the phone, nothing goes to the internet -----
 // state (a read-only copy of the options), trips (+ every mark), marks, missions, path:<route>, meta {at}. Opens with it, then
 // asks the comma only for what changed (?since=). Without the comma: read only, with the hour of the data.
+// epoch: what was asked before the last wipe never writes (CTO review of app01-01). Unpaired, nothing is written at all.
+// A quota error, or no IndexedDB (a private tab): page memory only, and the phone says so.
 const DB = (() => {
-  let db = null;
-  const mem = new Map();  // no IndexedDB (a private tab): page memory only
+  let db = null, epoch = 0, memOnly = false, warned = false;
+  const mem = new Map();
   const ready = new Promise((ok) => {
     try {
       const r = indexedDB.open("lizpilot", 1);
       r.onupgradeneeded = () => r.result.createObjectStore("kv");
       r.onsuccess = () => { db = r.result; ok(); };
-      r.onerror = r.onblocked = () => ok();
-    } catch (e) { ok(); }
+      r.onerror = r.onblocked = () => { memOnly = true; ok(); };
+    } catch (e) { memOnly = true; ok(); }
   });
+  function toMemory() {
+    memOnly = true; db = null;
+    if (!warned) { warned = true; toast(t("Este celular não deixou guardar os dados: eles ficam só enquanto a página estiver aberta.")); }
+  }
   function run(mode, fn, fallback) {
     return ready.then(() => new Promise((ok) => {
       if (!db) { ok(fallback()); return; }
-      try { const tx = db.transaction("kv", mode), req = fn(tx.objectStore("kv")); tx.oncomplete = () => ok(req.result); tx.onerror = tx.onabort = () => ok(undefined); }
-      catch (e) { ok(undefined); }
+      try {
+        const tx = db.transaction("kv", mode), req = fn(tx.objectStore("kv"));
+        tx.oncomplete = () => ok(mode === "readwrite" ? true : req.result);
+        tx.onerror = tx.onabort = () => { const q = tx.error && tx.error.name === "QuotaExceededError"; if (q) { toMemory(); ok(fallback()); } else ok(undefined); };
+      } catch (e) { if (e && e.name === "QuotaExceededError") { toMemory(); ok(fallback()); } else ok(undefined); }
     }));
   }
   return {
     get: (k) => run("readonly", (st) => st.get(k), () => mem.get(k)),
-    put: (k, v) => run("readwrite", (st) => st.put(v, k), () => { mem.set(k, v); }),
+    // true only when it is on the phone's disk: page memory doesn't survive a reload
+    put: (k, v, ep) => {
+      if (!token || (ep !== undefined && ep !== epoch)) return Promise.resolve(false);
+      return run("readwrite", (st) => st.put(v, k), () => { mem.set(k, v); return false; }).then((x) => x === true);
+    },
     del: (k) => run("readwrite", (st) => st.delete(k), () => { mem.delete(k); }),
     keys: () => run("readonly", (st) => st.getAllKeys(), () => [...mem.keys()]),
-    clear: () => run("readwrite", (st) => st.clear(), () => { mem.clear(); }),
+    clear: () => { epoch += 1; mem.clear(); return run("readwrite", (st) => st.clear(), () => {}); },
+    epoch: () => epoch,
+    memOnly: () => ready.then(() => memOnly),
   };
 })();
-let fromBase = false, baseAt = 0, baseSeenAt = 0, stateJson = "", tripsV = "", noMap = load("lpNoMap") === "1";
-function baseWhen() {
-  const at = Math.max(lastOk || 0, baseAt || 0);
-  return at ? (isToday(at / 1000) ? hhmm(at / 1000) : dayTime(at / 1000)) : "—";
-}
+// syncAt: when each collection last came in a real 200 from the comma (CTO review of app01-01: one hour per collection)
+let fromBase = false, syncAt = {}, syncSaved = 0, stateJson = "", tripsV = "", keepMap = load("lpKeepMap") === "1";
+let mQueue = [], mQueueNotes = [], flushing = false;  // D3: missions chosen away from the comma
+store("lpNoMap", null);  // the old option ("guardar sem o mapa") is gone: the maps are not kept unless turned on
+const VIEW_KIND = { inicio: "state", viagens: "trips", missoes: "missions", pontos: "state", ajustes: "state" };
+const TRIPS = "trips", MISSIONS = "missions", STATE = "state";
+function hourOf(at) { return at ? (isToday(at / 1000) ? hhmm(at / 1000) : dayTime(at / 1000)) : "—"; }
+function baseWhen(kind) { return hourOf(syncAt[kind || VIEW_KIND[view] || "state"] || 0); }
 function roReason() { return tf("Sem o comma: só leitura, dados de {hora}. Conecte o celular à rede do comma para mudar.", { hora: baseWhen() }); }
-function baseSeen() {  // the hour of the data: the last answer from the comma, kept at most once a minute
-  if (Date.now() - baseSeenAt < 60000) return;
-  baseSeenAt = baseAt = Date.now(); DB.put("meta", { at: baseAt });
+function synced(kind, ep) {  // a real 200 for this collection: its hour, kept at most once a minute
+  if (ep !== DB.epoch()) return;
+  syncAt[kind] = Date.now();
+  if (Date.now() - syncSaved < 60000) return;
+  syncSaved = Date.now(); DB.put("meta", { sync: syncAt }, ep);
 }
 async function baseLoad() {
-  const [meta, st, tr, mk, ms] = await Promise.all(["meta", "state", "trips", "marks", "missions"].map((k) => DB.get(k)));
-  try { const old = JSON.parse(load("lpTrips") || "null"); if (!tr && old && Array.isArray(old.trips)) trips = old.trips; } catch (e) {}  // before the copy
-  store("lpTrips", null);
-  if (meta) baseAt = meta.at || 0;
+  const [meta, st, tr, mk, ms, qu] = await Promise.all(["meta", "state", "trips", "marks", "missions", "queue"].map((k) => DB.get(k)));
+  let old = null;
+  try { old = JSON.parse(load("lpTrips") || "null"); } catch (e) {}  // the list from before the copy
+  if (!tr && old && Array.isArray(old.trips)) {  // leaves localStorage only once it is on the phone's disk (a first open without the comma keeps it)
+    trips = old.trips;
+    DB.put("trips", { trips, marks: [], v: "" }).then((kept) => { if (kept) store("lpTrips", null); });
+  } else if (tr) store("lpTrips", null);
+  if (meta && meta.sync) syncAt = Object.assign({}, meta.sync);
+  if (Array.isArray(qu)) mQueue = qu;
+  if (!keepMap) for (const k of await DB.keys() || []) if (String(k).startsWith("path:")) await DB.del(k);  // D2: no map is kept unless turned on
   if (tr && Array.isArray(tr.trips)) { trips = tr.trips; histMarks = tr.marks || null; tripsV = tr.v || ""; }
   if (mk && Array.isArray(mk.marks)) renderMarks(mk);
   if (ms && Array.isArray(ms.missions)) missions = ms;
@@ -814,18 +844,21 @@ async function baseLoad() {
   }
   return !!(st || tr);
 }
-async function wipeBase() {
-  await DB.clear();
+async function wipeBase() {  // the epoch moves first: an answer still on its way writes nothing, not even the hour
+  const done = DB.clear();
   for (const k of LPL.DATA_KEYS) store(k, null);
-  trips = null; histMarks = null; tripsV = ""; missions = null; stateJson = ""; baseAt = 0; baseSeenAt = 0; paths.clear(); mapSig = ""; histSig = "";
+  trips = null; histMarks = null; tripsV = ""; missions = null; stateJson = ""; syncAt = {}; syncSaved = 0; paths.clear(); mapSig = ""; histSig = "";
+  mQueue = []; mQueueNotes = [];
   marksState = { reasons: marksState.reasons || [], marks: [], pending: 0 };
+  await done;
 }
 async function renderBase() {
   const keys = await DB.keys() || [];
   const n = (trips || []).length, p = keys.filter((k) => String(k).startsWith("path:")).length;
-  $("baseWhat").textContent = n ? tf("{n} viagens e {p} mapas guardados · dados de {hora}", { n, p, hora: baseWhen() }) : t("Nada guardado ainda.");
+  $("baseWhat").textContent = n ? tf("{n} viagens e {p} mapas guardados · dados de {hora}", { n, p, hora: baseWhen(TRIPS) }) : t("Nada guardado ainda.");
   $("baseAddr").classList.toggle("hidden", location.hostname.toLowerCase() === LPL.FIXED_HOST);
-  $("noMap").checked = noMap;
+  $("baseMem").classList.toggle("hidden", !await DB.memOnly());
+  $("keepMap").checked = keepMap;
 }
 document.addEventListener("click", (e) => {  // read only: a command never leaves, and says why
   if (!LPL.readOnly(online, fromBase)) return;
@@ -833,7 +866,7 @@ document.addEventListener("click", (e) => {  // read only: a command never leave
   if (!c) return;
   e.preventDefault(); e.stopPropagation(); toast(roReason());
 }, true);
-const RO_CMDS = '#fab, #tripHide, #addRadar, #addSignal, #addBump, #radarUpdate, #radarImport, #exportBtn, #addReasonBtn, #pendingBtn, #phoneList button, #missionGo, ' +
+const RO_CMDS = '#fab, #tripHide, #addRadar, #addSignal, #addBump, #radarUpdate, #radarImport, #exportBtn, #addReasonBtn, #pendingBtn, #phoneList button, ' +
   '[data-subview="opcoes"] :is(button, select, .switch, input:not(#optSearch)), [data-subview="comma"] :is(button, select, input)';
 
 // ----- network: nothing old passes as current, and nothing can be touched that wouldn't reach the comma -----
@@ -842,7 +875,7 @@ async function api(path, body) {
     failures = 0; refresh();
     toast(roReason()); return { status: 0, data: { error: roReason() } };
   }
-  const opts = { method: body === undefined ? "GET" : "POST", headers: {} };
+  const ep = DB.epoch(), opts = { method: body === undefined ? "GET" : "POST", headers: {} };
   if (token) opts.headers.Authorization = "Bearer " + token;
   if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
   let r;
@@ -855,9 +888,9 @@ async function api(path, body) {
   try { data = await r.json(); } catch (e) {}
   if (data && typeof data.error === "string") data.error = t(data.error);
   if (data && typeof data.message === "string") data.message = t(data.message);
+  if (ep !== DB.epoch()) return { status: 0, data: { error: t("Não foi possível.") }, ep };  // asked before the copy was erased: dropped
   if (r.status === 401) { saveToken(null); show("pair"); }
-  if (r.status !== 0) setTimeout(baseSeen, 0);
-  return { status: r.status, data };
+  return { status: r.status, data, ep };
 }
 
 function setOnline(on) {
@@ -867,13 +900,24 @@ function setOnline(on) {
     document.body.classList.toggle("offline", !on);
     document.body.classList.toggle("readonly", LPL.readOnly(on, fromBase));
     $("offlineCard").classList.toggle("hidden", on);
+    renderCarState();
     if (view === "inicio" && driving) renderDrive();
   }
   if (!on) {
     $("tabs").querySelector('[data-go="pontos"]').classList.remove("near");
-    $("offlineDesc").textContent = tf("Dados de {hora}. Opções, ajustes e marcas voltam quando o celular estiver na rede do comma. Se o endereço mudou, leia o QR no comma.", { hora: baseWhen() });
+    renderOffline();
     $("conn").textContent = t("sem conexão");
   }
+}
+function renderOffline() {  // each collection with its own hour: one old list never passes as current
+  $("offlineDesc").textContent = tf("Viagens de {v} · Missões de {m} · Ajustes de {a}", { v: baseWhen(TRIPS), m: baseWhen(MISSIONS), a: baseWhen(STATE) }) + "\n"
+    + t("Opções, ajustes e marcas voltam quando o celular estiver na rede do comma. Se o endereço mudou, leia o QR no comma.");
+}
+function renderCarState() {  // Ajustes: without the comma nothing can change, whatever the copy says about the car
+  if (!state) return;
+  const v = state.vehicle, can = !LPL.readOnly(online, fromBase) && (!v.onroad || (v.parked && v.standstill && !v.engaged));
+  $("carState").replaceChildren(el("span", "dot"), document.createTextNode(can ? t("pode mudar") : t("só leitura")));
+  if (!can) $("carState").firstChild.style.background = "var(--warn)";
 }
 
 // ----- areas: the last one opened stays; nothing switches by itself -----
@@ -886,7 +930,7 @@ function showView(name) {
   const tab = name === "missoes" ? "viagens" : name;  // Missões lives in Viagens (owner, 03/11)
   document.querySelectorAll("[data-go]").forEach((b) => b.dataset.go === tab ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
   clearInterval(liveTimer); liveTimer = null;
-  if (name === "inicio") { refreshHome(true); liveTimer = setInterval(() => { if (!driving || document.hidden) return; if (online) refreshLive(); renderDrive(); }, LIVE_MS); }
+  if (name === "inicio") { refreshHome(true); liveTimer = setInterval(() => { if ((!driving && !copOpen) || document.hidden) return; if (online) refreshLive(); renderDrive(); }, LIVE_MS); }  // the copilot reads live data parked too
   if (name === "viagens") { refreshTrips(true); refreshMarks(); }
   if (name === "pontos") { refreshRadars(); refreshNear(); }
   if (name === "ajustes") showSub(sub);
@@ -927,10 +971,10 @@ function show(which) {
 }
 
 // ----- state: car, options, history -----
-function render(s, copy) {
+function render(s, copy, ep) {
   if (!copy) {
     if (fromBase) { fromBase = false; document.body.classList.toggle("readonly", !online); }
-    const j = JSON.stringify(s); if (j !== stateJson) { stateJson = j; DB.put("state", s); }
+    const j = JSON.stringify(s); if (j !== stateJson) { stateJson = j; DB.put("state", s, ep); }
   }
   state = s;
   titles = s.titles || {};
@@ -939,14 +983,14 @@ function render(s, copy) {
   carStopped = !v.onroad || v.standstill;
   carOn = v.onroad;
   passengerOk = LPL.passenger({ ok: passengerOk }, carNow()).ok;
+  if (!carOn) { copSkip = []; stopSince = null; }  // a new drive starts the copilot again
+  if (copOpen && LPL.copilotGate({ ok: passengerOk }, carNow()).close) closeCop();  // off, or moving with nobody confirmed
   const was = driving;
   driving = v.onroad && !parked;
   document.body.classList.toggle("driving", driving && view === "inicio");
   if (was !== driving && view === "inicio") refreshHome(true);
   $("conn").textContent = !v.onroad ? t("carro desligado") : parked ? t("carro em P") : t("carro andando");
-  $("carState").innerHTML = "";
-  $("carState").append(el("span", "dot"), document.createTextNode(parked ? t("pode mudar") : t("só leitura")));
-  if (!parked) $("carState").firstChild.style.background = "var(--warn)";
+  renderCarState();
   renderGroups(s.groups);
   const audit = $("audit"); audit.replaceChildren();
   if (!s.audit.length) audit.append(el("div", "line desc", t("Nada ainda.")));
@@ -1216,8 +1260,7 @@ async function refreshLive() {
 function renderDrive() {
   const l = live, b = LPL.band(l, { online, age: Date.now() - liveAt, now: Date.now() }, latSince);
   latSince = b.latSince;
-  const lv0 = live && live.driving && !b.stale ? live.v || 0 : null;
-  stopSince = lv0 != null && lv0 < LPL.COP_STOP_KMH ? (stopSince || Date.now()) : null;
+  stopSince = LPL.stopClock(stopSince, live, b.stale, Date.now());
   renderCop();
   $("band").className = "band " + b.cls;
   $("drive").classList.toggle("stale", b.stale);
@@ -1337,7 +1380,7 @@ function renderMarks(m) {
   for (const x of done) {
     const row = el("div", "line");
     const txt = el("span", "mk desc"); txt.innerHTML = reasonIcon(x.reason, 20);
-    txt.append(el("span", "", `${hhmmss(x.t)} · ${t(x.label)}${x.note ? " — " + x.note : ""}${x.source === "comma" ? " " + t("(bandeira)") : x.source === "auto" ? " " + t("(automática)") : ""}`));
+    txt.append(el("span", "", `${hhmmss(x.t)} · ${t(x.label)}${x.note ? " — " + noteOf(x) : ""}${x.source === "comma" ? " " + t("(bandeira)") : x.source === "auto" ? " " + t("(automática)") : ""}`));
     row.append(txt);
     const b = el("button", "link", t("editar")); b.type = "button"; b.addEventListener("click", () => openMark(x, x.reason));
     const acts = el("span", "row"); acts.style.gap = "4px";
@@ -1363,7 +1406,8 @@ function renderMarks(m) {
 async function refreshMarks() {
   if (!online) return;
   const r = await api("/api/marks" + (marksState.v ? "?" + LPL.since(marksState.v) : ""));
-  if (r.status === 200 && !r.data.same) { renderMarks(r.data); DB.put("marks", r.data); }
+  if (r.status === 200) synced("marks", r.ep);
+  if (r.status === 200 && !r.data.same) { renderMarks(r.data); DB.put("marks", r.data, r.ep); }
 }
 
 // Nothing exists until Salvar: a tap only opens the box. The tap's time goes along, because writing takes a while.
@@ -1441,7 +1485,7 @@ async function openClip(mark) {
   const r = await api("/api/mark/clip", { id: mark.id });
   if (r.status !== 200) { toast(r.data.error || t("Não foi possível.")); return; }
   $("clipWhen").textContent = hhmmss(mark.t);
-  $("clipWhat").textContent = t(mark.label || "") + (mark.note ? " — " + mark.note : "");
+  $("clipWhat").textContent = t(mark.label || "") + (mark.note ? " — " + noteOf(mark) : "");
   $("clipNote").textContent = t("Começa 10 s antes da marca. Vídeo leve da câmera da frente.");
   $("clipVideo").src = r.data.playlist;
   $("clipDownload").href = r.data.video;
@@ -1452,10 +1496,10 @@ function closeClip() { const v = $("clipVideo"); v.pause(); v.removeAttribute("s
 // ----- passenger: with the car moving, the phone is for the passenger. A reminder, not a check -----
 function carNow() { return { on: carOn, moving: carOn && !carStopped }; }
 
-function askPassenger(next) {  // true: the question is open and next() runs on Continuar
+function askPassenger(next, always) {  // true: the question is open and next() runs on Continuar. always: parked too (the copilot)
   const g = LPL.passenger({ ok: passengerOk }, carNow());
   passengerOk = g.ok;
-  if (!g.ask) return false;
+  if (!g.ask && !(always && !g.ok)) return false;
   passNext = next;
   $("passCheck").checked = false; $("passGo").disabled = true;
   $("passScrim").classList.remove("hidden"); $("passSheet").classList.remove("hidden");
@@ -1468,26 +1512,33 @@ function closePassenger() { passNext = null; $("passScrim").classList.add("hidde
 // ----- missions (selfdrive/hexa/missions.py): the tests the car still needs, taken along on a drive -----
 // The level and the seals are the LizPilot's, never the driver's. The comma never changes anything because of a mission:
 // options are turned on by the owner, parked, with the same rules as Ajustes. "Fiz agora" is a mark, like Marcar.
-let missions = null, mScreen = { s: "trilhas" }, missionsAt = 0;
-const HOW_TEXT = { drive: "você responde depois, parado", auto: "o comma reconhece", marca: "você marca, o CTO confere", parado: "você faz, parado", cto: "o CTO mede no log", decisao: "decisão sua" };
+let missions = null, mScreen = { s: "trilhas" }, missionsAt = 0, missionsErr = "";
+const HOW_TEXT = { drive: "o passageiro marca andando; você confirma parado", auto: "o comma reconhece", marca: "você marca, o CTO confere", parado: "você faz, parado", cto: "o CTO mede no log", decisao: "decisão sua" };
 const HOW_COLOR = { auto: "var(--accent)", marca: "var(--warn)", parado: "var(--you)", cto: "var(--gas)", decisao: "var(--muted)" };
 const HOW_LONG = { auto: "O comma reconhece sozinho nas viagens. Se não reconhecer, o seu toque em Fiz agora guarda a hora e o lugar.",
                    marca: "Acontece andando. Toque em Fiz agora logo depois: a marca guarda a hora e o lugar, e o CTO confere no log.",
                    parado: "Com o carro parado. A sua resposta fica guardada no comma.", cto: "Fica completa quando o CTO mede no log.",
                    decisao: "Não é teste: é uma escolha sua." };
+function driveLong() { return t("Acontece andando. O passageiro pode marcar no copiloto; no fim da viagem, parado, o celular pergunta como foi."); }
 const MISSION_SNAP = "lpMissionSnap";
 async function refreshMissions() {
   if (Date.now() - missionsAt < 2500) return;
   missionsAt = Date.now();
   const r = online ? await api("/api/missions" + (missions && missions.v ? "?" + LPL.since(missions.v) : "")) : { status: 0, data: {} };
-  if (r.status === 200 && !r.data.same) { missions = LPL.applyWhole(missions, r.data); DB.put("missions", missions); }  // same: the copy is the comma's
-  if (!missions) return;  // without the comma, the copy is drawn
+  if (r.status === 200) { synced("missions", r.ep); missionsErr = ""; }
+  if (r.status === 200 && !r.data.same) { missions = LPL.applyWhole(missions, r.data); DB.put("missions", missions, r.ep); }  // same: the copy is the comma's
+  if (!missions) {  // nothing to draw: say why, never "Carregando…" forever (an older comma has no /api/missions)
+    missionsErr = r.status === 0 ? t("Sem conexão com o comma.") : (r.data.error || t("Não foi possível."));
+    if (view === "missoes") renderMissions();
+    return;
+  }
   renderMissionCard();
   renderReadyMissions();
   if (view === "missoes") renderMissions();
   if (driving) renderDriveMissions();
 }
-function mProg() { return LPL.missionProgress(missions, missions.state, trips || []); }
+function mState() { return LPL.applyQueue(missions.state, mQueue, missions); }  // with what still waits for the comma (D3)
+function mProg() { return LPL.missionProgress(missions, mState(), trips || []); }
 function mOf(key) { return missions.missions.find((m) => m.key === key); }
 function howOf(m) { return m.how === "parado" && m.drive ? HOW_TEXT.drive : HOW_TEXT[m.how]; }
 function ringSvg(d, total, size, label) {
@@ -1509,7 +1560,7 @@ function mCount(p) {
   if (p.full) return t("completa");
   if (p.locked) return t("trancada");
   const base = p.total > 1 ? tf("{d} de {n}", { d: p.d, n: p.total }) : t("a fazer");
-  return p.toCheck ? base + " · " + tf("{n} a conferir", { n: p.toCheck }) : base;
+  return [base, p.toCheck ? tf("{n} a conferir", { n: p.toCheck }) : "", p.fails ? tf("{n} não deu", { n: p.fails }) : ""].filter(Boolean).join(" · ");
 }
 function mRow(m, p, onClick) {
   const b = el("button", "mrow" + (p.full ? " done" : "")); b.type = "button";
@@ -1519,6 +1570,7 @@ function mRow(m, p, onClick) {
   const sub = p.full ? m.proof : p.locked ? m.lock : m.note;
   if (sub) mid.append(el("span", "small", t(sub)));
   const tag = el("span", "mtag", t(howOf(m))); tag.style.color = HOW_COLOR[m.how]; mid.append(tag);
+  if (LPL.queuedKeys(mQueue, missions).includes(m.key)) { const w = el("span", "small", t("vai para o comma quando ele aparecer")); w.style.color = "var(--warn)"; mid.append(w); }
   b.append(mid, el("span", "n" + (p.full ? " full" : p.d || p.toCheck ? " half" : ""), mCount(p)));
   b.addEventListener("click", onClick);
   return b;
@@ -1538,13 +1590,13 @@ function missionResult(prog) {  // after the drive: what moved since "Pronto, vo
   if (!snap || driving || !trips) return null;
   const after = trips.find((x) => x.mtime > snap.at && x.summary);
   if (!after) return null;
-  return { snap, rows: LPL.missionDiff(snap.prog, prog), asks: snap.active.map(mOf).filter((m) => m && m.how === "parado" && m.drive && !prog[m.key].full) };
+  const rows = LPL.missionDiff(snap.prog, prog);
+  return { snap, rows, moved: rows.filter((r) => r.moved), asks: snap.active.map(mOf).filter((m) => m && m.how === "parado" && m.drive && !prog[m.key].full) };
 }
 
 // The way into the missions from the comma card (owner, 03/11: "não to achando"): a pill on the one-line card, and the
 // comma's health and the missions as two buttons when it is open
 function renderReadyMissions() {
-  if (!$("readyMissions")) return;
   const pill = $("readyMissions");
   pill.classList.toggle("hidden", !missions);
   if (!missions) return;
@@ -1564,31 +1616,44 @@ function renderMissionCard() {
   const res = missionResult(prog), rb = $("missionResultBox"); rb.replaceChildren();
   if (res) {
     const a = el("button", "card ok row"); a.type = "button"; a.style.cssText = "width:100%;margin:0;text-align:left;color:inherit;font:inherit";
-    const g = el("span", "grow"); g.append(el("span", "title", res.rows.length ? tf(res.rows.length === 1 ? "A viagem avançou 1 missão" : "A viagem avançou {n} missões", { n: res.rows.length }) : t("A viagem acabou")),
+    const g = el("span", "grow"); g.append(el("span", "title", res.moved.length ? tf(res.moved.length === 1 ? "A viagem avançou 1 missão" : "A viagem avançou {n} missões", { n: res.moved.length }) : t("A viagem acabou")),
       el("br"), el("span", "desc", res.asks.length ? tf(res.asks.length === 1 ? "e 1 pergunta, parado" : "e {n} perguntas, parado", { n: res.asks.length }) : t("Ver o resultado")));
     a.append(g, el("span", "link", t("Ver"))); a.addEventListener("click", () => openMissions({ s: "resultado" })); rb.append(a);
   }
   // the next drive, in one line: the version's route, or how many missions go along (the rest lives in Viagens → Missões)
-  const pack = packOf(prog), act = missions.state.active.filter((k) => mOf(k) && !prog[k].full);
+  const pack = packOf(prog), act = mState().active.filter((k) => mOf(k) && !prog[k].full);
   const next = act.length ? tf(act.length === 1 ? "Próxima viagem: 1 missão" : "Próxima viagem: {n} missões", { n: act.length })
     : pack ? tf("Roteiro da versão {v}: {d} de {n}", { v: pack.v, d: pack.d, n: pack.ms.length }) : "";
   $("missionNext").textContent = [lv.next ? tf(lv.next.left === 1 ? "Falta 1 para o nível {n}" : "Faltam {k} para o nível {n}", { k: lv.next.left, n: lv.i + 2 }) : t("Tudo provado no seu carro."), next].filter(Boolean).join(" · ");
 }
 
 // ----- copiloto: the passenger leads the next drive's missions, the right one at the right moment -----
-let copOpen = false, stopSince = null, copSkip = [], copDone = [];
 const MOMENT_TEXT = { stop_free: "parado, sem carro à frente", stop_queue: "parado atrás de um carro", stop_long: "parado há mais de 1 minuto",
                       follow_mid: "seguindo um carro a 40–60 km/h", slow_follow: "trânsito lento atrás de um carro", moving: "andando" };
-function openCop() { copOpen = true; copSkip = []; copDone = []; $("copSheet").classList.remove("hidden"); renderCop(); }
+function openCop() { if (!carOn) return; copOpen = true; $("copBody").dataset.sig = ""; $("copSheet").classList.remove("hidden"); renderCop(); }
 function closeCop() { copOpen = false; $("copSheet").classList.add("hidden"); }
+function tripSince() {  // this drive's marks: since "Pronto, vou dirigir", and never older than 6 h
+  const snap = snapLoad();
+  return Math.max(snap ? snap.at : 0, Date.now() / 1000 - 6 * 3600);
+}
+async function copAnswer(key, result, b) {
+  if (b) b.disabled = true;
+  const r = await api("/api/missions", { action: "mark", key, result });
+  toast(r.status !== 200 ? (r.data.error || t("Não foi possível salvar.")) : result === "stop" ? t("Marcado. Quando parar o carro, desligue a opção e reinicie.")
+    : result === "bad" ? t("Marcado como não deu: o CTO confere no log.") : t("Marcado: o CTO confere no log."));
+  if (r.status === 200) { missions.state = r.data.state; if (result !== "stop") copSkip = copSkip.filter((k) => k !== key).concat([key]); $("copBody").dataset.sig = ""; renderCop(); }
+  else if (b) b.disabled = false;
+}
 function renderCop() {
   if (!copOpen || !missions) return;
+  if (LPL.copilotGate({ ok: passengerOk }, carNow()).close) { closeCop(); return; }
   const body = $("copBody"), prog = mProg();
-  const moment = LPL.copilotMoment(live, stopSince == null ? 0 : (Date.now() - stopSince) / 1000);
-  const order = LPL.copilotOrder(missions, missions.state.active, prog, moment);
-  const rank = (x) => copSkip.indexOf(x.key);  // skipped ones go to the end, in the order skipped
-  order.sort((a, b) => (rank(a) - rank(b)) || 0);
-  const sig = JSON.stringify([order, moment, missions.state.pending.length, copDone, L()]);
+  const now = LPL.copilotNow(live, { online, age: Date.now() - liveAt }, stopSince == null ? 0 : (Date.now() - stopSince) / 1000);
+  const answered = LPL.tripAnswers(missions.state.pending, tripSince());
+  const order = LPL.copilotOrder(missions, mState().active, prog, now.moment);
+  const rank = (x) => (copSkip.includes(x.key) ? 2 + copSkip.indexOf(x.key) : answered[x.key] ? 1 : 0);  // answered or skipped go to the end
+  order.sort((a, b) => rank(a) - rank(b));
+  const sig = JSON.stringify([order, now.state, now.moment, now.state === "stale" ? Math.floor(now.age / 5) : 0, answered, L()]);
   if (body.dataset.sig === sig) return;
   body.dataset.sig = sig;
   const out = [];
@@ -1597,23 +1662,26 @@ function renderCop() {
     body.replaceChildren(...out); return;
   }
   const cur = mOf(order[0].key), pk = cur.version && missions.packs[cur.version];
-  out.push(el("div", "small", moment.length ? tf("Agora: {m}", { m: moment.map((x) => t(MOMENT_TEXT[x])).join(", ") }) : t("Sem dado ao vivo do comma")));
+  // what is true now, only from fresh live data: an old tick never says "agora" (CTO review of app-08)
+  const nowText = now.state === "live" ? tf("Agora: {m}", { m: now.moment.length ? now.moment.map((x) => t(MOMENT_TEXT[x])).join(", ") : t("andando devagar") })
+    : now.state === "stale" ? tf("O dado ao vivo do comma parou há {n} s: o momento não é de agora.", { n: now.age })
+    : now.state === "off" ? t("carro desligado") : t("Sem dado ao vivo do comma");
+  const nowLine = el("div", "small", nowText); if (now.state === "stale") nowLine.style.color = "var(--warn)";
+  out.push(nowLine);
   const head = el("div", "stack"); head.style.gap = "4px";
-  head.append(el("span", "small", tf("{d} de {n} respondidas nesta viagem", { d: order.filter((x) => copDone.includes(x.key)).length, n: order.length })), el("div", "now", t(cur.title)));
-  if (order[0].fits) head.append(el("span", "fit", t("Dá para fazer agora")));
+  head.append(el("span", "small", tf("{d} de {n} respondidas nesta viagem", { d: order.filter((x) => answered[x.key]).length, n: order.length })), el("div", "now", t(cur.title)));
+  if (now.state === "live" && order[0].fits) head.append(el("span", "fit", t("Dá para fazer agora")));
   out.push(head);
   if (cur.steps.length) { const ol = el("ol", "msteps"); cur.steps.forEach((x) => ol.append(el("li", "", t(x)))); out.push(ol); }
   else if (cur.why || cur.note) out.push(el("div", "desc", t(cur.why || cur.note)));
+  if (cur.how === "parado") out.push(el("div", "small", t("Vira marca. No fim, parado, o celular pergunta de novo: só essa resposta conta.")));
   const answers = el("div", "answers");
   for (const [label, result, cls] of [[t("Deu certo"), "ok", "btn"], [t("Não deu"), "bad", "btn warn"], [t("Fiz, não sei dizer"), "done", "btn dark"], [t("Pular"), null, "btn dark"]]) {
     const b = el("button", cls, label); b.type = "button";
-    b.addEventListener("click", async () => {
+    b.addEventListener("click", () => {
       if (!result) { copSkip = copSkip.filter((k) => k !== cur.key).concat([cur.key]); body.dataset.sig = ""; renderCop(); return; }
-      b.disabled = true;
-      const r = await api("/api/missions", { action: "mark", key: cur.key, result });
-      toast(r.status === 200 ? t("Marcado: o CTO confere no log.") : (r.data.error || t("Não foi possível salvar.")));
-      if (r.status === 200) { missions.state = r.data.state; copDone = copDone.concat([cur.key]); copSkip = copSkip.filter((k) => k !== cur.key).concat([cur.key]); body.dataset.sig = ""; renderCop(); }
-      else b.disabled = false;
+      const go = () => copAnswer(cur.key, result, b);
+      if (!askPassenger(go)) go();  // moving: only with the passenger confirmed
     });
     answers.append(b);
   }
@@ -1623,8 +1691,10 @@ function renderCop() {
     out.push(el("div", "label", t("Depois")));
     const list = el("div", "card list"); list.style.padding = "4px 16px";
     for (const x of rest) {
-      const m = mOf(x.key), row = el("div", "line"), done = copDone.includes(x.key);
-      row.append(el("span", "", t(m.title)), el("span", done ? "small" : x.fits ? "fit" : "small", done ? t("Marcado") : x.fits ? t("dá agora") : ""));
+      const m = mOf(x.key), row = el("div", "line"), res = answered[x.key], bad = res === "bad" || res === "stop";
+      const tag = el("span", res ? "small" : x.fits && now.state === "live" ? "fit" : "small", res ? (bad ? t("não deu · a conferir") : t("Marcado")) : x.fits && now.state === "live" ? t("dá agora") : "");
+      if (bad) tag.style.color = "var(--warn)";
+      row.append(el("span", "", t(m.title)), tag);
       list.append(row);
     }
     out.push(list);
@@ -1634,11 +1704,7 @@ function renderCop() {
     c.append(el("b", "", t("Pare o teste e desligue a opção se")));
     const ul = el("ul", "msteps"); pk.stop_if.forEach((x) => ul.append(el("li", "", t(x)))); c.append(ul);
     const stop = el("button", "btn warn", t("Parar o teste")); stop.type = "button";
-    stop.addEventListener("click", async () => {
-      const r = await api("/api/missions", { action: "mark", key: cur.key, result: "stop" });
-      toast(r.status === 200 ? t("Marcado. Quando parar o carro, desligue a opção e reinicie.") : (r.data.error || t("Não foi possível salvar.")));
-      if (r.status === 200) missions.state = r.data.state;
-    });
+    stop.addEventListener("click", () => { const go = () => copAnswer(cur.key, "stop", null); if (!askPassenger(go)) go(); });
     c.append(stop, el("span", "small", t(pk.back))); out.push(c);
   }
   out.push(el("div", "small", t("Para o passageiro. Cada resposta vira uma marca com hora e lugar; nada muda no carro.")));
@@ -1648,10 +1714,10 @@ function renderCop() {
 function renderDriveMissions() {
   const box = $("driveMissions");
   const done = (m) => m.how === "cto" || (m.done || 0) >= m.total;  // while driving there are no summaries: the catalog decides
-  const act = missions ? missions.state.active.map(mOf).filter((m) => m && !done(m)) : [];
+  const act = missions ? mState().active.map(mOf).filter((m) => m && !done(m)) : [];
   box.classList.toggle("hidden", !act.length);
   if (!act.length) return;
-  const snap = snapLoad(), since = snap ? snap.at : Date.now() / 1000 - 6 * 3600;
+  const since = tripSince();
   const list = $("driveMissionList");
   const sig = JSON.stringify([act.map((m) => m.key), missions.state.pending.length, L()]);
   if (list.dataset.sig === sig) return;
@@ -1659,9 +1725,13 @@ function renderDriveMissions() {
   for (const m of act) {
     const row = el("div", "line"); const mid = el("span", "stack"); mid.style.gap = "0"; mid.append(el("b", "", t(m.title)));
     const marked = missions.state.pending.filter((x) => x.key === m.key && x.t >= since).pop();
-    if (m.how === "parado") { mid.append(el("span", "small", t("pergunto no fim, parado"))); row.append(mid); list.append(row); continue; }
+    const bad = marked && (marked.result === "bad" || marked.result === "stop");
+    if (m.how === "parado") {  // the same as the copilot says: a mark now, the answer that counts at the end, parked
+      mid.append(el("span", "small", marked ? tf("marcado às {hora}", { hora: hhmm(marked.t) }) + (bad ? " · " + t("não deu · a conferir") : "") : t("o passageiro marca no copiloto; no fim, parado, pergunto")));
+      row.append(mid); list.append(row); continue;
+    }
     mid.append(el("span", "small", marked ? tf("marcado às {hora}", { hora: hhmm(marked.t) }) : t("o comma está olhando")));
-    const b = el("button", "mfiz", marked ? t("Marcado") : t("Fiz agora")); b.type = "button";
+    const b = el("button", "mfiz" + (bad ? " bad" : ""), marked ? (bad ? t("Não deu") : t("Marcado")) : t("Fiz agora")); b.type = "button";
     b.addEventListener("click", () => { if (!askPassenger(() => missionMark(m.key, b))) missionMark(m.key, b); });
     row.append(mid, b); list.append(row);
   }
@@ -1674,27 +1744,71 @@ async function missionMark(key, b) {
   else b.disabled = false;
 }
 async function missionAct(body) {
+  if (LPL.readOnly(online, fromBase) && LPL.QUEUE_ACTIONS.includes(body.action)) {  // D3: away from the comma, choosing waits on the phone
+    mQueue = LPL.queueAdd(mQueue, { action: body.action, key: body.key });
+    DB.put("queue", mQueue);
+    toast(t("Guardado: vai para o comma quando ele aparecer."));
+    renderMissionCard(); renderMissions();
+    return true;
+  }
   const r = await api("/api/missions", body);
   if (r.status === 200) { missions.state = r.data.state; renderMissionCard(); renderMissions(); }
   else toast(r.data.error || t("Não foi possível salvar."));
   return r.status === 200;
 }
+// The comma answered: what waited goes, in order, by the same POST. A refusal (3 already, a locked mission) takes that one
+// out with a clear notice; no answer keeps the rest for the next time.
+async function flushQueue() {
+  if (flushing || !mQueue.length || !missions || LPL.readOnly(online, fromBase)) return;
+  flushing = true;
+  let sent = 0;
+  try {
+    while (mQueue.length) {
+      const x = mQueue[0], ep = DB.epoch();
+      const r = await api("/api/missions", { action: x.action, key: x.key });
+      if (r.status === 0 || ep !== DB.epoch()) break;
+      if (r.status === 200) { missions.state = r.data.state; sent += 1; }
+      else {
+        const what = x.action === "pack" ? tf("Roteiro da versão {v}", { v: x.key }) : t((mOf(x.key) || { title: x.key }).title);
+        mQueueNotes = mQueueNotes.concat([tf("O comma recusou «{m}»: {motivo}", { m: what, motivo: r.data.error || t("Não foi possível.") })]);
+        toast(mQueueNotes[mQueueNotes.length - 1]);
+      }
+      mQueue = mQueue.slice(1);
+      DB.put("queue", mQueue, ep);
+    }
+  } finally { flushing = false; }
+  if (sent && !mQueueNotes.length) toast(t("As escolhas de Missões foram para o comma."));
+  renderMissionCard(); if (view === "missoes") renderMissions();
+}
 
 function mBack(label, scr) { $("mBackText").textContent = label; $("mBack").onclick = () => scr === "inicio" ? showView("inicio") : openMissions(scr); }
 function renderMissions() {
   const body = $("mBody");
-  if (!missions) { body.replaceChildren(el("div", "small", t("Carregando…"))); mBack("LizPilot", "inicio"); return; }
-  const prog = mProg(), s = mScreen, out = [];
+  if (!missions) {  // still asking, or the comma said no: the tabs stay, and a way to try again
+    $("mSeg").classList.remove("hidden"); $("mBackRow").classList.add("hidden");
+    if (!missionsErr) { body.replaceChildren(el("div", "small", t("Carregando…"))); return; }
+    const c = el("section", "card stack"); c.style.gap = "10px";
+    const again = el("button", "btn dark", t("Tentar de novo")); again.type = "button";
+    again.addEventListener("click", () => { missionsAt = 0; missionsErr = ""; renderMissions(); refreshMissions(); });
+    c.append(el("span", "desc", missionsErr), again); body.replaceChildren(c); return;
+  }
+  const prog = mProg(), s = mScreen, out = [], st = mState();
   const h1 = (x) => { const h = el("h1", "page", x); return h; };
   $("mSeg").classList.toggle("hidden", s.s !== "trilhas");
   $("mBackRow").classList.toggle("hidden", s.s === "trilhas");
   if (s.s === "trilhas") {
     const lv = LPL.missionLevel(missions, prog);
     out.push(h1(t("Missões")), el("p", "sub", t("Cada missão é um teste que deixa o LizPilot mais confiável. Cada trilha completa vira um selo.")));
+    for (const note of mQueueNotes) {  // the comma refused something chosen away from it
+      const c = el("section", "card att row"); c.append(el("span", "grow desc", note));
+      const ok = el("button", "link", t("Ok")); ok.type = "button"; ok.addEventListener("click", () => { mQueueNotes = mQueueNotes.filter((x) => x !== note); renderMissions(); });
+      c.append(ok); out.push(c);
+    }
+    if (mQueue.length) out.push(el("section", "card att desc", tf(mQueue.length === 1 ? "1 escolha vai para o comma quando ele aparecer." : "{n} escolhas vão para o comma quando ele aparecer.", { n: mQueue.length })));
     const res = missionResult(prog);
     if (res) {
       const a = el("button", "card ok row"); a.type = "button"; a.style.cssText = "width:100%;margin:0;text-align:left;color:inherit;font:inherit";
-      a.append(el("span", "grow title", res.rows.length ? tf(res.rows.length === 1 ? "A viagem avançou 1 missão" : "A viagem avançou {n} missões", { n: res.rows.length }) : t("A viagem acabou")), el("span", "link", t("Ver")));
+      a.append(el("span", "grow title", res.moved.length ? tf(res.moved.length === 1 ? "A viagem avançou 1 missão" : "A viagem avançou {n} missões", { n: res.moved.length }) : t("A viagem acabou")), el("span", "link", t("Ver")));
       a.addEventListener("click", () => openMissions({ s: "resultado" })); out.push(a);
     }
     const pack = packOf(prog);
@@ -1704,7 +1818,7 @@ function renderMissions() {
       g.lastChild.style.display = "block";
       b.append(g, el("span", "link", t("Ver"))); b.addEventListener("click", () => openMissions({ s: "roteiro", v: pack.v })); out.push(b);
     }
-    const act = missions.state.active.map(mOf).filter((m) => m && !prog[m.key].full);
+    const act = st.active.map(mOf).filter((m) => m && !prog[m.key].full);
     out.push(el("div", "label", t("Na próxima viagem")));
     const list = el("div", "card list"); list.style.padding = "4px 16px";
     for (const m of act) list.append(mRow(m, prog[m.key], () => openMission(m.key, { s: "trilhas" })));
@@ -1731,7 +1845,7 @@ function renderMissions() {
     out.push(list);
   } else if (s.s === "missao") {
     const m = mOf(s.key), p = prog[m.key], back = s.from && s.from.s ? s.from : { s: "trilha", tr: m.trail };
-    mBack(back.s === "inicio" ? "LizPilot" : back.s === "roteiro" ? t("Roteiro") : back.s === "resultado" ? t("Resultado") : t("Trilha"), back.s === "inicio" ? "inicio" : back);
+    mBack(back.s === "trilhas" ? t("Missões") : back.s === "roteiro" ? t("Roteiro") : back.s === "resultado" ? t("Resultado") : t("Trilha"), back);
     const head = el("div", "row"); head.insertAdjacentHTML("beforeend", ringSvg(p.d, p.total, 76, p.full ? "✓" : `${p.d}/${p.total}`));
     const g = el("div", "grow"); g.append(el("div", "small", t(missions.trails.find((x) => x.key === m.trail).title)));
     const tt = el("div", "big", t(m.title)); g.append(tt);
@@ -1741,19 +1855,21 @@ function renderMissions() {
     if (m.steps.length) {
       const c = el("section", "card stack"); c.style.gap = "8px"; c.append(el("b", "", t("Como fazer")));
       const ol = el("ol", "msteps"); m.steps.forEach((x) => ol.append(el("li", "", t(x)))); c.append(ol);
-      const hl = el("span", "small", t(m.how === "parado" && m.drive ? "Acontece andando. No fim da viagem, parado, o celular pergunta como foi." : HOW_LONG[m.how])); c.append(hl); out.push(c);
-    } else if (!p.full) out.push(el("div", "small", t(m.how === "parado" && m.drive ? "Acontece andando. No fim da viagem, parado, o celular pergunta como foi." : HOW_LONG[m.how])));
+      const hl = el("span", "small", m.how === "parado" && m.drive ? driveLong() : t(HOW_LONG[m.how])); c.append(hl); out.push(c);
+    } else if (!p.full) out.push(el("div", "small", m.how === "parado" && m.drive ? driveLong() : t(HOW_LONG[m.how])));
     if (m.option && !p.full) out.push(optionLine(m.option));
     if (p.toCheck) out.push(el("div", "small", tf(p.toCheck === 1 ? "1 marca sua espera o CTO conferir no log." : "{n} marcas suas esperam o CTO conferir no log.", { n: p.toCheck })));
+    if (p.fails) out.push(el("div", "small", tf(p.fails === 1 ? "1 marca diz que não deu: o CTO confere no log." : "{n} marcas dizem que não deu: o CTO confere no log.", { n: p.fails })));
     if (p.locked) { const c = el("section", "card"); c.style.borderStyle = "dashed"; c.append(el("b", "", t("Ainda trancada.")), document.createTextNode(" " + t(m.lock))); out.push(c); }
-    const act = missions.state.active.includes(m.key), can = !p.full && !m.lock && (m.how === "auto" || m.how === "marca" || (m.how === "parado" && m.drive));
+    const act = st.active.includes(m.key), can = !p.full && LPL.canTake(m);
     if (can && !act) {
-      const full = missions.state.active.length >= missions.max_active;
+      const full = st.active.length >= missions.max_active;
       const b = el("button", "btn", t("Levar na próxima viagem")); b.type = "button"; b.disabled = full;
       b.addEventListener("click", () => missionAct({ action: "take", key: m.key })); out.push(b);
       if (full) out.push(el("div", "small", t("Já há 3 missões na próxima viagem. Tire uma para levar esta.")));
     }
     if (act) { const b = el("button", "btn dark", t("Na próxima viagem ✓ · tirar")); b.type = "button"; b.addEventListener("click", () => missionAct({ action: "drop", key: m.key })); out.push(b); }
+    if (LPL.queuedKeys(mQueue, missions).includes(m.key)) out.push(el("div", "small", t("vai para o comma quando ele aparecer")));
     if (!p.full && !m.lock && m.how === "parado" && !m.drive) {
       const parkedNow = !carOn || carStopped;
       const row = el("div", "grid2");
@@ -1766,9 +1882,9 @@ function renderMissions() {
     }
     if (m.version && missions.packs[m.version]) { const b = el("button", "link", tf("Ver o roteiro da versão {v}", { v: m.version })); b.type = "button"; b.addEventListener("click", () => openMissions({ s: "roteiro", v: m.version })); out.push(b); }
   } else if (s.s === "roteiro") {
-    mBack("LizPilot", "inicio");
+    mBack(t("Missões"), { s: "trilhas" });
     const v = s.v || (packOf(prog) || {}).v, pk = v && missions.packs[v];
-    const act = missions.state.active.map(mOf).filter(Boolean);
+    const act = st.active.map(mOf).filter(Boolean);
     out.push(h1(v ? tf("Roteiro da versão {v}", { v }) : t("Antes de sair")));
     if (pk) {
       const warn = el("section", "card att"); warn.append(el("span", "desc", t(pk.intro))); out.push(warn);
@@ -1785,22 +1901,22 @@ function renderMissions() {
       out.push(el("div", "label", t("Pare o teste e desligue a opção se")));
       const ul = el("ul", "msteps"); pk.stop_if.forEach((x) => ul.append(el("li", "", t(x)))); out.push(ul);
       out.push(el("div", "small", t(pk.back)));
-      const onPack = ms.filter((m) => !prog[m.key].full && !m.lock).every((m) => missions.state.active.includes(m.key));
+      const onPack = ms.filter((m) => !prog[m.key].full && !m.lock).every((m) => st.active.includes(m.key));
       if (!onPack) { const b = el("button", "btn dark", t("Levar este roteiro na próxima viagem")); b.type = "button"; b.addEventListener("click", () => missionAct({ action: "pack", key: v })); out.push(b); }
     }
     if (act.length) {
       const go = el("button", "btn", t("Pronto, vou dirigir")); go.type = "button";
-      go.addEventListener("click", () => { store(MISSION_SNAP, JSON.stringify({ at: Math.floor(Date.now() / 1000), prog, active: missions.state.active })); toast(t("Boa viagem. O comma conta sozinho o que consegue.")); showView("inicio"); });
+      go.addEventListener("click", () => { store(MISSION_SNAP, JSON.stringify({ at: Math.floor(Date.now() / 1000), prog, active: st.active })); toast(t("Boa viagem. O comma conta sozinho o que consegue.")); showView("inicio"); });
       out.push(go);
     }
   } else if (s.s === "resultado") {
-    mBack("LizPilot", "inicio");
+    mBack(t("Missões"), { s: "trilhas" });
     const res = missionResult(prog);
     out.push(el("div", "label", t("Viagem de agora")));
     if (!res) out.push(h1(t("Nenhuma viagem nova ainda")), el("p", "sub", t("O resultado aparece quando o carro desliga e o comma resume a viagem.")));
     else {
       const before = LPL.missionLevel(missions, res.snap.prog), now = LPL.missionLevel(missions, prog);
-      out.push(h1(res.rows.length ? tf(res.rows.length === 1 ? "1 missão avançou" : "{n} missões avançaram", { n: res.rows.length }) : t("Nenhuma missão avançou sozinha")));
+      out.push(h1(res.moved.length ? tf(res.moved.length === 1 ? "1 missão avançou" : "{n} missões avançaram", { n: res.moved.length }) : t("Nenhuma missão avançou sozinha")));
       if (now.i > before.i) {
         const c = el("section", "card ok row"); c.insertAdjacentHTML("beforeend", HEX_DONE.replace(/28/g, "52"));
         const g = el("span", "grow"); g.append(el("span", "mlevel", t("Subiu de nível")), el("span", "big", tf("Nível {n} de {m}", { n: now.i + 1, m: missions.levels.length })));
@@ -1808,12 +1924,13 @@ function renderMissions() {
       }
       for (const r of res.rows) {
         const m = mOf(r.key), c = el("section", "card stack"); c.style.gap = "6px";
-        const top = el("div", "row"); top.append(el("b", "grow", t(m.title)), el("b", "", r.full ? t("completa") : r.to > r.from ? tf("{d} de {n}", { d: r.to, n: r.total }) : tf("{n} a conferir", { n: r.checks })));
+        const top = el("div", "row"); top.append(el("b", "grow", t(m.title)), el("b", "", r.full ? t("completa") : r.to > r.from ? tf("{d} de {n}", { d: r.to, n: r.total }) : r.moved ? tf("{n} a conferir", { n: r.checks }) : t("não deu · a conferir")));
         top.lastChild.style.color = r.full ? "var(--accent)" : "var(--warn)";
         const bar = el("div", "mbar"), a = el("span"), gain = el("span"), chk = el("span");
         a.style.cssText = `width:${100 * r.from / r.total}%;background:var(--accent)`; gain.style.cssText = `width:${100 * (r.to - r.from) / r.total}%;background:#5BE39D`;
         chk.style.cssText = `width:${100 * Math.min(r.checks, r.total - r.to) / r.total}%;background:var(--warn)`; bar.append(a, gain, chk);
-        c.append(top, bar, el("span", "small", r.to > r.from ? (r.full ? t("Missão completa.") : t("Reconhecida pelo comma.")) : t("A sua marca guardou a hora e o lugar: o CTO confere no log e completa.")));
+        c.append(top, bar, el("span", "small", r.to > r.from ? (r.full ? t("Missão completa.") : t("Reconhecida pelo comma.")) : r.moved ? t("A sua marca guardou a hora e o lugar: o CTO confere no log e completa.")
+          : t("A marca diz que não deu: o CTO confere no log. Não conta como avanço.")));
         out.push(c);
       }
       const marked = new Set(res.rows.map((r) => r.key));
@@ -1875,7 +1992,8 @@ async function refreshTrips(force) {
     const b = LPL.applyTrips({ trips: trips || [], marks: histMarks || [], v: tripsV }, r.data);
     if (b.missing) { tripsV = ""; tripsAt = 0; return refreshTrips(true); }  // a copy cut short: the whole list once
     trips = b.trips; histMarks = b.marks; tripsV = b.v; tripsPending = r.data.same ? 0 : r.data.pending_n || 0;
-    if (!r.data.same) cacheTrips();
+    synced("trips", r.ep);
+    if (!r.data.same) cacheTrips(r.ep);
   }  // no answer, or the car on: the copy stays on the screen
   renderTrips(r.status === 200 ? "" : (r.data.error || ""));
   if (view === "inicio" && !driving) renderGarage();
@@ -1888,9 +2006,10 @@ let tripsPending = 0, mapSig = "", tileFails = 0, histMarks = null;
 function allMarks() { return LPL.mergeMarks(marksState.marks, histMarks); }  // /api/marks brings the newest, the history needs every one
 let streets = load("lpStreets") === "1";  // the street map behind the path: off unless turned on on this phone (CTO, 02/11)
 const paths = new Map();  // route → { points } or { status }: page memory only
-function cacheTrips() { if (trips) DB.put("trips", { trips, marks: histMarks || [], v: tripsV }); }  // the phone's copy (baseLoad opens with it)
+function cacheTrips(ep) { if (trips) DB.put("trips", { trips, marks: histMarks || [], v: tripsV }, ep); }  // the phone's copy (baseLoad opens with it)
+function noteOf(m) { return m.reason === "missao" ? t(m.note || "") : m.note || ""; }  // a mission's mark: its title, in the phone's language
 function markText(m) {
-  return [t(m.label || ""), m.note || "", m.source === "auto" ? t("automática") : "", m.source === "comma" ? t("bandeira") : ""].join(" ");
+  return [t(m.label || ""), noteOf(m), m.source === "auto" ? t("automática") : "", m.source === "comma" ? t("bandeira") : ""].join(" ");
 }
 function histNow() {
   lastHist = LPL.history(trips || [], { query: histQuery, filter: histFilter, showHidden: histShowHidden, locale: L(), nowS: Date.now() / 1000,
@@ -2024,13 +2143,13 @@ function drawTrip(tr) {
   }
 }
 async function fetchPath(tr) {
-  const kept = noMap ? null : await DB.get("path:" + tr.id);
+  const kept = keepMap ? await DB.get("path:" + tr.id) : null;
   if (kept && kept.points && (!online || carOn)) { paths.set(tr.id, kept); mapSig = ""; }
   const r = online && !carOn ? await api("/api/trip/path?route=" + encodeURIComponent(tr.id) + (kept && kept.v ? "&" + LPL.since(kept.v) : "")) : { status: 0, data: {} };
   if (r.status === 200 && r.data.same && kept) paths.set(tr.id, kept);
   else if (r.status === 200 && r.data.points) {
-    const got = { points: r.data.points, v: r.data.v || "" }, keep = LPL.keepPath(got, noMap);
-    paths.set(tr.id, got); if (keep) DB.put("path:" + tr.id, keep);
+    const got = { points: r.data.points, v: r.data.v || "" }, keep = LPL.keepPath(got, keepMap);
+    paths.set(tr.id, got); if (keep) DB.put("path:" + tr.id, keep, r.ep);
   } else if (kept && kept.points) paths.set(tr.id, kept);
   else paths.set(tr.id, r.status === 404 ? { status: "none", summarized: LPL.pathSettled(tr, tripsPending), at: Date.now() } : { status: "error", at: Date.now() });
   mapSig = "";
@@ -2315,9 +2434,10 @@ function renderTrips(err) {
   if (carOn) { box.replaceChildren(el("div", "card desc", t("As viagens só abrem com o carro desligado."))); return; }
   if (!trips) { box.replaceChildren(el("div", "card desc", err || t("Carregando…"))); return; }
   if (!trips.length) { box.replaceChildren(el("div", "card desc", t("Nenhuma viagem gravada."))); return; }
-  const list = LPL.listed(trips);
+  const list = LPL.listed(trips), old = !!syncAt.trips && Date.now() - syncAt.trips > 5 * 60000;
   if (!list.length) { box.replaceChildren(el("div", "card desc", t("Todas as viagens estão ocultas."))); return; }
   const week = LPL.weekTotal(list, Date.now() / 1000), cards = [];
+  if (old) cards.push(el("div", "small", tf("Viagens guardadas neste celular, de {hora}.", { hora: baseWhen(TRIPS) })));  // not the comma's list of now
   if (week) {
     const c = el("section", "card ok stack"); c.style.gap = "4px";
     c.append(el("span", "label", t("Últimos 7 dias"))); c.lastChild.style.margin = "0";
@@ -2708,8 +2828,10 @@ async function refresh() {
   const r = await api("/api/state");
   if (r.status === 200) {
     failures = 0;
-    render(r.data);
+    render(r.data, false, r.ep);
+    synced("state", r.ep);
     if ($("app").classList.contains("hidden")) show("app");
+    flushQueue();
     refreshView();
   } else if (r.status === 0) {
     failures += 1;
@@ -2784,7 +2906,10 @@ $("missionOpen").addEventListener("click", () => openMissions());
 $("segToMissions").addEventListener("click", () => openMissions());
 $("segToTrips").addEventListener("click", () => showView("viagens"));
 $("copClose").addEventListener("click", () => closeCop());
-$("copOpen").addEventListener("click", () => { if (!askPassenger(openCop)) openCop(); });
+$("copOpen").addEventListener("click", () => {  // the passenger's: always the question first, parked too, once per drive
+  if (!carOn) return;
+  if (LPL.copilotGate({ ok: passengerOk }, carNow()).ask) askPassenger(openCop, true); else openCop();
+});
 $("optSearch").addEventListener("input", (e) => { optQuery = e.target.value; if (state) renderGroups(state.groups); });
 $("profileSave").addEventListener("click", async () => {
   const res = await api("/api/profiles/save", { name: $("profileName").value });
@@ -2866,14 +2991,14 @@ $("updMain").addEventListener("click", () => {
   else if (updStep) updateAction(updStep);
 });
 $("updBranch").addEventListener("change", (e) => updateAction("branch", e.target.value));
-$("noMap").addEventListener("change", async (e) => {
-  noMap = e.target.checked; store("lpNoMap", noMap ? "1" : "0");
-  if (noMap) for (const k of await DB.keys() || []) if (String(k).startsWith("path:")) await DB.del(k);  // the maps leave the phone now
+$("keepMap").addEventListener("change", async (e) => {
+  keepMap = e.target.checked; store("lpKeepMap", keepMap ? "1" : null);
+  if (!keepMap) for (const k of await DB.keys() || []) if (String(k).startsWith("path:")) await DB.del(k);  // the maps leave the phone now
   renderBase();
 });
 $("wipeBtn").addEventListener("click", async () => {
   if (!confirm(t("Apagar viagens, marcas e Missões guardadas neste celular? No comma fica tudo."))) return;
-  await wipeBase(); toast(t("Dados deste celular apagados.")); renderBase();
+  await wipeBase(); toast(t("Dados deste celular apagados.")); renderBase(); renderMissionCard(); renderReadyMissions();
   tripsAt = 0; missionsAt = 0; if (token && online && !fromBase) refresh();
 });
 $("logoutBtn").addEventListener("click", async () => {

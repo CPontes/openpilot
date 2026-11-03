@@ -389,7 +389,8 @@ def test_unpairing_leaves_no_list_of_drives_on_the_phone():
   assert 'if (!v) wipeBase(); }' in html  # APP-01: the whole copy leaves, not only the list
   wipe = html[html.index("async function wipeBase()"):]
   wipe = wipe[:wipe.index("\n}\n")]
-  assert "await DB.clear();" in wipe and "LPL.DATA_KEYS" in wipe and "trips = null" in wipe and "paths.clear()" in wipe
+  assert "DB.clear()" in wipe and "await done" in wipe and "mQueue = []" in wipe  # the missions waiting for the comma too
+  assert "LPL.DATA_KEYS" in wipe and "trips = null" in wipe and "paths.clear()" in wipe
   keys = subprocess.run([NODE, "-e", f"process.stdout.write(JSON.stringify(require({json.dumps(str(LOGIC))}).DATA_KEYS))"],
                         capture_output=True, text=True, timeout=30, check=True).stdout
   assert set(json.loads(keys)) == {"lpTrips", "lpMissionSnap"}  # data only: the language and the view stay
@@ -551,10 +552,10 @@ def test_copy_marks_and_missions_whole_or_kept():
   assert run("since", "a.b.1") == "since=a.b.1" and run("since", "") == ""
 
 
-def test_copy_without_the_map_keeps_no_path():
+def test_copy_keeps_a_path_only_with_the_maps_option_on():  # owner, 03/11 (D2): off by default, and off keeps nothing
   got = {"points": [[1, 2, 0, 0]], "v": "p1"}
-  assert run("keepPath", got, False) == got
-  assert run("keepPath", got, True) is None and run("keepPath", {"status": "none"}, False) is None
+  assert run("keepPath", got, False) is None and run("keepPath", got, None) is None
+  assert run("keepPath", got, True) == got and run("keepPath", {"status": "none"}, True) is None
 
 
 def test_copy_read_only_without_the_comma_or_before_its_first_answer():
@@ -579,3 +580,84 @@ def test_copilot_puts_what_fits_now_first_and_skips_what_is_done():
   prog["c"]["full"] = True
   order = run("copilotOrder", cat, ["a", "b", "c", "d", "e"], prog, ["stop_free"])
   assert order == [{"key": "b", "fits": True}, {"key": "a", "fits": False}, {"key": "d", "fits": False}]
+
+
+def test_copilot_old_live_data_never_says_now():  # CTO review of app-08: 60 s old still said "Agora: … / Dá para fazer agora"
+  slow = {"driving": True, "v": 20, "lead": {"d": 10}}
+  assert run("copilotNow", slow, {"online": True, "age": 500}, 0) == {"state": "live", "moment": ["moving", "slow_follow"]}
+  assert run("copilotNow", slow, {"online": True, "age": 60000}, 0) == {"state": "stale", "moment": [], "age": 60}
+  assert run("copilotNow", {"driving": False}, {"online": True, "age": 500}, 0) == {"state": "off", "moment": []}
+  assert run("copilotNow", None, {"online": True, "age": 500}, 0)["state"] == "none"
+  assert run("copilotNow", slow, {"online": False, "age": 500}, 0)["state"] == "none"
+
+
+def test_copilot_stop_clock_goes_on_through_an_old_tick():
+  stopped, moving = {"driving": True, "v": 0}, {"driving": True, "v": 30}
+  assert run("stopClock", None, stopped, False, 1000) == 1000
+  assert run("stopClock", 1000, stopped, False, 5000) == 1000
+  assert run("stopClock", 1000, stopped, True, 6000) == 1000  # one old tick: still stopped since 1000
+  assert run("stopClock", None, stopped, True, 6000) is None
+  assert run("stopClock", 1000, moving, False, 7000) is None and run("stopClock", 1000, {"driving": False}, False, 7000) is None
+
+
+def test_copilot_always_asks_the_passenger_and_closes_when_moving_without_one():
+  parked, moving, off = {"on": True, "moving": False}, {"on": True, "moving": True}, {"on": False, "moving": False}
+  assert run("copilotGate", {"ok": False}, parked) == {"ok": False, "ask": True, "close": False}  # parked too
+  assert run("copilotGate", {"ok": True}, parked) == {"ok": True, "ask": False, "close": False}
+  assert run("copilotGate", {"ok": False}, moving)["close"] is True
+  assert run("copilotGate", {"ok": True}, moving) == {"ok": True, "ask": False, "close": False}
+  assert run("copilotGate", {"ok": True}, off) == {"ok": False, "ask": True, "close": True}  # a new drive asks again
+  assert run("passenger", {"ok": False}, parked)["ask"] is False  # Marcar parked still asks nothing
+
+
+def test_copilot_keeps_what_was_answered_on_this_drive():
+  pend = [{"key": "a", "t": 50}, {"key": "b", "t": 150, "result": "bad"}, {"key": "c", "t": 160, "result": "ok"}, {"key": "c", "t": 170}]
+  assert run("tripAnswers", pend, 100) == {"b": "bad", "c": "done"}
+
+
+def test_a_mark_that_did_not_work_never_counts_as_progress():  # CTO review of app-08: "Não deu" showed as "1 missão avançou"
+  cat = {"missions": [_m("x", "marca", 3), _m("y", "marca", 1)]}
+  before = run("missionProgress", cat, {}, [])
+  st = {"pending": [{"key": "x", "result": "bad"}, {"key": "x", "result": "stop"}, {"key": "y", "result": "ok"}]}
+  after = run("missionProgress", cat, st, [])
+  assert after["x"]["toCheck"] == 0 and after["x"]["fails"] == 2 and after["y"]["toCheck"] == 1 and after["y"]["fails"] == 0
+  rows = {r["key"]: r for r in run("missionDiff", before, after)}
+  assert rows["x"]["moved"] is False and rows["x"]["fails"] == 2 and rows["x"]["checks"] == 0
+  assert rows["y"]["moved"] is True and rows["y"]["checks"] == 1
+  assert run("missionProgress", cat, {"pending": [{"key": "x"}]}, [])["x"]["toCheck"] == 1  # an older mark, no result: "Fiz agora"
+
+
+CAT_Q = {"max_active": 3, "missions": [_m("a", "marca"), _m("b", "auto"), _m("c", "marca", version="v1"), _m("d", "parado", drive=True, version="v1"),
+                                       _m("e", "marca", version="v1", lock="x"), _m("f", "parado", version="v1")]}
+
+
+def test_missions_chosen_away_from_the_comma_wait_in_order():  # owner, 03/11 (D3)
+  q = run("queueAdd", [], {"action": "take", "key": "a"})
+  q = run("queueAdd", q, {"action": "take", "key": "b"})
+  assert q == [{"action": "take", "key": "a"}, {"action": "take", "key": "b"}]
+  assert run("queueAdd", q, {"action": "take", "key": "a"}) == q  # twice: once
+  assert run("queueAdd", q, {"action": "drop", "key": "a"}) == [{"action": "take", "key": "b"}]  # taken and dropped: nothing to send
+  assert run("queueAdd", q, {"action": "pack", "key": "v1"}) == [{"action": "pack", "key": "v1"}]
+  for bad in ({"action": "answer", "key": "a"}, {"action": "mark", "key": "a"}, {"action": "take"}, None):  # only missions wait
+    assert run("queueAdd", q, bad) == q
+  after_pack = run("queueAdd", [{"action": "pack", "key": "v1"}], {"action": "drop", "key": "c"})
+  assert after_pack == [{"action": "pack", "key": "v1"}, {"action": "drop", "key": "c"}]
+
+
+def test_missions_waiting_show_on_top_of_the_comma_state():
+  st = {"active": ["a"], "answers": {}, "pending": []}
+  assert run("applyQueue", st, [{"action": "take", "key": "b"}, {"action": "drop", "key": "a"}], CAT_Q)["active"] == ["b"]
+  assert run("applyQueue", st, [{"action": "pack", "key": "v1"}], CAT_Q)["active"] == ["c", "d"]  # the route, as the comma takes it
+  assert run("applyQueue", st, [], CAT_Q) == st
+  assert sorted(run("queuedKeys", [{"action": "pack", "key": "v1"}, {"action": "take", "key": "a"}], CAT_Q)) == ["a", "c", "d"]
+  assert [m["key"] for m in CAT_Q["missions"] if run("canTake", m)] == ["a", "b", "c", "d"]
+
+
+def test_the_phone_takes_the_same_missions_as_the_comma_and_the_same_results_count():
+  from openpilot.selfdrive.hexa import missions as M
+  pub = M.public()["missions"]
+  script = f"const L = require({json.dumps(str(LOGIC))}); const ms = {json.dumps(pub)};" + \
+    "process.stdout.write(JSON.stringify([ms.map(L.canTake), L.ADVANCED]));"
+  took, advanced = json.loads(subprocess.run([NODE, "-e", script], capture_output=True, text=True, timeout=30, check=True).stdout)
+  assert took == [M.can_take(m) for m in M.CATALOG] and took == [M.can_mark(m) for m in M.CATALOG]
+  assert advanced == list(M.ADVANCED) and set(M.RESULTS) == {"done", "ok", "bad", "stop"}
