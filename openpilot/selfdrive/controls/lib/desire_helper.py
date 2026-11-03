@@ -14,6 +14,12 @@ LANE_CHANGE_START_TIME = 0.5
 AUTO_LANE_CHANGE_SPEED_MIN = 60 * CV.KPH_TO_MS
 AUTO_LANE_CHANGE_DELAYS = (1., 2., 3.)  # s, the AutoLaneChangeDelay choices
 
+# Route 32 (03/11), min 4.6 and 59.7: right after a change, turning the stalk off swung it to the other side, and about 1 s
+# later the driver's hand on the wheel read as the push for a new change: the car went back. Within REVERSE_WINDOW of a
+# change, a signal to the other side starts nothing until it has stayed on for REVERSE_HOLD (owner: "dá um tempinho").
+REVERSE_WINDOW = 10.  # s after a change ends
+REVERSE_HOLD = 3.  # s the opposite signal must stay on
+
 
 def auto_lane_change_delay(params) -> float | None:
   if not params.get_bool("AutoLaneChange"):
@@ -34,6 +40,10 @@ class DesireHelper:
     self.lane_change_timer = 0.0
     self.prev_one_blinker = False
     self.desire = log.Desire.none
+    self.last_change = LaneChangeDirection.none  # the side of the last change, and how long since it ended
+    self.since_change = REVERSE_WINDOW
+    self.blinker_side = LaneChangeDirection.none  # the side the signal is on now, and for how long
+    self.blinker_time = 0.0
 
   @staticmethod
   def get_lane_change_direction(CS):
@@ -51,6 +61,10 @@ class DesireHelper:
       self.auto_armed = True
       self.auto_timer = 0.0
     self.prev_blinker = one_blinker
+    side = self.get_lane_change_direction(carstate) if one_blinker else LaneChangeDirection.none
+    self.blinker_time = self.blinker_time + DT_MDL if side == self.blinker_side else 0.0
+    self.blinker_side = side
+    self.since_change += DT_MDL
 
     if not lateral_active or self.lane_change_timer > LANE_CHANGE_TIME_MAX:
       self.lane_change_state = LaneChangeState.off
@@ -80,12 +94,14 @@ class DesireHelper:
         else:
           self.auto_timer += DT_MDL
         auto_ready = self.auto_armed and self.auto_delay is not None and self.auto_timer >= self.auto_delay
+        going_back = self.last_change not in (LaneChangeDirection.none, self.lane_change_direction) and \
+                     self.since_change < REVERSE_WINDOW and self.blinker_time < REVERSE_HOLD
 
         if not one_blinker or below_lane_change_speed:
           self.lane_change_state = LaneChangeState.off
           self.lane_change_direction = LaneChangeDirection.none
           self.lane_change_timer = 0.0
-        elif (torque_applied or auto_ready) and not blindspot_detected:
+        elif (torque_applied or auto_ready) and not blindspot_detected and not going_back:
           self.lane_change_state = LaneChangeState.laneChangeStarting
           self.lane_change_timer = 0.0
           self.auto_armed = False
@@ -95,6 +111,7 @@ class DesireHelper:
 
         if lane_change_prob < 0.02 and self.lane_change_timer >= LANE_CHANGE_START_TIME:
           self.lane_change_timer = 0.0
+          self.last_change, self.since_change = self.lane_change_direction, 0.0
           if one_blinker:
             self.lane_change_state = LaneChangeState.preLaneChange
             self.lane_change_direction = self.get_lane_change_direction(carstate)

@@ -20,7 +20,9 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "03/11", "2060c4e", "Comparar com a última versão testada",
+  Release("", "04/11", "2060c4e", "A troca de faixa não volta sozinha",
+          ("Logo depois de uma troca, a seta do outro lado só vale se ficar ligada 3 s",)),
+  Release("5c47e8f", "03/11", "2060c4e", "Comparar com a última versão testada",
           ("«A atualização valeu?» compara com a última versão que você dirigiu, e lista as versões sem viagem no meio",),
           driving=False),
   Release("9aca7d3", "03/11", "2060c4e", "Histórico das missões e versões",

@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from openpilot.cereal import log
 from openpilot.common.constants import CV
 from openpilot.common.realtime import DT_MDL
-from openpilot.selfdrive.controls.lib.desire_helper import AUTO_LANE_CHANGE_DELAYS, DesireHelper, auto_lane_change_delay
+from openpilot.selfdrive.controls.lib.desire_helper import AUTO_LANE_CHANGE_DELAYS, REVERSE_HOLD, DesireHelper, auto_lane_change_delay
 
 State = log.LaneChangeState
 KMH = CV.KPH_TO_MS
@@ -166,3 +166,39 @@ def test_bad_delay_never_stops_modeld():
       return self.delay
 
   assert [auto_lane_change_delay(Store(d)) for d in (0, 1, 2, 7, None)] == [1., 2., 3., 2., 2.]
+
+
+def _finish_left(dh):
+  off(dh)
+  assert run(dh, .1, pressed=True, torque=100.) == State.laneChangeStarting
+  run(dh, 3., prob=.5)  # the change runs
+  return run(dh, .6, prob=0.)  # and ends
+
+
+def test_the_stalk_swinging_back_does_not_undo_the_change():  # route 32, min 4.6 and 59.7
+  dh = DesireHelper(2.)
+  _finish_left(dh)
+  # turning it off, the stalk lands on the right, and the hand on the wheel pushes right about 1 s later
+  assert run(dh, 1., left=False, right=True) == State.preLaneChange
+  assert run(dh, .5, left=False, right=True, pressed=True, torque=-100.) == State.preLaneChange
+  assert run(dh, REVERSE_HOLD, left=False, right=True) == State.preLaneChange  # the option's clock doesn't do it either
+
+
+def test_holding_the_other_side_still_goes_back():
+  dh = DesireHelper()
+  _finish_left(dh)
+  run(dh, REVERSE_HOLD + .1, left=False, right=True)
+  assert run(dh, .1, left=False, right=True, pressed=True, torque=-100.) == State.laneChangeStarting
+  assert dh.lane_change_direction == log.LaneChangeDirection.right
+
+
+def test_same_side_and_later_changes_are_not_held():
+  dh = DesireHelper()
+  _finish_left(dh)
+  off(dh)
+  assert run(dh, .1, pressed=True, torque=100.) == State.laneChangeStarting  # a second change to the same side: no wait
+  dh = DesireHelper()
+  _finish_left(dh)
+  off(dh, 10.)
+  run(dh, .2, left=False, right=True)
+  assert run(dh, .1, left=False, right=True, pressed=True, torque=-100.) == State.laneChangeStarting  # long after: normal

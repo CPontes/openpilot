@@ -1308,5 +1308,7 @@
  "Inclui 1 versão sem viagem no meio: {v}": "Includes 1 version in between with no drive: {v}",
  "Inclui {n} versões sem viagem no meio: {v}": "Includes {n} versions in between with no drive: {v}",
  "Comparar com a última versão testada": "Compare with the last version tested",
- "«A atualização valeu?» compara com a última versão que você dirigiu, e lista as versões sem viagem no meio": "«Was the update worth it?» compares with the last version you drove, and lists the versions in between with no drive"
+ "«A atualização valeu?» compara com a última versão que você dirigiu, e lista as versões sem viagem no meio": "«Was the update worth it?» compares with the last version you drove, and lists the versions in between with no drive",
+ "A troca de faixa não volta sozinha": "The lane change doesn't undo itself",
+ "Logo depois de uma troca, a seta do outro lado só vale se ficar ligada 3 s": "Right after a change, the signal to the other side only counts if it stays on 3 s"
 }
