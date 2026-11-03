@@ -364,18 +364,24 @@
     }
     return out;
   }
-  // The version now against the one before it, in the order the drives happened. Under 200 km on a side: the numbers, no verdict
+  // The version now against the last one tested (owner, 03/11: several updates went out untested). Tested: drives on it with
+  // KPI_MIN_KM of road; if none has that much, the last with any drive. The channel versions in between, with no drive of
+  // their own, come along in the comparison: `between` lists them from the release notes. Under 200 km a side: no verdict
   const VERSION_MIN_KM = 200;
-  function versionCompare(trips) {
+  function versionCompare(trips, releases) {
     const ts = (trips || []).filter((t) => t.summary && !t.hidden && !idle(t) && versionOf(t)).sort((a, b) => b.mtime - a.mtime);
     if (!ts.length) return null;
-    const now = versionOf(ts[0]), prev = (ts.find((t) => versionOf(t) !== now) || null);
-    if (!prev) return null;
-    const a = kpiOf(ts.filter((t) => versionOf(t) === now)), b = kpiOf(ts.filter((t) => versionOf(t) === versionOf(prev)));
+    const now = versionOf(ts[0]), mine = (v) => ts.filter((t) => versionOf(t) === v);
+    const others = versions(ts).filter((v) => v !== now);
+    const before = others.find((v) => kpiOf(mine(v)).km >= KPI_MIN_KM) || others[0];
+    if (!before) return null;
+    const a = kpiOf(mine(now)), b = kpiOf(mine(before));
     const few = a.km < VERSION_MIN_KM || b.km < VERSION_MIN_KM;
     const rows = ["opPct", "wobble", "alerts100"].map((k) => ({ key: k, now: a[k], before: b[k], delta: few ? null : kpiDelta(k, a[k], b[k]) }));
     const judged = rows.filter((r) => r.delta);
-    return { now, before: versionOf(prev), a, b, rows, better: few ? null : judged.filter((r) => r.delta.trend > 0).length, judged: few ? null : judged.length, few };
+    const rel = (releases || []).map((r) => r.commit), i = rel.indexOf(now), j = rel.indexOf(before);
+    const between = i >= 0 && j > i ? rel.slice(i + 1, j) : null;  // null: the notes don't know one of the two
+    return { now, before, a, b, rows, better: few ? null : judged.filter((r) => r.delta.trend > 0).length, judged: few ? null : judged.length, few, between };
   }
   // Week by week of one KPI, oldest first, for a sparkline (null weeks stay null: a gap reads as a gap)
   function kpiWeeks(trips, nowS, key, n) {

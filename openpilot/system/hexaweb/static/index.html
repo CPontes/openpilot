@@ -1219,7 +1219,7 @@ function renderKpis() {
     box.setAttribute("aria-label", `${label()}: ${v == null ? "—" : fmt(v)}`);
     return box;
   }));
-  const vc = LPL.versionCompare(list);
+  const vc = LPL.versionCompare(list, releases);
   $("kpiVersion").classList.toggle("hidden", !vc);
   if (vc) $("kpiVersion").textContent = tf("A versão {v} valeu? Ver a comparação", { v: vc.now });
 }
@@ -1709,7 +1709,7 @@ let releases = null, vScreen = { s: "lista" };
 async function refreshVersions() {
   if (releases) return;
   const r = await api("/api/versions");
-  if (r.status === 200) { releases = r.data.releases; if (view === "versoes") renderVersions(); }
+  if (r.status === 200) { releases = r.data.releases; if (view === "versoes") renderVersions(); if (view === "viagens") renderTrips(); }
 }
 function openVersions(scr) { vScreen = scr || { s: "lista" }; showView("versoes"); }
 function renderVersions() {
@@ -2568,17 +2568,22 @@ function weekCard(all) {
   return c;
 }
 function dayMonth(s) { return new Date(s * 1000).toLocaleDateString(L(), { day: "2-digit", month: "2-digit" }); }
-// The version now against the one before: the KPIs side by side, the difference colored, and a warning when there's little to go on
+// The version now against the last one tested: the KPIs side by side, the difference colored, and a warning when there's little to go on
 const VERSION_ROWS = { opPct: [() => t("openpilot no volante"), (v) => `${Math.round(v)}%`],
                        wobble: [() => t("balanço em reta"), (v) => `${num(v, 2)}°`], alerts100: [() => t("alertas a cada 100 km"), (v) => num(v, 0)] };
 function versionVerdict(list) {
-  const vc = LPL.versionCompare(list);
+  if (!releases) refreshVersions();  // the notes name the versions in between; the card comes back when they arrive
+  const vc = LPL.versionCompare(list, releases);
   if (!vc) return null;
   const c = el("section", "card stack"); c.id = "versionVerdict"; c.style.gap = "8px";
   c.append(el("span", "label", t("A atualização valeu?"))); c.lastChild.style.margin = "0";
   c.append(el("span", "title num", tf("{antes} → {agora}", { antes: vc.before, agora: vc.now })));
-  const head = el("div", "small num", tf("{a} km nesta versão · {b} km na anterior", { a: num(vc.a.km, 0), b: num(vc.b.km, 0) }));
+  const head = el("div", "small num", tf("{a} km nesta versão · {b} km na última testada", { a: num(vc.a.km, 0), b: num(vc.b.km, 0) }));
   c.append(head);
+  if (vc.between && vc.between.length) {  // updates that went out with no drive: this comparison takes them all together
+    c.append(el("div", "small", tf(vc.between.length === 1 ? "Inclui 1 versão sem viagem no meio: {v}" : "Inclui {n} versões sem viagem no meio: {v}",
+                                   { n: vc.between.length, v: vc.between.join(", ") })));
+  }
   if (vc.few) {  // under the minimum: the numbers, no verdict (CTO review of 05)
     const w = el("div", "card att desc", tf("Pouca estrada para dizer: com menos de {km} km de cada lado, trânsito e caminho mudam mais que a versão. Os números ficam abaixo, sem veredito.", { km: LPL.VERSION_MIN_KM }));
     w.style.margin = "0"; c.append(w);

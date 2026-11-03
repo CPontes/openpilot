@@ -750,7 +750,6 @@
  "pior que a sua média": "worse than your average",
  "sem comparação": "nothing to compare",
  "{antes} → {agora}": "{antes} → {agora}",
- "{a} km nesta versão · {b} km na anterior": "{a} km on this version · {b} km on the one before",
  "{n} pts": "{n} pts",
  "Últimas 4 semanas": "Last 4 weeks",
  "1 missão avançou": "1 mission moved forward",
@@ -1304,5 +1303,8 @@
  "Uma opção bloqueada fica sempre desligada": "A locked option always stays off",
  "Versões e o que mudou ›": "Versions and what changed ›",
  "Versões: o que cada versão trouxe e as suas viagens nela": "Versions: what each version brought and your drives on it",
- "«Feitas e histórico» nas Missões: cada vez que uma missão foi conferida no log, com o número medido": "«Done and history» in Missions: each time a mission was checked in the log, with the number measured"
+ "«Feitas e histórico» nas Missões: cada vez que uma missão foi conferida no log, com o número medido": "«Done and history» in Missions: each time a mission was checked in the log, with the number measured",
+ "{a} km nesta versão · {b} km na última testada": "{a} km on this version · {b} km on the last one tested",
+ "Inclui 1 versão sem viagem no meio: {v}": "Includes 1 version in between with no drive: {v}",
+ "Inclui {n} versões sem viagem no meio: {v}": "Includes {n} versions in between with no drive: {v}"
 }

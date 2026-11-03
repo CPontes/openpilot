@@ -750,7 +750,6 @@
  "pior que a sua média": "peor que tu promedio",
  "sem comparação": "sin comparación",
  "{antes} → {agora}": "{antes} → {agora}",
- "{a} km nesta versão · {b} km na anterior": "{a} km en esta versión · {b} km en la anterior",
  "{n} pts": "{n} pts",
  "Últimas 4 semanas": "Últimas 4 semanas",
  "1 missão avançou": "1 misión avanzó",
@@ -1304,5 +1303,8 @@
  "Uma opção bloqueada fica sempre desligada": "Una opción bloqueada siempre queda apagada",
  "Versões e o que mudou ›": "Versiones y lo que cambió ›",
  "Versões: o que cada versão trouxe e as suas viagens nela": "Versiones: lo que trajo cada versión y tus viajes en ella",
- "«Feitas e histórico» nas Missões: cada vez que uma missão foi conferida no log, com o número medido": "«Hechas e historial» en Misiones: cada vez que una misión se revisó en el log, con el número medido"
+ "«Feitas e histórico» nas Missões: cada vez que uma missão foi conferida no log, com o número medido": "«Hechas e historial» en Misiones: cada vez que una misión se revisó en el log, con el número medido",
+ "{a} km nesta versão · {b} km na última testada": "{a} km en esta versión · {b} km en la última probada",
+ "Inclui 1 versão sem viagem no meio: {v}": "Incluye 1 versión en medio sin viaje: {v}",
+ "Inclui {n} versões sem viagem no meio: {v}": "Incluye {n} versiones en medio sin viaje: {v}"
 }

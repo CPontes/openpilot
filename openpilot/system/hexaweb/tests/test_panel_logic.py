@@ -457,6 +457,19 @@ def test_version_compare_says_nothing_under_the_minimum():
   assert run("versionCompare", [kdrive(SAT, commit="b2")]) is None
 
 
+def test_version_compare_is_against_the_last_tested():  # owner, 03/11: several updates went out untested
+  rel = [{"commit": c} for c in ("e5", "d4", "c3", "b2", "a1")]
+  trips = [kdrive(SAT, commit="e5"), kdrive(SAT - 3600, commit="d4", km=5.), kdrive(SAT - 86400, commit="b2", km=40.),
+           kdrive(SAT - 2 * 86400, commit="a1", km=300.)]
+  v = run("versionCompare", trips, rel)
+  assert (v["now"], v["before"]) == ("e5", "b2")  # d4 had a 5 km drive: not tested
+  assert v["between"] == ["d4", "c3"] and v["b"]["km"] == 40
+  only_short = [kdrive(SAT, commit="e5"), kdrive(SAT - 3600, commit="d4", km=5.)]
+  assert run("versionCompare", only_short, rel)["before"] == "d4"  # nothing tested: the last with any drive
+  assert run("versionCompare", trips, None)["between"] is None  # no notes yet: nothing to name
+  assert run("versionCompare", trips + [kdrive(SAT + 60, commit="zz")], rel)["between"] is None  # a version the notes don't know
+
+
 def test_a_drive_against_its_average():
   trips = [kdrive(SAT - 86400 * i) for i in range(1, 4)]
   me = kdrive(SAT, wob_ss=100.)
