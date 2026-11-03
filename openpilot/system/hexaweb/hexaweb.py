@@ -70,7 +70,6 @@ PRESERVE_ATTR = "user.preserve"  # system/loggerd/deleter.py: what keeps a flagg
 SUMMARY_VERSION = 5  # 2: version, alerts. 3: the path. 4: the KPIs (wobble, lane seen, where it let go).
 # 5: time in slow traffic (the missions).
 # An older summary is read again, the newest SUMMARY_NEWEST only
-SYNC_SLACK_S = 120.  # a delta reaches back this far before the phone's cursor: a summary kept in the same second isn't missed
 ERRORS_EVERY_S = 30.
 CLIP_BEFORE_S = 10.  # the clip of a mark starts this long before it
 CLIP_TICKET_S = 600.  # a clip link works this long, for that clip only
@@ -139,6 +138,11 @@ class PanelBackend:
     self._revs: dict[str, int] = {}  # param -> how many times this process wrote it
     self._todo_left = False  # drives still to summarize: a same version must not stop asking for them
     self._catalog_v = ""
+    # what each listed drive looked like when last sent, and the change number of this process that last changed it:
+    # the trips delta never depends on the comma's clock (CTO review of app01-01)
+    self._sync_lock = threading.Lock()
+    self._trip_sigs: dict[str, tuple[str, int]] = {}
+    self._trip_gen = 0
 
   def vehicle_state(self) -> VehicleState:
     with self._vs_lock:
@@ -537,11 +541,26 @@ class PanelBackend:
           parts.append("-")
     return hashlib.sha1(".".join(parts).encode()).hexdigest()[:12]
 
-  @staticmethod
-  def _cursor(since: str) -> tuple[str, str, int | None]:
-    """'<trips version>.<marks version>.<wall second>', as the last answer gave it. Anything else: no cursor."""
-    m = re.fullmatch(r"([0-9a-f]{1,16})\.([0-9a-f]{1,16})\.([0-9]{1,12})", since or "")
-    return (m.group(1), m.group(2), int(m.group(3))) if m else ("", "", None)
+  def _cursor(self, since: str) -> tuple[str, str, int | None]:
+    """'<trips version>.<marks version>.<process>.<change number>', as the last answer gave it. Another process (a restart)
+    or anything else: no cursor, the whole list."""
+    m = re.fullmatch(r"([0-9a-f]{1,16})\.([0-9a-f]{1,16})\.([0-9a-f]{8})\.([0-9]{1,12})", since or "")
+    if not m or m.group(3) != self._boot or int(m.group(4)) > self._trip_gen:
+      return "", "", None
+    return m.group(1), m.group(2), int(m.group(4))
+
+  def _trip_changes(self, listed: list[dict]) -> tuple[dict[str, int], int]:
+    """The change number of each listed drive: it moves when anything the phone gets of it moves (a summary kept again,
+    a minute the deleter took), whatever the clock says. Hidden goes in every delta by itself."""
+    with self._sync_lock:
+      for t in listed:
+        sig = hashlib.sha1(json.dumps({k: v for k, v in t.items() if k != "hidden"}, sort_keys=True, default=str).encode()).hexdigest()[:12]
+        old = self._trip_sigs.get(t["id"])
+        if old is None or old[0] != sig:
+          self._trip_gen += 1
+          self._trip_sigs[t["id"]] = (sig, self._trip_gen)
+      self._trip_sigs = {t["id"]: self._trip_sigs[t["id"]] for t in listed}
+      return {k: g for k, (_, g) in self._trip_sigs.items()}, self._trip_gen
 
   def _trips_version(self, trips: list[dict]) -> str:
     index = ";".join(f"{t['id']}:{len(t['files'])}:{int(t['mtime'])}" for t in trips)  # the folder listing: no log is opened
@@ -742,11 +761,8 @@ class PanelBackend:
       every = self._trips()
     trips = every[:TRIPS_LISTED]
     v, mv = self._trips_version(trips), self._stamp(hexa_marks.MARKS_PARAM)
-    old_v, old_mv, old_t = self._cursor(since)
-    now = int(self.clock())
-    if old_t is not None and old_t > now + SYNC_SLACK_S:  # the comma's clock went back: start over
-      old_v, old_mv, old_t = "", "", None
-    if old_v == v and old_mv == mv and not self._todo_left:
+    old_v, old_mv, old_gen = self._cursor(since)
+    if old_gen is not None and old_v == v and old_mv == mv and not self._todo_left:
       return 200, {"same": True, "v": since}  # the old cursor stays: nothing happened since it
     self._prune_paths({t["id"] for t in every})
     kept = self.store.get(SUMMARY_PARAM) or {}  # read once: the whole history is in it
@@ -760,14 +776,14 @@ class PanelBackend:
     hidden = set(self.store.get(HIDDEN_PARAM) or [])
     listed = [{"id": t["id"], "mtime": int(t["mtime"]), "minutes": len(t["files"]), "segments": sorted(t["files"]),
                "summary": summaries[t["id"]], "hidden": t["id"] in hidden} for t in trips]
-    out: dict = {"pending": bool(todo), "pending_n": len(todo), "v": f"{v}.{mv}.{now}"}
+    changes, gen = self._trip_changes(listed)
+    out: dict = {"pending": bool(todo), "pending_n": len(todo), "v": f"{v}.{mv}.{self._boot}.{gen}"}
     if old_mv != mv:
       with self.lock:
         out["marks"] = [hexa_marks.public(m) for m in self._marks()]  # /api/marks brings only the newest: the history covers every drive
-    if old_t is None:
+    if old_gen is None:
       return 200, dict(out, trips=listed, marks=out.get("marks", []))
-    after = old_t - SYNC_SLACK_S
-    changed = [t for t in listed if t["mtime"] >= after or t["summary"] is None or (t["summary"].get("at") or 0) >= after]
+    changed = [t for t in listed if changes[t["id"]] > old_gen]
     return 200, dict(out, delta=True, trips=changed, ids=[t["id"] for t in listed], hidden=sorted(hidden & {t["id"] for t in listed}))
 
   def trip_hide(self, who: dict, route: str, hidden: bool) -> tuple[int, dict]:
@@ -853,7 +869,7 @@ class PanelBackend:
         summary = self._summarize(trip["files"], lambda: self.vehicle_state().onroad)
         if summary is None:
           return
-        summary = {**summary, "sv": SUMMARY_VERSION, "at": int(self.clock())}  # at: when it was kept, for the phone's delta
+        summary = {**summary, "sv": SUMMARY_VERSION}
         self._keep_path(trip["id"], summary.pop("path", None))
         self._auto_marks(trip, summary)
         with self.lock:

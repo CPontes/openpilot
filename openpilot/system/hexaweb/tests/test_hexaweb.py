@@ -1321,7 +1321,7 @@ def two_old_trips(panel, tmp_path):
       (d / "qlog.zst").write_bytes(b"")
       os.utime(d / "qlog.zst", (500, 500))  # drives from before the phone's cursor
   panel.backend.log_root = str(tmp_path)
-  summary = {"segments": 2, "km": 3., "sv": hexaweb.SUMMARY_VERSION, "at": 600}
+  summary = {"segments": 2, "km": 3., "sv": hexaweb.SUMMARY_VERSION}
   panel.store.put(hexaweb.SUMMARY_PARAM, {"0000000e--1111111111": dict(summary), "0000000f--8784034901": dict(summary)})
 
 
@@ -1358,7 +1358,7 @@ def test_sync_brings_only_the_drive_that_changed(panel, tmp_path):
   v = panel.json("/api/trips", token=token)[1]["v"]
   panel.now += 1000  # later, the comma keeps a new summary of one drive, and the owner hides the other
   kept = panel.store.get(hexaweb.SUMMARY_PARAM)
-  kept["0000000f--8784034901"] = dict(kept["0000000f--8784034901"], km=9., at=int(panel.now))
+  kept["0000000f--8784034901"] = dict(kept["0000000f--8784034901"], km=9.)
   panel.backend._put(hexaweb.SUMMARY_PARAM, kept)
   assert panel.json("/api/trip/hide", {"route": "0000000e--1111111111", "hidden": True}, token=token)[0] == 200
   status, d = panel.json("/api/trips?since=" + v, token=token)
@@ -1378,13 +1378,60 @@ def test_sync_a_new_mark_comes_with_the_delta(panel, tmp_path):
   assert d["delta"] and d["trips"] == [] and [m["reason"] for m in d["marks"]] == ["balancou"]
 
 
-def test_sync_a_bad_cursor_or_a_clock_that_went_back_gets_everything(panel, tmp_path):
+def test_sync_a_bad_cursor_or_a_change_number_from_the_future_gets_everything(panel, tmp_path):
   two_old_trips(panel, tmp_path)
   token = panel.pair()
   v = panel.json("/api/trips", token=token)[1]["v"]
-  for since in ("x", "../etc", "abc.def", v.rsplit(".", 1)[0] + ".99999999999"):
+  for since in ("x", "../etc", "abc.def", "a.b.123", v.rsplit(".", 1)[0] + ".99999999999"):
     d = panel.json("/api/trips?since=" + since, token=token)[1]
-    assert len(d["trips"]) == 2 and "delta" not in d
+    assert len(d["trips"]) == 2 and "delta" not in d and len(d["marks"]) == 0
+
+
+def test_sync_a_summary_kept_again_with_the_clock_behind_still_reaches_the_phone(panel, tmp_path):
+  two_old_trips(panel, tmp_path)
+  token = panel.pair()
+  v = panel.json("/api/trips", token=token)[1]["v"]
+  panel.now -= 86400  # the comma rebooted before it had the time: its clock is a day behind
+  kept = panel.store.get(hexaweb.SUMMARY_PARAM)
+  kept["0000000e--1111111111"] = dict(kept["0000000e--1111111111"], km=7.)
+  panel.backend._put(hexaweb.SUMMARY_PARAM, kept)
+  d = panel.json("/api/trips?since=" + v, token=token)[1]
+  assert d["delta"] and [t["id"] for t in d["trips"]] == ["0000000e--1111111111"] and d["trips"][0]["summary"]["km"] == 7.
+
+
+def test_sync_a_minute_the_deleter_took_reaches_the_phone(panel, tmp_path):
+  import shutil
+  two_old_trips(panel, tmp_path)
+  token = panel.pair()
+  v = panel.json("/api/trips", token=token)[1]["v"]
+  shutil.rmtree(tmp_path / "0000000f--8784034901--1")  # no write here, and the folder's time is from before the cursor
+  panel.now += hexaweb.TRIP_INDEX_S + 1  # the folder listing is read again
+  d = panel.json("/api/trips?since=" + v, token=token)[1]
+  assert d["delta"] and [t["id"] for t in d["trips"]] == ["0000000f--8784034901"]
+  assert d["trips"][0]["minutes"] == 1 and d["trips"][0]["segments"] == [0]
+
+
+def test_sync_another_phone_asking_first_does_not_hide_a_change(panel, tmp_path):
+  two_old_trips(panel, tmp_path)
+  token = panel.pair()
+  v = panel.json("/api/trips", token=token)[1]["v"]
+  kept = panel.store.get(hexaweb.SUMMARY_PARAM)
+  kept["0000000f--8784034901"] = dict(kept["0000000f--8784034901"], km=5.)
+  panel.backend._put(hexaweb.SUMMARY_PARAM, kept)
+  other = panel.json("/api/trips?since=" + v, token=token)[1]  # the other phone (same cursor) takes the change first
+  assert [t["id"] for t in other["trips"]] == ["0000000f--8784034901"]
+  again = panel.json("/api/trips?since=" + v, token=token)[1]
+  assert [t["id"] for t in again["trips"]] == ["0000000f--8784034901"]
+  assert panel.json("/api/trips?since=" + again["v"], token=token)[1]["same"] is True
+
+
+def test_sync_a_restarted_comma_sends_the_whole_list(panel, tmp_path):
+  two_old_trips(panel, tmp_path)
+  token = panel.pair()
+  v = panel.json("/api/trips", token=token)[1]["v"]
+  panel.backend._boot = "0badf00d"  # a new process: the change numbers start again
+  d = panel.json("/api/trips?since=" + v, token=token)[1]
+  assert "delta" not in d and len(d["trips"]) == 2 and ".0badf00d." in d["v"]
 
 
 def test_sync_drives_still_to_summarize_are_asked_for_again(panel, tmp_path):
