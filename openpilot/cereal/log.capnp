@@ -1252,6 +1252,7 @@ struct LongitudinalPlan @0xe00b5b3eba12876c {
   accelBoost @40 :Float32;
   stopFinishGo @41 :Bool;
   stopCloserExtra @42 :Float32;  # Hexa: meters closer to stop behind the car ahead
+  havalShadowAccel @43 :Float32;  # Hexa: what the Haval's distance alone would ask for, 0 when nothing; never sent to the car
 
 
   solverExecutionTime @35 :Float32;

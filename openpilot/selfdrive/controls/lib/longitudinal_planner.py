@@ -10,6 +10,7 @@ from openpilot.common.realtime import DT_MDL
 from openpilot.selfdrive.modeld.constants import ModelConstants
 from openpilot.selfdrive.controls.lib.accel_boost import AccelBoost
 from openpilot.selfdrive.controls.lib.lead_boost import LeadBoost
+from openpilot.selfdrive.controls.lib.haval_shadow import HavalShadow
 from openpilot.selfdrive.controls.lib.lead_closing import LeadClosing
 from openpilot.selfdrive.controls.lib.longcontrol import LongCtrlState
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import LongitudinalMpc, LongitudinalPlanSource
@@ -48,6 +49,9 @@ class LongitudinalPlanner:
     self.stop_finish = StopFinish(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl and Params().get_bool("StopFinish") else None
     self.stop_closer = StopCloser(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl and Params().get_bool("StopCloser") else None
     self.stop_closer_extra = 0.
+    # only written to the log: never a candidate (haval_shadow.py)
+    self.haval_shadow = HavalShadow(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl else None
+    self.haval_shadow_accel = 0.
 
     self.v_desired_filter = FirstOrderFilter(init_v, 2.0, self.dt)
     self.a_cruise = init_a
@@ -87,6 +91,8 @@ class LongitudinalPlanner:
         self.stop_finish.long_off(v_ego, sm['carState'].gasPressed)
       if self.stop_closer is not None:
         self.stop_closer.reset()
+      if self.haval_shadow is not None:
+        self.haval_shadow.reset()
 
     # Prevent divergence, smooth in current v_ego
     self.v_desired_filter.x = max(0.0, self.v_desired_filter.update(v_ego))
@@ -104,6 +110,10 @@ class LongitudinalPlanner:
       self.stop_closer_extra = self.stop_closer.update(v_ego, sm['carState'].camLeadDistance, sm['radarState'].leadOne, sm['carState'].gasPressed,
                                                        self.output_a_target)
     self.mpc.update(sm['radarState'], personality=sm['selfdriveState'].personality, lead_extra=self.stop_closer_extra)
+    self.haval_shadow_accel = 0.
+    if self.haval_shadow is not None and not reset_state:
+      pedal = sm['carState'].gasPressed or sm['carState'].brakePressed
+      self.haval_shadow_accel = self.haval_shadow.update(v_ego, sm['carState'].camLeadDistance, sm['radarState'].leadOne, pedal)
 
     self.v_desired_trajectory = np.interp(CONTROL_N_T_IDX, T_IDXS_MPC, self.mpc.v_solution)
     self.a_desired_trajectory = np.interp(CONTROL_N_T_IDX, T_IDXS_MPC, self.mpc.a_solution)
@@ -174,6 +184,7 @@ class LongitudinalPlanner:
     longitudinalPlan.accelBoost = float(self.accel_boost.total_boost)
     longitudinalPlan.stopFinishGo = self.stop_finish is not None and self.stop_finish.go_asked
     longitudinalPlan.stopCloserExtra = float(self.stop_closer_extra)
+    longitudinalPlan.havalShadowAccel = float(self.haval_shadow_accel)
     longitudinalPlan.shouldStop = bool(self.output_should_stop)
     longitudinalPlan.allowBrake = True
 
