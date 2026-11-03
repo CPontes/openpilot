@@ -55,6 +55,7 @@ FCW_IDXS = T_IDXS < 5.0
 T_DIFFS = np.diff(T_IDXS, prepend=[0.])
 COMFORT_BRAKE = 2.5
 STOP_DISTANCE = 6.0
+LEAD_SAME_CAR = 1.  # m, Hexa: the two leads this close are the same car
 MIN_X_LEAD_FACTOR = 0.5
 
 def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
@@ -317,9 +318,14 @@ class LongitudinalMpc:
     # distance that lead needs as a minimum. We can add that to the current distance
     # and then treat that as a stopped car/obstacle at this new distance.
     lead_0_obstacle = lead_xv_0[:,0] + get_stopped_equivalence_factor(lead_xv_0[:,1])
-    # Hexa: meters closer to stop behind the first lead, when the car's own radar agrees (stop_closer.py). The crash check keeps the real distance
-    lead_0_obstacle = lead_0_obstacle + lead_extra
     lead_1_obstacle = lead_xv_1[:,0] + get_stopped_equivalence_factor(lead_xv_1[:,1])
+    # Hexa: meters closer to stop behind the car ahead, when the car's own radar agrees (stop_closer.py). The second lead is
+    # the model's same car 99% of the time near a stop (route 31): it moves too, and stays where it is when it's another one.
+    # The crash check keeps the real distance
+    if lead_extra > 0.:
+      lead_0_obstacle = lead_0_obstacle + lead_extra
+      if radarstate.leadTwo.present and abs(radarstate.leadTwo.dRel - radarstate.leadOne.dRel) < LEAD_SAME_CAR:
+        lead_1_obstacle = lead_1_obstacle + lead_extra
 
     x_obstacles = np.column_stack([lead_0_obstacle, lead_1_obstacle])
     self.source = MPC_SOURCES[np.argmin(x_obstacles[0])]
