@@ -15,6 +15,7 @@ from openpilot.selfdrive.controls.lib.longcontrol import LongCtrlState
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import LongitudinalMpc, LongitudinalPlanSource
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import T_IDXS as T_IDXS_MPC
 from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N, get_accel_from_plan, should_stop
+from openpilot.selfdrive.controls.lib.stop_closer import StopCloser
 from openpilot.selfdrive.controls.lib.stop_finish import StopFinish
 from openpilot.selfdrive.controls.lib.stop_point import StopPoint
 from openpilot.selfdrive.car.cruise import V_CRUISE_MAX, V_CRUISE_UNSET
@@ -45,6 +46,8 @@ class LongitudinalPlanner:
     self.lead_boost = LeadBoost(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl else None
     self.lead_closing = LeadClosing(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl and Params().get_bool("LeadClosing") else None
     self.stop_finish = StopFinish(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl and Params().get_bool("StopFinish") else None
+    self.stop_closer = StopCloser(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl and Params().get_bool("StopCloser") else None
+    self.stop_closer_extra = 0.
 
     self.v_desired_filter = FirstOrderFilter(init_v, 2.0, self.dt)
     self.a_cruise = init_a
@@ -82,6 +85,8 @@ class LongitudinalPlanner:
         self.lead_closing.reset()
       if self.stop_finish is not None:
         self.stop_finish.long_off(v_ego, sm['carState'].gasPressed)
+      if self.stop_closer is not None:
+        self.stop_closer.reset()
 
     # Prevent divergence, smooth in current v_ego
     self.v_desired_filter.x = max(0.0, self.v_desired_filter.update(v_ego))
@@ -94,7 +99,11 @@ class LongitudinalPlanner:
       self.mpc.set_cur_state(self.v_desired_filter.x, self.output_a_target)
     else:
       self.mpc.set_cur_state(v_ego, sm['carState'].aEgo)
-    self.mpc.update(sm['radarState'], personality=sm['selfdriveState'].personality)
+    self.stop_closer_extra = 0.
+    if self.stop_closer is not None and not reset_state:
+      self.stop_closer_extra = self.stop_closer.update(v_ego, sm['carState'].camLeadDistance, sm['radarState'].leadOne, sm['carState'].gasPressed,
+                                                       self.output_a_target)
+    self.mpc.update(sm['radarState'], personality=sm['selfdriveState'].personality, lead_extra=self.stop_closer_extra)
 
     self.v_desired_trajectory = np.interp(CONTROL_N_T_IDX, T_IDXS_MPC, self.mpc.v_solution)
     self.a_desired_trajectory = np.interp(CONTROL_N_T_IDX, T_IDXS_MPC, self.mpc.a_solution)
@@ -164,6 +173,7 @@ class LongitudinalPlanner:
     longitudinalPlan.aTarget = float(self.output_a_target)
     longitudinalPlan.accelBoost = float(self.accel_boost.total_boost)
     longitudinalPlan.stopFinishGo = self.stop_finish is not None and self.stop_finish.go_asked
+    longitudinalPlan.stopCloserExtra = float(self.stop_closer_extra)
     longitudinalPlan.shouldStop = bool(self.output_should_stop)
     longitudinalPlan.allowBrake = True
 

@@ -1050,5 +1050,7 @@
  "Freio mais forte: o comma vai até −3,5 m/s². O ACC da Haval já chegou a −4,8 m/s² nos seus logs.": "Freno más fuerte: el comma llega a −3,5 m/s². El ACC del Haval ya llegó a −4,8 m/s² en tus registros.",
  "Frenagem de emergência da Haval: não provada com o comma no controle. O mais provável é que ela não atue com esta opção ligada.": "Frenado de emergencia del Haval: no probado con el comma al mando. Lo más probable es que no actúe con esta opción activada.",
  "Distância do carro da frente: o radar da Haval mede. O comma estima pela câmera e pode errar com moto ou carro parado.": "Distancia al auto de adelante: el radar del Haval la mide. El comma la estima con la cámara y puede errar con una moto o un auto detenido.",
- "O aviso de colisão do comma só toca o som: não freia além do plano.": "El aviso de colisión del comma solo suena: no frena más allá del plan."
+ "O aviso de colisão do comma só toca o som: não freia além do plano.": "El aviso de colisión del comma solo suena: no frena más allá del plan.",
+ "parar mais perto do carro da frente": "detenerse más cerca del auto de adelante",
+ "No trânsito lento, o comma para a cerca de 3 m do carro da frente, como o ACC da Haval, em vez de cerca de 5 m. Só abaixo de 30 km/h e só quando o radar da Haval e a câmera do comma medem o carro na mesma distância.\nEm teste: fique pronto para frear. Precisa do longitudinal do comma.": "En tránsito lento, el comma se detiene a unos 3 m del auto de adelante, como el ACC del Haval, en lugar de unos 5 m. Solo por debajo de 30 km/h y solo cuando el radar del Haval y la cámara del comma miden el auto a la misma distancia.\nEn prueba: estate listo para frenar. Necesita el longitudinal del comma."
 }

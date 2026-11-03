@@ -144,6 +144,16 @@ OPTIONS: tuple[HexaOption, ...] = (
     testing=True,
   ),
   HexaOption(
+    key="StopCloser",
+    group="velocidade",
+    title="parar mais perto do carro da frente",
+    description="No trânsito lento, o comma para a cerca de 3 m do carro da frente, como o ACC da Haval, em vez de cerca de 5 m. " +
+                "Só abaixo de 30 km/h e só quando o radar da Haval e a câmera do comma medem o carro na mesma distância.\n" +
+                "Em teste: fique pronto para frear. Precisa do longitudinal do comma.",
+    restart_needed=True,
+    testing=True,
+  ),
+  HexaOption(
     key="BumpSlowdown",
     group="velocidade",
     title="reduzir na lombada",

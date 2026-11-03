@@ -1251,6 +1251,7 @@ struct LongitudinalPlan @0xe00b5b3eba12876c {
   allowBrake @39: Bool;
   accelBoost @40 :Float32;
   stopFinishGo @41 :Bool;
+  stopCloserExtra @42 :Float32;  # Hexa: meters closer to stop behind the car ahead
 
 
   solverExecutionTime @35 :Float32;
