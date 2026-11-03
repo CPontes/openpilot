@@ -9,6 +9,7 @@ import urllib.request
 import pytest
 
 from openpilot.selfdrive.hexa import marks, phone
+from openpilot.selfdrive.hexa import versions as hexa_versions
 from openpilot.selfdrive.hexa.phone import VehicleState
 from openpilot.system.hexaweb import hexaweb
 
@@ -1518,6 +1519,7 @@ def test_versions_need_pairing_and_come_newest_first(panel):
   assert panel.request("/api/versions")[0] == 401
   status, body = panel.json("/api/versions", token=panel.pair())
   assert status == 200 and body["releases"][0]["commit"] and body["releases"][-1]["commit"] == "7d2bedb"
+  assert body["releases"][0]["commit"] in ("abcdef1", hexa_versions.RELEASES[0].commit)  # the top one is what this comma runs
 
 
 def test_the_home_screen_icon_is_where_phones_look(panel):

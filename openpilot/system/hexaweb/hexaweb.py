@@ -1216,8 +1216,11 @@ def make_handler(backend: PanelBackend):
       return body
 
     def do_HEAD(self):
-      """Some phones ask HEAD before saving the icon: the static files only, the same headers, no body."""
-      if not self._allowed():
+      """Some phones ask HEAD before saving the icon: the static files only, their uncompressed headers, never a body."""
+      if not phone.is_local_address(self.client_address[0]):
+        self.send_response(403)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
         return
       path = self.path.partition("?")[0]
       if path not in STATIC_FILES:
@@ -1255,7 +1258,7 @@ def make_handler(backend: PanelBackend):
           self._json(200, backend.export_marks())
       elif path == "/api/versions":  # what each channel version brought: static, read once
         if self._who() is not None:
-          self._json(200, hexa_versions.public())
+          self._json(200, hexa_versions.public(backend.store.get("GitCommit") or ""))
       elif path == "/api/missions":
         if self._who() is not None:
           self._json(200, backend.missions_state(parse_qs(query).get("since", [""])[0]))

@@ -1,24 +1,29 @@
 """Hexa versions: what each channel version brought, for the phone's "Versões" screen (owner, 03/11).
 
-One entry per version that went to the channel (docs/STATUS.md, "Histórico do canal"), newest first. The CTO adds the
-new one when he promotes the channel: the commit, the date, what changed in the owner's words, and whether the panda
-changed. Nothing here runs with the car on: the phone reads it once, with the rest of the panel.
+One entry per version that went to the channel (docs/STATUS.md, "Histórico do canal"), newest first: the commit, the
+date, what changed in the owner's words, and whether the panda changed. A commit can't hold its own hash, so the version
+being promoted goes on top with commit "": the comma fills in the one it runs. The next promotion writes that hash in and
+puts its own "" on top. Nothing here runs with the car on: the phone reads it once, with the rest of the panel.
 """
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class Release:
-  commit: str  # openpilot, 7 characters, as the drive summaries keep it
+  commit: str  # openpilot, 7 characters, as the drive summaries keep it; "" only on top: the version this file ships in
   date: str  # dd/mm
   opendbc: str
   title: str
   changes: tuple[str, ...]
   panda: bool = False  # the safety code in the panda changed
-  driving: bool = True  # steering, speed or brakes changed (False: the phone only)
+  driving: bool = True  # the car may drive differently (steering, speed or brakes), even if only with an option on
 
 
 RELEASES: tuple[Release, ...] = (
+  Release("", "03/11", "2060c4e", "Histórico das missões e versões",
+          ("«Feitas e histórico» nas Missões: cada vez que uma missão foi conferida no log, com o número medido",
+           "Suas marcas de missão ficam guardadas, até 300", "Versões: o que cada versão trouxe e as suas viagens nela",
+           "Logo LP no painel e na tela de início"), driving=False),
   Release("516d695", "03/11", "2060c4e", "Um roteiro só de missões",
           ("Um roteiro só para a próxima viagem: os testes novos primeiro, depois os que faltam provar",
            "Você escolhe quantas missões cabem numa viagem, até 12", "«Ainda não feitas» lista todas as abertas"), driving=False),
@@ -58,11 +63,12 @@ RELEASES: tuple[Release, ...] = (
   Release("5be82e8", "01/11", "73f9a26", "LizPilot",
           ("O painel passa a se chamar LizPilot", "Sinal de ACC ativo", "Limite real do botão − do ACC"), panda=True),
   Release("dea997c", "01/11", "4658448", "Lombada com velocidade",
-          ("Lombada com velocidade de passagem", "Reduzir na lombada (BumpSlowdown), desligada", "Botão − do ACC")),
+          ("Lombada com velocidade de passagem", "Reduzir na lombada (BumpSlowdown), desligada", "Botão − do ACC"), panda=True),
   Release("48ecad6", "01/11", "5c3643b", "Radares por toques e direção sempre ativa",
-          ("Radares e lombadas por toques", "Direção sempre ativa liberada, desligada", "Cancelar do comma em toques")),
+          ("Radares e lombadas por toques", "Direção sempre ativa liberada, desligada", "Cancelar do comma em toques"), panda=True),
   Release("3070d0e", "01/11", "3a8bc90", "Celular ampliado",
-          ("Celular ampliado: conexão, toques, instalar, aba Agora", "Painel fora dos processos da direção"), driving=False),
+          ("Celular ampliado: conexão, toques, instalar, aba Agora", "Painel fora dos processos da direção",
+           "Uma opção bloqueada fica sempre desligada"), driving=False),
   Release("dbb532e", "01/11", "3a8bc90", "Sair sozinho",
           ("Sair sozinho quando o da frente anda (AutoResume), desligada",), panda=True),
   Release("d9727c0", "01/11", "72eec02", "Aviso de radar",
@@ -71,7 +77,7 @@ RELEASES: tuple[Release, ...] = (
           ("A marca só existe depois de Salvar", "Comentário opcional em todos os motivos"), driving=False),
   Release("17554ba", "01/11", "72eec02", "Pacote 2",
           ("Mensagens do carro conferidas", "Retomada pela alavanca", "Posição na faixa", "Aviso de saída da faixa", "Troca de faixa",
-           "Painel em abas")),
+           "Painel em abas"), panda=True),
   Release("5bbf194", "01/11", "e0749f7", "Painel: editar marcas",
           ("Caixa de texto em «outro»", "Editar marcas", "Marcas no topo"), driving=False),
   Release("e1241a1", "01/11", "e0749f7", "Filtro em baixa velocidade e painel do celular",
@@ -85,9 +91,14 @@ RELEASES: tuple[Release, ...] = (
   Release("7d2bedb", "30/10", "9d7b315", "Primeira versão",
           ("O código do H6 GT sobre o openpilot da comma",)),
 )
-BY_COMMIT = {r.commit: r for r in RELEASES}
 
 
-def public() -> dict:
-  return {"releases": [{"commit": r.commit, "date": r.date, "opendbc": r.opendbc, "title": r.title, "changes": list(r.changes),
-                        "panda": r.panda, "driving": r.driving} for r in RELEASES]}
+def new_options(r: Release) -> bool:
+  """It brought an option, and every new option starts off: the notes say so with "desligada"."""
+  return any("desligad" in c for c in r.changes)
+
+
+def public(running: str = "") -> dict:
+  """running: the commit this comma runs (GitCommit), for the version on top that couldn't know its own hash."""
+  return {"releases": [{"commit": r.commit or running[:7] or "atual", "date": r.date, "opendbc": r.opendbc, "title": r.title,
+                        "changes": list(r.changes), "panda": r.panda, "driving": r.driving, "options": new_options(r)} for r in RELEASES]}

@@ -721,6 +721,7 @@ def test_version_chips_show_the_newest_few_and_how_many_more():
   assert run("versionChips", seen, None) == {"chips": [None, "f2", "a6", "3b"], "more": 2}
   assert run("versionChips", seen, "d5") == {"chips": [None, "f2", "a6", "3b", "d5"], "more": 1}  # the one picked stays visible
   assert run("versionChips", ["f2"], None) == {"chips": [None, "f2"], "more": 0}
+  assert run("versionChips", seen, "zz")["more"] == 2  # a pick its drives no longer show still counts what's hidden
 
 
 def test_version_list_has_the_notes_and_your_drives():

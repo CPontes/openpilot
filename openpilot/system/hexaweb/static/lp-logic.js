@@ -578,7 +578,7 @@
     return ms.map((m, i) => ({ key: m.key, fits: fits(m), i })).sort((a, b) => (b.fits - a.fits) || (a.i - b.i)).map(({ key, fits: f }) => ({ key, fits: f }));
   }
 
-  // Versions (selfdrive/hexa/versions.py, owner 03/11): every version, the release notes when the CTO wrote them, and what
+  // Versions (selfdrive/hexa/versions.py, owner 03/11): every version, its release notes when there are any, and what
   // your drives on it add up to. Newest first: the channel's order, then any version only the drives know, by its last drive.
   const VERSION_CHIPS = 3;
   function versionList(trips, releases) {
@@ -598,7 +598,7 @@
   function versionChips(seen, picked, n) {
     const top = (seen || []).slice(0, n || VERSION_CHIPS);
     if (picked && !top.includes(picked)) top.push(picked);
-    return { chips: [null, ...top], more: Math.max(0, (seen || []).length - top.filter(Boolean).length) };
+    return { chips: [null, ...top], more: (seen || []).filter((v) => !top.includes(v)).length };
   }
 
   // openpilot's three following distances (longitudinal_mpc_lib/long_mpc.py:71-79), in seconds and in meters at a speed

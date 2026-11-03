@@ -969,6 +969,10 @@ function refreshView() {
   if (view === "inicio") refreshHome(false);
   if (view === "viagens") { refreshMarks(); refreshTrips(false); }
   if (view === "missoes" && ticks % 3 === 0) refreshMissions();
+  if (view === "versoes") {  // the notes until they come, and your drives when the phone has no copy yet
+    refreshVersions();
+    if (!trips && ticks % 3 === 0) refreshTrips(false).then(() => { if (view === "versoes") renderVersions(); });
+  }
   if (view === "ajustes" && sub === "comma") { refreshUpdate(); refreshHealth(); if (ticks % 3 === 0) refreshCommaCtl(); }
   if (view === "ajustes" && sub === "celulares") refreshPhones();
   if (view === "pontos" || (carOn && view !== "inicio" && ticks % 3 === 0)) refreshNear();  // the dot on the tab, while driving
@@ -1733,7 +1737,7 @@ function renderVersions() {
       const c = el("section", "card stack"); c.style.gap = "6px"; c.append(el("b", "", t("O que mudou")));
       const ul = el("ul", "msteps"); r.changes.forEach((x) => ul.append(el("li", "", t(x)))); c.append(ul);
       c.append(el("span", "small", [r.driving === false ? t("Só o celular: direção e velocidade iguais.") : t("Mexe em como o carro dirige."),
-                                    r.panda ? t("Muda o panda.") : t("O panda não muda."), t("Opções novas começam desligadas.")].join(" ")));
+                                    r.panda ? t("Muda o panda.") : t("O panda não muda."), r.options ? t("Opções novas começam desligadas.") : null].filter(Boolean).join(" ")));
       out.push(c);
     } else out.push(el("div", "card desc", t("Sem notas desta versão")));
     if (r.trips) {
@@ -2645,6 +2649,9 @@ function renderTrips(err) {
       const vcd = versionCard(list, tripVersion), go = el("button", "link", t("O que mudou nesta versão ›")); go.type = "button";
       go.addEventListener("click", () => openVersions({ s: "versao", v: tripVersion })); vcd.append(go); cards.push(vcd);
     }
+  } else {  // drives on one version only: the notes still have a way in
+    const go = el("button", "link", t("Versões e o que mudou ›")); go.type = "button";
+    go.addEventListener("click", () => openVersions()); cards.push(go);
   }
   cards.push(speedCard(list));
   const carCard = carReportCard(list);
