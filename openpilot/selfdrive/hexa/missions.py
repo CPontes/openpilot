@@ -23,7 +23,10 @@ HOW = ("auto", "marca", "parado", "cto", "decisao")
 DETECT = ("slow10", "night30", "highway", "km200", "marks10", "installed")
 # the passenger's copilot (owner, 03/11): what the live data says fits now
 WHEN = ("stop_free", "stop_queue", "stop_long", "follow_mid", "slow_follow", "moving")
-RESULTS = {"done": "fiz", "ok": "deu certo", "bad": "não deu", "stop": "parei o teste"}
+# what the passenger answered (owner, 03/11: D1), as the mark's label: only "done" and "ok" wait as a mission advanced,
+# "bad" and "stop" wait as "não deu", never as progress. None of them completes a mission: the CTO checks it in the log
+RESULTS = {"done": "missão feita", "ok": "missão: deu certo", "bad": "missão: não deu", "stop": "missão: parei o teste"}
+ADVANCED = ("done", "ok")
 
 TRAILS: tuple[tuple[str, str], ...] = (
   ("direcao", "Direção"),
@@ -261,8 +264,9 @@ def answer(state: dict, key: str, ok: bool) -> dict:
 
 
 def can_mark(m: Mission) -> bool:
-  """What happens driving: "Fiz agora", or the copilot's answer. Parked ones are answered parked."""
-  return not m.lock and (m.how in ("auto", "marca") or (m.how == "parado" and m.drive))
+  """What happens driving: "Fiz agora", or the copilot's answer. The same missions that go on a drive; parked ones are
+  answered parked."""
+  return can_take(m)
 
 
 def add_pending(state: dict, key: str, mark_id: str, t: int, result: str = "done") -> dict:

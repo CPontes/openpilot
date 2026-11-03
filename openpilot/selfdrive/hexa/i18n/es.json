@@ -1090,5 +1090,8 @@
  "parado, sem carro à frente": "detenido, sin auto adelante",
  "seguindo um carro a 40–60 km/h": "siguiendo un auto a 40–60 km/h",
  "trânsito lento atrás de um carro": "tránsito lento detrás de un auto",
- "{d} de {n} respondidas nesta viagem": "{d} de {n} respondidas en este viaje"
+ "{d} de {n} respondidas nesta viagem": "{d} de {n} respondidas en este viaje",
+ "missão: deu certo": "misión: funcionó",
+ "missão: não deu": "misión: no funcionó",
+ "missão: parei o teste": "misión: paré la prueba"
 }

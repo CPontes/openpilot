@@ -591,11 +591,11 @@ class PanelBackend:
     with self.lock:
       return {"exported_at": int(self.clock()), "marks": [hexa_marks.public(m) for m in self._marks()]}
 
-  def mark(self, who: dict, reason: str, note: str = "", delay=0.) -> tuple[int, dict]:
+  def mark(self, who: dict, reason: str, note: str = "", delay=0., label: str | None = None) -> tuple[int, dict]:
     """Phone mark: always allowed (it doesn't change how the car drives), at most one per MIN_MARK_INTERVAL."""
     now_mono = self.mono()
     with self.lock:
-      label = hexa_marks.reason_label(self._custom_reasons(), reason)
+      label = label or hexa_marks.reason_label(self._custom_reasons(), reason)
       if label is None:
         return 400, {"error": "Motivo desconhecido."}
       last = self._last_mark.get(who.get("id", ""))
@@ -691,8 +691,7 @@ class PanelBackend:
     if action == "mark":  # "Fiz agora", or the passenger's copilot: a mark the CTO checks in the log, never done by itself
       if not hexa_missions.can_mark(m) or result not in hexa_missions.RESULTS:
         return 400, {"error": "Esta missão não vai na viagem."}
-      note = m.title if result == "done" else f"{m.title} · {hexa_missions.RESULTS[result]}"
-      code, data = self.mark(who, "missao", note=note)
+      code, data = self.mark(who, "missao", note=m.title, label=hexa_missions.RESULTS[result])  # the label says how it went
       if code != 200:
         return code, data
     with self.lock:

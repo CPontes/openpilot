@@ -80,7 +80,7 @@ def option_texts() -> set[str]:
 
 def mission_texts() -> set[str]:
   """The missions as the phone shows them (missions.py)."""
-  out = {title for _, title in missions.TRAILS}
+  out = {title for _, title in missions.TRAILS} | set(missions.RESULTS.values())
   for m in missions.CATALOG:
     out |= {m.title, m.note, m.why, m.proof, m.lock, *m.steps}
   for pk in missions.PACKS.values():

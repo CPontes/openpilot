@@ -1505,7 +1505,8 @@ def test_the_copilot_answer_is_a_mark_with_the_result(panel):
   status, body = panel.json("/api/missions", {"action": "mark", "key": "parar-de-vez", "result": "bad"}, token=tok)
   assert status == 200 and body["state"]["pending"][-1]["result"] == "bad"
   mk = [m for m in panel.store.get(marks.MARKS_PARAM) if m["id"] == body["state"]["pending"][-1]["mark"]][0]
-  assert mk["note"] == "Sinal vermelho sem carro à frente · não deu"
+  assert mk["note"] == "Sinal vermelho sem carro à frente" and mk["label"] == "missão: não deu" and mk["reason"] == "missao"
+  assert panel.logged[-1]["label"] == "missão: não deu"  # the log says how it went, for the CTO
   panel.now += 3
   assert panel.json("/api/missions", {"action": "mark", "key": "aviso-acc", "result": "ok"}, token=tok)[0] == 200  # asked after a drive, answered driving
   panel.now += 3

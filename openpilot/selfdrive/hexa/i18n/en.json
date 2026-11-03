@@ -1090,5 +1090,8 @@
  "parado, sem carro à frente": "stopped, no car ahead",
  "seguindo um carro a 40–60 km/h": "following a car at 40–60 km/h",
  "trânsito lento atrás de um carro": "slow traffic behind a car",
- "{d} de {n} respondidas nesta viagem": "{d} of {n} answered on this drive"
+ "{d} de {n} respondidas nesta viagem": "{d} of {n} answered on this drive",
+ "missão: deu certo": "mission: it worked",
+ "missão: não deu": "mission: it didn't work",
+ "missão: parei o teste": "mission: I stopped the test"
 }
