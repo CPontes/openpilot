@@ -560,3 +560,22 @@ def test_copy_without_the_map_keeps_no_path():
 def test_copy_read_only_without_the_comma_or_before_its_first_answer():
   assert run("readOnly", True, False) is False
   assert run("readOnly", False, False) is True and run("readOnly", True, True) is True
+
+
+# ----- the passenger's copilot (owner, 03/11)
+
+def test_copilot_reads_the_moment_from_the_live_data():
+  assert run("copilotMoment", None, 0) == [] and run("copilotMoment", {"driving": False}, 0) == []
+  assert run("copilotMoment", {"driving": True, "v": 0, "lead": None}, 5) == ["stop_free"]
+  assert run("copilotMoment", {"driving": True, "v": 0, "lead": {"d": 6}}, 90) == ["stop_queue", "stop_long"]
+  assert run("copilotMoment", {"driving": True, "v": 50, "lead": {"d": 30}}, 0) == ["moving", "follow_mid"]
+  assert run("copilotMoment", {"driving": True, "v": 20, "lead": {"d": 10}}, 0) == ["moving", "slow_follow"]
+
+
+def test_copilot_puts_what_fits_now_first_and_skips_what_is_done():
+  cat = {"missions": [_m("a", "marca", when="follow_mid"), _m("b", "marca", when="stop_free"), _m("c", "marca", when="stop_free"),
+                      _m("d", "marca"), _m("e", "cto", lock="x")]}
+  prog = run("missionProgress", cat, {}, [])
+  prog["c"]["full"] = True
+  order = run("copilotOrder", cat, ["a", "b", "c", "d", "e"], prog, ["stop_free"])
+  assert order == [{"key": "b", "fits": True}, {"key": "a", "fits": False}, {"key": "d", "fits": False}]

@@ -21,6 +21,9 @@ MAX_PACK = 12  # or a version's whole route
 MAX_PENDING = 50  # "Fiz agora" marks waiting for the CTO
 HOW = ("auto", "marca", "parado", "cto", "decisao")
 DETECT = ("slow10", "night30", "highway", "km200", "marks10", "installed")
+# the passenger's copilot (owner, 03/11): what the live data says fits now
+WHEN = ("stop_free", "stop_queue", "stop_long", "follow_mid", "slow_follow", "moving")
+RESULTS = {"done": "fiz", "ok": "deu certo", "bad": "não deu", "stop": "parei o teste"}
 
 TRAILS: tuple[tuple[str, str], ...] = (
   ("direcao", "Direção"),
@@ -56,6 +59,7 @@ class Mission:
   done: int = 0  # proved so far, by the CTO (raise it with the proof)
   proof: str = ""
   version: str = ""  # part of this version's pack
+  when: str = ""  # copilot: the moment that fits it, seen live on the phone (WHEN)
 
 
 CATALOG: tuple[Mission, ...] = (
@@ -69,7 +73,7 @@ CATALOG: tuple[Mission, ...] = (
   Mission("sinuosa", "direcao", "Rua sinuosa da rota diária medida", 1, "cto", done=1, proof="rota 0f · falta força em 9 de 19"),
   Mission("curva-fechada", "direcao", "Curva fechada medida", 1, "cto", done=1, proof="rota 16 · não é o torque"),
   Mission("asfalto-ruim", "direcao", "Asfalto ruim medido", 1, "cto", note="aguarda o CTO conferir a medição"),
-  Mission("transito-lento", "direcao", "Trânsito lento atrás de outro carro", 1, "auto", detect="slow10",
+  Mission("transito-lento", "direcao", "Trânsito lento atrás de outro carro", 1, "auto", when="slow_follow", detect="slow10",
           note="10 min abaixo de 30 km/h com o openpilot no volante",
           why="É a dúvida mais antiga da direção: o balanço abaixo de 30 km/h.",
           steps=("Siga um carro no trânsito lento por 10 minutos.", "Não precisa fazer nada diferente: o comma conta sozinho.")),
@@ -94,36 +98,36 @@ CATALOG: tuple[Mission, ...] = (
   Mission("cancelar-alavanca", "acc", "Cancelar pela alavanca", 5, "cto", done=5, proof="rota 16 · com o ACC ativo"),
   Mission("retomar", "acc", "Retomar sem falha de ACC", 6, "cto", done=6, proof="rota 29"),
   Mission("descida", "acc", "Sem freada falsa em descida", 1, "cto", done=1, proof="rota 2c"),
-  Mission("sair-sozinho", "acc", "Sair sozinho quando o da frente anda", 5, "marca", option="AutoResume", done=1, proof="rota 1c",
+  Mission("sair-sozinho", "acc", "Sair sozinho quando o da frente anda", 5, "marca", when="stop_queue", option="AutoResume", done=1, proof="rota 1c",
           why="Já deu certo 1 vez. Com 5, o CTO tira o «sem prova».",
           steps=("Pare atrás de um carro com o ACC ativo.", "Espere ele andar. Pé pronto no freio.", "Se não sair, acelere: vale como tentativa.")),
   Mission("cancelar-comma", "acc", "Cancelar pelo comma", 5, "marca", lock="Depende do CTO liberar o teste"),
   # the CTO's route for b3ac6fe (02/11), in its order
-  Mission("parar-de-vez", "acc", "Sinal vermelho sem carro à frente", 3, "marca", option="StopFinish", version="b3ac6fe",
+  Mission("parar-de-vez", "acc", "Sinal vermelho sem carro à frente", 3, "marca", when="stop_free", option="StopFinish", version="b3ac6fe",
           why="O principal desta versão: sem carro à frente, o comma termina a parada e espera o gás.",
           steps=("Deixe o modelo frear sozinho, sem carro atrás colado.",
                  "Certo: ele para de vez e só sai quando você tocar no acelerador.",
                  "O aviso «Parado: toque no acelerador para sair» só aparece se o modelo quiser sair. Sem aviso também é normal.",
                  "A regra só atua abaixo de 3 km/h: ele ainda pode passar da faixa. Se for passar, freie.")),
-  Mission("freio-alavanca", "acc", "Freio e alavanca na parada", 1, "marca", option="StopFinish", version="b3ac6fe",
+  Mission("freio-alavanca", "acc", "Freio e alavanca na parada", 1, "marca", when="stop_free", option="StopFinish", version="b3ac6fe",
           why="A parada de vez precisa aguentar o freio e a alavanca.",
           steps=("Só no vermelho, depois de o teste do sinal ter parado o carro sozinho, sem você pisar antes.", "Toque no freio e puxe a alavanca.",
                  "Certo: o carro continua parado até você tocar no acelerador.")),
-  Mission("sinal-abrindo", "acc", "Sinal abrindo", 1, "marca", option="StopFinish", version="b3ac6fe",
+  Mission("sinal-abrindo", "acc", "Sinal abrindo", 1, "marca", when="stop_free", option="StopFinish", version="b3ac6fe",
           steps=("Ainda sem carro à frente, quando abrir, toque de leve no acelerador.", "Certo: ele sai normalmente.")),
-  Mission("fila", "acc", "Fila atrás de carro", 1, "marca", version="b3ac6fe",
+  Mission("fila", "acc", "Fila atrás de carro", 1, "marca", when="stop_queue", version="b3ac6fe",
           steps=("Pare atrás de um carro e deixe ele sair.", "Certo: o seu sai junto, sem você tocar em nada. Se ficar parado, marque.")),
-  Mission("lombada-faixa", "acc", "Lombada e faixa de pedestre", 1, "marca", version="b3ac6fe",
+  Mission("lombada-faixa", "acc", "Lombada e faixa de pedestre", 1, "marca", when="moving", version="b3ac6fe",
           steps=("Certo: ele reduz e segue.", "Se ficar parado sem motivo, marque.")),
-  Mission("frear-antes", "acc", "Carro da frente freando", 3, "marca", option="LeadClosing", version="b3ac6fe",
+  Mission("frear-antes", "acc", "Carro da frente freando", 3, "marca", when="follow_mid", option="LeadClosing", version="b3ac6fe",
           why="Usa a distância que a Haval mede para começar a frear mais cedo.",
           steps=("Siga um carro a 40–60 km/h em avenida.", "Marque «freada estranha» se frear à toa ou muito em cima.")),
-  Mission("parada-longa", "acc", "Parada longa e subida", 1, "marca", version="b3ac6fe", note="se acontecer naturalmente",
+  Mission("parada-longa", "acc", "Parada longa e subida", 1, "marca", when="stop_long", version="b3ac6fe", note="se acontecer naturalmente",
           steps=("Parada de 1 a 2 minutos, ou parada em subida.", "Certo: fica firme, sem soltar nem descer. Se for descer ou soltar, freie e marque.")),
-  Mission("ruas-casa", "direcao", "Ruas perto de casa", 1, "marca", version="b3ac6fe",
+  Mission("ruas-casa", "direcao", "Ruas perto de casa", 1, "marca", when="moving", version="b3ac6fe",
           why="Nenhuma mudança na direção nesta versão. As marcas servem para comparar depois.",
           steps=("Só marque «balançou» quando acontecer.",)),
-  Mission("lombada", "acc", "Reduzir na lombada", 3, "marca", option="BumpSlowdown"),
+  Mission("lombada", "acc", "Reduzir na lombada", 3, "marca", when="moving", option="BumpSlowdown"),
   Mission("aviso-acc", "acc", "Aviso de ACC que saiu sozinho", 1, "parado", option="AccLostAlert", drive=True,
           note="o som tocou numa queda real", why="O ACC da Haval às vezes sai sozinho. O aviso precisa tocar quando isso acontece."),
   Mission("arrancada", "acc", "Arrancada com ritmo", 3, "marca", note="rota 29: falta ritmo"),
@@ -201,7 +205,7 @@ def public() -> dict:
           "packs": {v: {k: list(x) if isinstance(x, tuple) else x for k, x in p.items()} for v, p in PACKS.items()},
           "missions": [{"key": m.key, "trail": m.trail, "title": m.title, "total": m.total, "how": m.how, "note": m.note, "why": m.why,
                         "steps": list(m.steps), "option": m.option, "lock": m.lock, "drive": m.drive, "detect": m.detect, "arg": m.arg,
-                        "done": m.done, "proof": m.proof, "version": m.version} for m in CATALOG]}
+                        "done": m.done, "proof": m.proof, "version": m.version, "when": m.when} for m in CATALOG]}
 
 
 def clean(raw) -> dict:
@@ -256,5 +260,11 @@ def answer(state: dict, key: str, ok: bool) -> dict:
   return dict(state, answers=answers, active=active)
 
 
-def add_pending(state: dict, key: str, mark_id: str, t: int) -> dict:
-  return dict(state, pending=(state["pending"] + [{"key": key, "mark": mark_id, "t": int(t)}])[-MAX_PENDING:])
+def can_mark(m: Mission) -> bool:
+  """What happens driving: "Fiz agora", or the copilot's answer. Parked ones are answered parked."""
+  return not m.lock and (m.how in ("auto", "marca") or (m.how == "parado" and m.drive))
+
+
+def add_pending(state: dict, key: str, mark_id: str, t: int, result: str = "done") -> dict:
+  item = {"key": key, "mark": mark_id, "t": int(t), "result": result if result in RESULTS else "done"}
+  return dict(state, pending=(state["pending"] + [item])[-MAX_PENDING:])

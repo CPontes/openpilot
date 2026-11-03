@@ -1450,3 +1450,16 @@ def test_sync_a_param_another_process_wrote_changes_the_version(tmp_path):
   (tmp_path / marks.MARKS_PARAM).write_text("[]")  # written by someone else: no _put here
   assert b._stamp(marks.MARKS_PARAM) != v
   assert hexaweb.PanelBackend(store, lambda: VehicleState(onroad=False))._stamp(marks.MARKS_PARAM) != b._stamp(marks.MARKS_PARAM)  # a restart
+
+
+def test_the_copilot_answer_is_a_mark_with_the_result(panel):
+  tok = panel.pair()
+  panel.vs = VehicleState(onroad=True, parked=False, standstill=False, engaged=True)
+  status, body = panel.json("/api/missions", {"action": "mark", "key": "parar-de-vez", "result": "bad"}, token=tok)
+  assert status == 200 and body["state"]["pending"][-1]["result"] == "bad"
+  mk = [m for m in panel.store.get(marks.MARKS_PARAM) if m["id"] == body["state"]["pending"][-1]["mark"]][0]
+  assert mk["note"] == "Sinal vermelho sem carro à frente · não deu"
+  panel.now += 3
+  assert panel.json("/api/missions", {"action": "mark", "key": "aviso-acc", "result": "ok"}, token=tok)[0] == 200  # asked after a drive, answered driving
+  panel.now += 3
+  assert panel.json("/api/missions", {"action": "mark", "key": "fila", "result": "voar"}, token=tok)[0] == 400

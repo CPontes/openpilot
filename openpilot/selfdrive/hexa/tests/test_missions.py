@@ -18,6 +18,7 @@ def test_the_catalog_holds_together():
     assert not m.drive or m.how == "parado", m.key
     assert not m.version or m.version in M.PACKS, m.key
     assert m.done < m.total or m.proof, f"{m.key}: done needs the route that proved it"
+    assert not m.when or m.when in M.WHEN, m.key
   assert all(any(m.trail == k for m in M.CATALOG) for k in trails)
   assert [lv[0] for lv in M.LEVELS] == sorted(lv[0] for lv in M.LEVELS) and M.LEVELS[-1][0] == 1.
 

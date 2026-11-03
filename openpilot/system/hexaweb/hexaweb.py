@@ -668,10 +668,12 @@ class PanelBackend:
       vs = self.vehicle_state()
       if vs.onroad and not (vs.parked and vs.standstill and not vs.engaged):
         return 409, {"error": "Responda com o carro parado."}
-    if action == "mark":
-      if m.how not in ("marca", "auto"):
+    result = str(body.get("result", "done"))
+    if action == "mark":  # "Fiz agora", or the passenger's copilot: a mark the CTO checks in the log, never done by itself
+      if not hexa_missions.can_mark(m) or result not in hexa_missions.RESULTS:
         return 400, {"error": "Esta missão não vai na viagem."}
-      code, data = self.mark(who, "missao", note=m.title)
+      note = m.title if result == "done" else f"{m.title} · {hexa_missions.RESULTS[result]}"
+      code, data = self.mark(who, "missao", note=note)
       if code != 200:
         return code, data
     with self.lock:
@@ -684,7 +686,7 @@ class PanelBackend:
         elif action == "answer":
           st = hexa_missions.answer(st, key, body.get("ok") is True)
         elif action == "mark":
-          st = hexa_missions.add_pending(st, key, data["mark"]["id"], data["mark"]["t"])
+          st = hexa_missions.add_pending(st, key, data["mark"]["id"], data["mark"]["t"], result)
         else:
           return 400, {"error": "Ação desconhecida."}
       except ValueError as e:

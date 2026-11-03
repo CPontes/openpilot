@@ -462,6 +462,29 @@
       .map((k) => ({ key: k, from: before[k].d, to: after[k].d, total: after[k].total, full: after[k].full, checks: after[k].toCheck - before[k].toCheck }));
   }
 
+  // The passenger's copilot (owner, 03/11): what the live data says fits now, so the right test comes up at the right moment.
+  // Only reads /api/live, which the drive screen already asks every second: nothing more for the comma.
+  const COP_STOP_KMH = 1, COP_LONG_S = 60, COP_MOVING_KMH = 5;
+  function copilotMoment(l, stoppedS) {
+    if (!l || !l.driving) return [];
+    const v = l.v || 0, lead = !!l.lead, out = [];
+    if (v < COP_STOP_KMH) {
+      out.push(lead ? "stop_queue" : "stop_free");
+      if ((stoppedS || 0) >= COP_LONG_S) out.push("stop_long");
+    } else {
+      if (v >= COP_MOVING_KMH) out.push("moving");
+      if (lead && v >= 40 && v <= 60) out.push("follow_mid");
+      if (lead && v < 30) out.push("slow_follow");
+    }
+    return out;
+  }
+  // The next drive's missions still open, in their order, the ones that fit now first
+  function copilotOrder(cat, active, prog, moment) {
+    const ms = (active || []).map((k) => ((cat && cat.missions) || []).find((m) => m.key === k)).filter((m) => m && prog[m.key] && !prog[m.key].full && !m.lock);
+    const fits = (m) => !!m.when && (moment || []).includes(m.when);
+    return ms.map((m, i) => ({ key: m.key, fits: fits(m), i })).sort((a, b) => (b.fits - a.fits) || (a.i - b.i)).map(({ key, fits: f }) => ({ key, fits: f }));
+  }
+
   // openpilot's three following distances (longitudinal_mpc_lib/long_mpc.py:71-79), in seconds and in meters at a speed
   const PERSONALITIES = [[T("perto"), 1.25], [T("padrão"), 1.45], [T("folgada"), 1.75]];
   function gapMeters(gapS, kmh) { return Math.round(gapS * kmh / 3.6); }
@@ -503,7 +526,7 @@
   // what "Apagar dados deste celular" takes from localStorage besides the copy: data, never the language or the view
   const DATA_KEYS = ["lpTrips", "lpMissionSnap"];
 
-  root.LPL = { missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
+  root.LPL = { copilotMoment, copilotOrder, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
                tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);
