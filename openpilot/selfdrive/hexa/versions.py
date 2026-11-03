@@ -20,7 +20,10 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "03/11", "2060c4e", "Histórico das missões e versões",
+  Release("", "03/11", "2060c4e", "Comparar com a última versão testada",
+          ("«A atualização valeu?» compara com a última versão que você dirigiu, e lista as versões sem viagem no meio",),
+          driving=False),
+  Release("9aca7d3", "03/11", "2060c4e", "Histórico das missões e versões",
           ("«Feitas e histórico» nas Missões: cada vez que uma missão foi conferida no log, com o número medido",
            "Suas marcas de missão ficam guardadas, até 300", "Versões: o que cada versão trouxe e as suas viagens nela",
            "Logo LP no painel e na tela de início"), driving=False),

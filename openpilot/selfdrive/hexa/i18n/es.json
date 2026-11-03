@@ -1306,5 +1306,7 @@
  "«Feitas e histórico» nas Missões: cada vez que uma missão foi conferida no log, com o número medido": "«Hechas e historial» en Misiones: cada vez que una misión se revisó en el log, con el número medido",
  "{a} km nesta versão · {b} km na última testada": "{a} km en esta versión · {b} km en la última probada",
  "Inclui 1 versão sem viagem no meio: {v}": "Incluye 1 versión en medio sin viaje: {v}",
- "Inclui {n} versões sem viagem no meio: {v}": "Incluye {n} versiones en medio sin viaje: {v}"
+ "Inclui {n} versões sem viagem no meio: {v}": "Incluye {n} versiones en medio sin viaje: {v}",
+ "Comparar com a última versão testada": "Comparar con la última versión probada",
+ "«A atualização valeu?» compara com a última versão que você dirigiu, e lista as versões sem viagem no meio": "«¿Valió la actualización?» compara con la última versión que manejaste, y lista las versiones en medio sin viaje"
 }
