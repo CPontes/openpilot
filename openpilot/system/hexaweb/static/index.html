@@ -227,6 +227,12 @@
   .mrow { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 56px; width: 100%; padding: 8px 0;
           border: 0; border-top: 1px solid #222A32; background: none; color: inherit; font: inherit; text-align: left; }
   .list > .mrow:first-child { border-top: 0; }
+  .mpick { display: flex; align-items: center; gap: 10px; border-top: 1px solid #222A32; }
+  .list > .mpick:first-child { border-top: 0; }
+  .mpick .mrow { flex: 1; min-width: 0; border-top: 0; }
+  .mtoggle { flex: none; width: 44px; height: 44px; border-radius: 22px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); font-weight: 700; font-size: 20px; }
+  .mtoggle.on { background: var(--ok-bg); border-color: var(--ok-line); color: var(--accent); }
+  .mtoggle[disabled] { opacity: .4; }
   .mrow b { display: block; font-weight: 600; font-size: 15px; }
   .mrow.done b { color: var(--muted); }
   .mrow .n { font-size: 13px; font-weight: 700; white-space: nowrap; color: var(--dim); }
@@ -1513,11 +1519,11 @@ function closePassenger() { passNext = null; $("passScrim").classList.add("hidde
 // The level and the seals are the LizPilot's, never the driver's. The comma never changes anything because of a mission:
 // options are turned on by the owner, parked, with the same rules as Ajustes. "Fiz agora" is a mark, like Marcar.
 let missions = null, mScreen = { s: "trilhas" }, missionsAt = 0, missionsErr = "";
-const HOW_TEXT = { drive: "o passageiro marca andando; você confirma parado", auto: "o comma reconhece", marca: "você marca, o CTO confere", parado: "você faz, parado", cto: "o CTO mede no log", decisao: "decisão sua" };
+const HOW_TEXT = { drive: "o passageiro marca andando; você confirma parado", auto: "o comma reconhece", marca: "você marca, o log confirma", parado: "você faz, parado", cto: "medido no log", decisao: "decisão sua" };
 const HOW_COLOR = { auto: "var(--accent)", marca: "var(--warn)", parado: "var(--you)", cto: "var(--gas)", decisao: "var(--muted)" };
 const HOW_LONG = { auto: "O comma reconhece sozinho nas viagens. Se não reconhecer, o seu toque em Fiz agora guarda a hora e o lugar.",
-                   marca: "Acontece andando. Toque em Fiz agora logo depois: a marca guarda a hora e o lugar, e o CTO confere no log.",
-                   parado: "Com o carro parado. A sua resposta fica guardada no comma.", cto: "Fica completa quando o CTO mede no log.",
+                   marca: "Acontece andando. Toque em Fiz agora logo depois: a marca guarda a hora e o lugar para a conferência no log.",
+                   parado: "Com o carro parado. A sua resposta fica guardada no comma.", cto: "Fica completa quando a medição no log confirmar.",
                    decisao: "Não é teste: é uma escolha sua." };
 function driveLong() { return t("Acontece andando. O passageiro pode marcar no copiloto; no fim da viagem, parado, o celular pergunta como foi."); }
 const MISSION_SNAP = "lpMissionSnap";
@@ -1540,6 +1546,13 @@ async function refreshMissions() {
 function mState() { return LPL.applyQueue(missions.state, mQueue, missions); }  // with what still waits for the comma (D3)
 function mProg() { return LPL.missionProgress(missions, mState(), trips || []); }
 function mOf(key) { return missions.missions.find((m) => m.key === key); }
+// The trip's places taken by what is still open: a mission the summaries proved since leaves first (CTO review of the route)
+function openActive(prog) { return mState().active.filter((k) => mOf(k) && !prog[k].full); }
+async function freeDone(prog) {
+  for (const k of mState().active.filter((x) => mOf(x) && prog[x].full)) if (!await missionAct({ action: "drop", key: k })) return false;
+  return true;
+}
+async function takeMission(action, key) { if (await freeDone(mProg())) return missionAct({ action, key }); return false; }
 function howOf(m) { return m.how === "parado" && m.drive ? HOW_TEXT.drive : HOW_TEXT[m.how]; }
 function ringSvg(d, total, size, label) {
   const c = 2 * Math.PI * 40, f = total ? Math.min(1, d / total) : 0;
@@ -1570,20 +1583,35 @@ function mRow(m, p, onClick) {
   const sub = p.full ? m.proof : p.locked ? m.lock : m.note;
   if (sub) mid.append(el("span", "small", t(sub)));
   const tag = el("span", "mtag", t(howOf(m))); tag.style.color = HOW_COLOR[m.how]; mid.append(tag);
-  if (LPL.queuedKeys(mQueue, missions).includes(m.key)) { const w = el("span", "small", t("vai para o comma quando ele aparecer")); w.style.color = "var(--warn)"; mid.append(w); }
+  if (isNew(m) && !p.full) { const nv = el("span", "mtag", t("nova")); nv.style.color = "var(--accent)"; mid.append(nv); }
+  if (LPL.queuedKeys(mQueue, missions, missions.state).includes(m.key)) { const w = el("span", "small", t("vai para o comma quando ele aparecer")); w.style.color = "var(--warn)"; mid.append(w); }
   b.append(mid, el("span", "n" + (p.full ? " full" : p.d || p.toCheck ? " half" : ""), mCount(p)));
   b.addEventListener("click", onClick);
   return b;
 }
 function openMission(key, from) { mScreen = { s: "missao", key, from: from || mScreen }; showView("missoes"); }
 function openMissions(scr) { mScreen = scr || { s: "trilhas" }; showView("missoes"); }
-function packOf(prog) {  // the newest version route still open
-  for (const [v, pk] of Object.entries(missions.packs || {})) {
-    const ms = missions.missions.filter((m) => m.version === v), d = ms.filter((m) => prog[m.key].full).length;
-    if (d < ms.length) return { v, pk, ms, d };
+// A mission picked or not, in one tap, next to its row: the owner takes as many as fit a drive (owner, 03/11)
+function mPickRow(m, p, onClick) {
+  const row = el("div", "mpick"), r = mRow(m, p, onClick);
+  row.append(r);
+  if (!p.full && LPL.canTake(m)) {
+    const on = mState().active.includes(m.key), b = el("button", "mtoggle" + (on ? " on" : ""), on ? "✓" : "+"); b.type = "button";
+    b.setAttribute("aria-label", tf(on ? "Tirar «{m}» da próxima viagem" : "Levar «{m}» na próxima viagem", { m: t(m.title) }));
+    b.disabled = !on && openActive(mProg()).length >= missions.max_active;
+    b.addEventListener("click", () => (on ? missionAct({ action: "drop", key: m.key }) : takeMission("take", m.key)));
+    row.append(b);
   }
-  return null;
+  return row;
 }
+function isNew(m) { return !!(m.version && missions.route && m.version === missions.route.version); }
+function routeMissions() { return missions.missions.filter((m) => m.route).sort((a, b) => a.route - b.route); }
+function packOf(prog) {  // the next drive's route while it has something open (one route, not one per version: owner, 03/11)
+  const pk = missions.route, ms = pk ? routeMissions() : [], d = ms.filter((m) => prog[m.key].full).length;
+  return ms.length && d < ms.length ? { v: pk.key, pk, ms, d } : null;
+}
+// Every mission not done yet that goes on a drive, any version: never lost behind a newer route (owner, 03/11)
+function openMissionsLeft(prog) { return missions.missions.filter((m) => LPL.canTake(m) && !prog[m.key].full); }
 function snapLoad() { const x = load(MISSION_SNAP); try { return x ? JSON.parse(x) : null; } catch (e) { return null; } }
 function missionResult(prog) {  // after the drive: what moved since "Pronto, vou dirigir"
   const snap = snapLoad();
@@ -1623,13 +1651,14 @@ function renderMissionCard() {
   // the next drive, in one line: the version's route, or how many missions go along (the rest lives in Viagens → Missões)
   const pack = packOf(prog), act = mState().active.filter((k) => mOf(k) && !prog[k].full);
   const next = act.length ? tf(act.length === 1 ? "Próxima viagem: 1 missão" : "Próxima viagem: {n} missões", { n: act.length })
-    : pack ? tf("Roteiro da versão {v}: {d} de {n}", { v: pack.v, d: pack.d, n: pack.ms.length }) : "";
+    : pack ? tf("Roteiro: {d} de {n}", { d: pack.d, n: pack.ms.length }) : "";
   $("missionNext").textContent = [lv.next ? tf(lv.next.left === 1 ? "Falta 1 para o nível {n}" : "Faltam {k} para o nível {n}", { k: lv.next.left, n: lv.i + 2 }) : t("Tudo provado no seu carro."), next].filter(Boolean).join(" · ");
 }
 
 // ----- copiloto: the passenger leads the next drive's missions, the right one at the right moment -----
 const MOMENT_TEXT = { stop_free: "parado, sem carro à frente", stop_queue: "parado atrás de um carro", stop_long: "parado há mais de 1 minuto",
-                      follow_mid: "seguindo um carro a 40–60 km/h", slow_follow: "trânsito lento atrás de um carro", moving: "andando" };
+                      follow_mid: "seguindo um carro a 40–60 km/h", slow_follow: "trânsito lento atrás de um carro", moving: "andando",
+                      city: "andando até 60 km/h" };
 function openCop() { if (!carOn) return; copOpen = true; $("copBody").dataset.sig = ""; $("copSheet").classList.remove("hidden"); renderCop(); }
 function closeCop() { copOpen = false; $("copSheet").classList.add("hidden"); }
 function tripSince() {  // this drive's marks: since "Pronto, vou dirigir", and never older than 6 h
@@ -1640,7 +1669,7 @@ async function copAnswer(key, result, b) {
   if (b) b.disabled = true;
   const r = await api("/api/missions", { action: "mark", key, result });
   toast(r.status !== 200 ? (r.data.error || t("Não foi possível salvar.")) : result === "stop" ? t("Marcado. Quando parar o carro, desligue a opção e reinicie.")
-    : result === "bad" ? t("Marcado como não deu: o CTO confere no log.") : t("Marcado: o CTO confere no log."));
+    : result === "bad" ? t("Marcado como não deu: fica para conferir no log.") : t("Marcado: fica para conferir no log."));
   if (r.status === 200) { missions.state = r.data.state; if (result !== "stop") copSkip = copSkip.filter((k) => k !== key).concat([key]); $("copBody").dataset.sig = ""; renderCop(); }
   else if (b) b.disabled = false;
 }
@@ -1658,10 +1687,10 @@ function renderCop() {
   body.dataset.sig = sig;
   const out = [];
   if (!order.length) {
-    out.push(el("div", "now", t("Nenhuma missão nesta viagem")), el("div", "desc", t("Escolha missões ou leve o roteiro da versão, com o carro parado.")));
+    out.push(el("div", "now", t("Nenhuma missão nesta viagem")), el("div", "desc", t("Escolha missões ou leve o roteiro, com o carro parado.")));
     body.replaceChildren(...out); return;
   }
-  const cur = mOf(order[0].key), pk = cur.version && missions.packs[cur.version];
+  const cur = mOf(order[0].key), pk = cur.route && cur.option ? missions.route : null;  // "desligue a opção" only where there is one
   // what is true now, only from fresh live data: an old tick never says "agora" (CTO review of app-08)
   const nowText = now.state === "live" ? tf("Agora: {m}", { m: now.moment.length ? now.moment.map((x) => t(MOMENT_TEXT[x])).join(", ") : t("andando devagar") })
     : now.state === "stale" ? tf("O dado ao vivo do comma parou há {n} s: o momento não é de agora.", { n: now.age })
@@ -1739,7 +1768,7 @@ function renderDriveMissions() {
 async function missionMark(key, b) {
   b.disabled = true;
   const r = await api("/api/missions", { action: "mark", key });
-  toast(r.status === 200 ? t("Marcado: o CTO acha a hora e o lugar no log.") : (r.data.error || t("Não foi possível salvar.")));
+  toast(r.status === 200 ? t("Marcado: a hora e o lugar ficam guardados para conferir no log.") : (r.data.error || t("Não foi possível salvar.")));
   if (r.status === 200) { missions.state = r.data.state; $("driveMissionList").dataset.sig = ""; renderDriveMissions(); }
   else b.disabled = false;
 }
@@ -1756,7 +1785,7 @@ async function missionAct(body) {
   else toast(r.data.error || t("Não foi possível salvar."));
   return r.status === 200;
 }
-// The comma answered: what waited goes, in order, by the same POST. A refusal (3 already, a locked mission) takes that one
+// The comma answered: what waited goes, in order, by the same POST. A refusal (12 already, a locked mission) takes that one
 // out with a clear notice; no answer keeps the rest for the next time.
 async function flushQueue() {
   if (flushing || !mQueue.length || !missions || LPL.readOnly(online, fromBase)) return;
@@ -1769,7 +1798,7 @@ async function flushQueue() {
       if (r.status === 0 || ep !== DB.epoch()) break;
       if (r.status === 200) { missions.state = r.data.state; sent += 1; }
       else {
-        const what = x.action === "pack" ? tf("Roteiro da versão {v}", { v: x.key }) : t((mOf(x.key) || { title: x.key }).title);
+        const what = x.action === "pack" ? t("Roteiro da próxima viagem") : t((mOf(x.key) || { title: x.key }).title);
         mQueueNotes = mQueueNotes.concat([tf("O comma recusou «{m}»: {motivo}", { m: what, motivo: r.data.error || t("Não foi possível.") })]);
         toast(mQueueNotes[mQueueNotes.length - 1]);
       }
@@ -1814,22 +1843,29 @@ function renderMissions() {
     const pack = packOf(prog);
     if (pack) {
       const b = el("button", "card att row"); b.type = "button"; b.style.cssText = "width:100%;margin:0;text-align:left;color:inherit;font:inherit";
-      const g = el("span", "grow"); g.append(el("span", "mlevel", tf("Roteiro da versão {v}", { v: pack.v })), el("span", "title", tf("{d} de {n} testes · uns {m} min", { d: pack.d, n: pack.ms.length, m: pack.pk.minutes })));
+      const g = el("span", "grow"); g.append(el("span", "mlevel", t("Roteiro da próxima viagem")), el("span", "title", tf("{d} de {n} testes · uns {m} min", { d: pack.d, n: pack.ms.length, m: pack.pk.minutes })));
       g.lastChild.style.display = "block";
       b.append(g, el("span", "link", t("Ver"))); b.addEventListener("click", () => openMissions({ s: "roteiro", v: pack.v })); out.push(b);
     }
     const act = st.active.map(mOf).filter((m) => m && !prog[m.key].full);
     out.push(el("div", "label", t("Na próxima viagem")));
     const list = el("div", "card list"); list.style.padding = "4px 16px";
-    for (const m of act) list.append(mRow(m, prog[m.key], () => openMission(m.key, { s: "trilhas" })));
-    if (!act.length) list.append(el("div", "desc", t("Nenhuma ainda. Escolha numa trilha abaixo, ou leve o roteiro da versão.")));
+    for (const m of act) list.append(mPickRow(m, prog[m.key], () => openMission(m.key, { s: "trilhas" })));
+    if (!act.length) list.append(el("div", "desc", t("Nenhuma ainda. Toque em + nas que quiser, ou leve o roteiro.")));
     out.push(list);
     if (act.length) { const go = el("button", "btn", t("Vou dirigir")); go.type = "button"; go.addEventListener("click", () => openMissions({ s: "roteiro" })); out.push(go); }
+    const left = openMissionsLeft(prog).filter((m) => !st.active.includes(m.key));
+    if (left.length) {
+      out.push(el("div", "label", tf("Ainda não feitas · {n}", { n: left.length })));
+      const ll = el("div", "card list"); ll.style.padding = "4px 16px";
+      for (const m of LPL.missionOrder(left, prog)) ll.append(mPickRow(m, prog[m.key], () => openMission(m.key, { s: "trilhas" })));
+      out.push(ll, el("div", "small", tf("Toque em + para levar. Até {n} por viagem; andando, o copiloto mostra uma de cada vez.", { n: missions.max_active })));
+    }
     out.push(el("div", "label", t("Trilhas")));
     for (const tr of LPL.missionTrails(missions, prog)) {
       const b = el("button", "card row"); b.type = "button"; b.style.cssText = "width:100%;text-align:left;color:inherit;font:inherit;margin:0";
       b.insertAdjacentHTML("beforeend", ringSvg(tr.d, tr.total, 48, ""));
-      const g = el("span", "grow"); g.append(el("span", "title", t(tr.title)), el("br"), el("span", "desc", tr.seal ? t("Selo conquistado") : tr.next ? tf("Próxima: {m}", { m: t(tr.next) }) : t("O que falta depende do CTO")));
+      const g = el("span", "grow"); g.append(el("span", "title", t(tr.title)), el("br"), el("span", "desc", tr.seal ? t("Selo conquistado") : tr.next ? tf("Próxima: {m}", { m: t(tr.next) }) : t("O que falta depende da conferência dos logs")));
       const n = el("span", "title", `${tr.d}/${tr.total}`); n.style.color = tr.seal ? "var(--accent)" : "var(--warn)";
       b.append(g, n); b.addEventListener("click", () => openMissions({ s: "trilha", tr: tr.key })); out.push(b);
     }
@@ -1841,7 +1877,7 @@ function renderMissions() {
     const tr = missions.trails.find((x) => x.key === s.tr), ms = missions.missions.filter((m) => m.trail === s.tr);
     out.push(h1(t(tr.title)), el("p", "sub", tf("{d} de {n} completas. O que falta vem primeiro.", { d: ms.filter((m) => prog[m.key].full).length, n: ms.length })));
     const list = el("div", "card list"); list.style.padding = "4px 16px";
-    for (const m of LPL.missionOrder(ms, prog)) list.append(mRow(m, prog[m.key], () => openMission(m.key, s)));
+    for (const m of LPL.missionOrder(ms, prog)) list.append(mPickRow(m, prog[m.key], () => openMission(m.key, s)));
     out.push(list);
   } else if (s.s === "missao") {
     const m = mOf(s.key), p = prog[m.key], back = s.from && s.from.s ? s.from : { s: "trilha", tr: m.trail };
@@ -1858,18 +1894,18 @@ function renderMissions() {
       const hl = el("span", "small", m.how === "parado" && m.drive ? driveLong() : t(HOW_LONG[m.how])); c.append(hl); out.push(c);
     } else if (!p.full) out.push(el("div", "small", m.how === "parado" && m.drive ? driveLong() : t(HOW_LONG[m.how])));
     if (m.option && !p.full) out.push(optionLine(m.option));
-    if (p.toCheck) out.push(el("div", "small", tf(p.toCheck === 1 ? "1 marca sua espera o CTO conferir no log." : "{n} marcas suas esperam o CTO conferir no log.", { n: p.toCheck })));
-    if (p.fails) out.push(el("div", "small", tf(p.fails === 1 ? "1 marca diz que não deu: o CTO confere no log." : "{n} marcas dizem que não deu: o CTO confere no log.", { n: p.fails })));
+    if (p.toCheck) out.push(el("div", "small", tf(p.toCheck === 1 ? "1 marca sua espera a conferência no log." : "{n} marcas suas esperam a conferência no log.", { n: p.toCheck })));
+    if (p.fails) out.push(el("div", "small", tf(p.fails === 1 ? "1 marca diz que não deu: falta conferir no log." : "{n} marcas dizem que não deu: falta conferir no log.", { n: p.fails })));
     if (p.locked) { const c = el("section", "card"); c.style.borderStyle = "dashed"; c.append(el("b", "", t("Ainda trancada.")), document.createTextNode(" " + t(m.lock))); out.push(c); }
     const act = st.active.includes(m.key), can = !p.full && LPL.canTake(m);
     if (can && !act) {
-      const full = st.active.length >= missions.max_active;
+      const full = openActive(prog).length >= missions.max_active;
       const b = el("button", "btn", t("Levar na próxima viagem")); b.type = "button"; b.disabled = full;
-      b.addEventListener("click", () => missionAct({ action: "take", key: m.key })); out.push(b);
-      if (full) out.push(el("div", "small", t("Já há 3 missões na próxima viagem. Tire uma para levar esta.")));
+      b.addEventListener("click", () => takeMission("take", m.key)); out.push(b);
+      if (full) out.push(el("div", "small", tf("Já há {n} missões na próxima viagem. Tire uma para levar esta.", { n: missions.max_active })));
     }
     if (act) { const b = el("button", "btn dark", t("Na próxima viagem ✓ · tirar")); b.type = "button"; b.addEventListener("click", () => missionAct({ action: "drop", key: m.key })); out.push(b); }
-    if (LPL.queuedKeys(mQueue, missions).includes(m.key)) out.push(el("div", "small", t("vai para o comma quando ele aparecer")));
+    if (LPL.queuedKeys(mQueue, missions, missions.state).includes(m.key)) out.push(el("div", "small", t("vai para o comma quando ele aparecer")));
     if (!p.full && !m.lock && m.how === "parado" && !m.drive) {
       const parkedNow = !carOn || carStopped;
       const row = el("div", "grid2");
@@ -1880,29 +1916,39 @@ function renderMissions() {
       }
       out.push(row, el("div", "small", parkedNow ? t("Com o carro parado. A resposta fica guardada no comma.") : t("Responda com o carro parado.")));
     }
-    if (m.version && missions.packs[m.version]) { const b = el("button", "link", tf("Ver o roteiro da versão {v}", { v: m.version })); b.type = "button"; b.addEventListener("click", () => openMissions({ s: "roteiro", v: m.version })); out.push(b); }
+    if (m.route && missions.route) { const b = el("button", "link", t("Ver o roteiro da próxima viagem")); b.type = "button"; b.addEventListener("click", () => openMissions({ s: "roteiro", v: missions.route.key })); out.push(b); }
   } else if (s.s === "roteiro") {
     mBack(t("Missões"), { s: "trilhas" });
-    const v = s.v || (packOf(prog) || {}).v, pk = v && missions.packs[v];
     const act = st.active.map(mOf).filter(Boolean);
-    out.push(h1(v ? tf("Roteiro da versão {v}", { v }) : t("Antes de sair")));
-    if (pk) {
+    // the route only when asked for it, or when it goes along: "Vou dirigir" with picks alone is just "Antes de sair"
+    const pk = missions.route && (s.v || act.some((m) => m.route)) ? missions.route : null, v = pk && pk.key, open = pk && packOf(prog);
+    out.push(h1(pk ? t("Roteiro da próxima viagem") : t("Antes de sair")));
+    if (pk && !open) out.push(el("p", "sub", t("Todos os testes do roteiro já foram provados.")));
+    if (open) {
+      out.push(el("p", "sub", t("Primeiro os testes novos, marcados «nova». Depois o que ainda não foi feito, de qualquer versão: cada um fica até ser provado.")));
       const warn = el("section", "card att"); warn.append(el("span", "desc", t(pk.intro))); out.push(warn);
       out.push(el("div", "label", t("Antes de sair, com o carro parado")));
       const ol = el("ol", "msteps"); pk.before.forEach((x) => ol.append(el("li", "", t(x)))); out.push(ol);
     } else out.push(el("p", "sub", t("Com o carro em P. Depois que ele andar, o celular não muda mais nada.")));
-    const opts = [...new Set(act.concat(v ? missions.missions.filter((m) => m.version === v) : []).filter((m) => !prog[m.key].full).map((m) => m.option).filter(Boolean))];
+    // the options of what goes on this drive; looking at the route before taking it, the route's
+    const opts = [...new Set(act.concat(open && s.v ? routeMissions() : []).filter((m) => !prog[m.key].full).map((m) => m.option).filter(Boolean))];
     for (const k of opts) out.push(optionLine(k));
     if (pk) {
       out.push(el("div", "label", t("Durante a volta")), el("div", "desc", t(pk.during)));
-      const ms = missions.missions.filter((m) => m.version === v && !(m.detect === "installed"));
+      const ms = routeMissions();
       const list = el("div", "card list"); list.style.padding = "4px 16px";
-      ms.forEach((m) => list.append(mRow(m, prog[m.key], () => openMission(m.key, s)))); out.push(list);
+      ms.forEach((m) => list.append(mPickRow(m, prog[m.key], () => openMission(m.key, s)))); out.push(list);
       out.push(el("div", "label", t("Pare o teste e desligue a opção se")));
       const ul = el("ul", "msteps"); pk.stop_if.forEach((x) => ul.append(el("li", "", t(x)))); out.push(ul);
       out.push(el("div", "small", t(pk.back)));
-      const onPack = ms.filter((m) => !prog[m.key].full && !m.lock).every((m) => st.active.includes(m.key));
-      if (!onPack) { const b = el("button", "btn dark", t("Levar este roteiro na próxima viagem")); b.type = "button"; b.addEventListener("click", () => missionAct({ action: "pack", key: v })); out.push(b); }
+      // what of the route still isn't on the trip, and how much of it fits: never a button that silently does nothing
+      const missing = ms.filter((m) => !prog[m.key].full && LPL.canTake(m) && !st.active.includes(m.key));
+      const room = missions.max_active - openActive(prog).length;
+      if (missing.length) {
+        const b = el("button", "btn dark", missing.length <= room ? t("Levar todo o roteiro, junto com o que já escolhi") : t("Levar o que couber do roteiro")); b.type = "button";
+        b.disabled = room <= 0; b.addEventListener("click", () => takeMission("pack", v)); out.push(b);
+        if (missing.length > room) out.push(el("div", "small", tf("Cabem mais {n} de {m} testes do roteiro, até {k} por viagem. Tire alguma escolha para levar todos.", { n: Math.max(room, 0), m: missing.length, k: missions.max_active })));
+      }
     }
     if (act.length) {
       const go = el("button", "btn", t("Pronto, vou dirigir")); go.type = "button";
@@ -1929,8 +1975,8 @@ function renderMissions() {
         const bar = el("div", "mbar"), a = el("span"), gain = el("span"), chk = el("span");
         a.style.cssText = `width:${100 * r.from / r.total}%;background:var(--accent)`; gain.style.cssText = `width:${100 * (r.to - r.from) / r.total}%;background:#5BE39D`;
         chk.style.cssText = `width:${100 * Math.min(r.checks, r.total - r.to) / r.total}%;background:var(--warn)`; bar.append(a, gain, chk);
-        c.append(top, bar, el("span", "small", r.to > r.from ? (r.full ? t("Missão completa.") : t("Reconhecida pelo comma.")) : r.moved ? t("A sua marca guardou a hora e o lugar: o CTO confere no log e completa.")
-          : t("A marca diz que não deu: o CTO confere no log. Não conta como avanço.")));
+        c.append(top, bar, el("span", "small", r.to > r.from ? (r.full ? t("Missão completa.") : t("Reconhecida pelo comma.")) : r.moved ? t("A sua marca guardou a hora e o lugar: a missão completa depois da conferência no log.")
+          : t("A marca diz que não deu: falta conferir no log. Não conta como avanço.")));
         out.push(c);
       }
       const marked = new Set(res.rows.map((r) => r.key));
@@ -1945,8 +1991,8 @@ function renderMissions() {
         }
         c.append(row); out.push(c);
       }
-      const pk = Object.values(missions.packs || {})[0];
-      if (pk && res.snap.active.some((k) => (mOf(k) || {}).version)) out.push(el("section", "card att", t(pk.after)));
+      const pk = missions.route;
+      if (pk && res.snap.active.some((k) => (mOf(k) || {}).route)) out.push(el("section", "card att", t(pk.after)));
       const ok = el("button", "btn dark", t("Ok, escolher as próximas")); ok.type = "button";
       ok.addEventListener("click", () => { store(MISSION_SNAP, null); openMissions(); }); out.push(ok);
     }

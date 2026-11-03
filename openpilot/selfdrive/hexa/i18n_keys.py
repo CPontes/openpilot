@@ -13,7 +13,7 @@ from openpilot.selfdrive.hexa import comma_ctl, i18n, live, marks, missions, opt
 
 HEXA = Path(__file__).parent
 ROOT = HEXA.parents[1]  # openpilot/openpilot
-PY_SOURCES = [ROOT / "system/hexaweb/hexaweb.py", HEXA / "phone.py", HEXA / "updates.py", HEXA / "marks.py", HEXA / "comma_ctl.py",
+PY_SOURCES = [ROOT / "system/hexaweb/hexaweb.py", HEXA / "phone.py", HEXA / "updates.py", HEXA / "marks.py", HEXA / "comma_ctl.py", HEXA / "missions.py",
               ROOT / "selfdrive/ui/mici/layouts/settings/hexa.py"]
 PAGES = [ROOT / "system/hexaweb/static" / n for n in ("index.html", "viagens.html", "replay.html", "lp-logic.js")]
 # objects in the pages whose values are passed through t() by name
@@ -83,8 +83,8 @@ def mission_texts() -> set[str]:
   out = {title for _, title in missions.TRAILS} | set(missions.RESULTS.values())
   for m in missions.CATALOG:
     out |= {m.title, m.note, m.why, m.proof, m.lock, *m.steps}
-  for pk in missions.PACKS.values():
-    out |= {pk["intro"], pk["during"], pk["back"], pk["after"], *pk["before"], *pk["stop_if"]}
+  pk = missions.ROUTE
+  out |= {pk["intro"], pk["during"], pk["back"], pk["after"], *pk["before"], *pk["stop_if"]}  # "old" holds commits, not text
   return {x for x in out if x}
 
 

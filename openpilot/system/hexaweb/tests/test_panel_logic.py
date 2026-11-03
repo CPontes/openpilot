@@ -569,8 +569,9 @@ def test_copilot_reads_the_moment_from_the_live_data():
   assert run("copilotMoment", None, 0) == [] and run("copilotMoment", {"driving": False}, 0) == []
   assert run("copilotMoment", {"driving": True, "v": 0, "lead": None}, 5) == ["stop_free"]
   assert run("copilotMoment", {"driving": True, "v": 0, "lead": {"d": 6}}, 90) == ["stop_queue", "stop_long"]
-  assert run("copilotMoment", {"driving": True, "v": 50, "lead": {"d": 30}}, 0) == ["moving", "follow_mid"]
-  assert run("copilotMoment", {"driving": True, "v": 20, "lead": {"d": 10}}, 0) == ["moving", "slow_follow"]
+  assert run("copilotMoment", {"driving": True, "v": 50, "lead": {"d": 30}}, 0) == ["moving", "city", "follow_mid"]
+  assert run("copilotMoment", {"driving": True, "v": 20, "lead": {"d": 10}}, 0) == ["moving", "city", "slow_follow"]
+  assert run("copilotMoment", {"driving": True, "v": 90, "lead": None}, 0) == ["moving"]  # the wheel test is for the city only
 
 
 def test_copilot_puts_what_fits_now_first_and_skips_what_is_done():
@@ -584,7 +585,7 @@ def test_copilot_puts_what_fits_now_first_and_skips_what_is_done():
 
 def test_copilot_old_live_data_never_says_now():  # CTO review of app-08: 60 s old still said "Agora: … / Dá para fazer agora"
   slow = {"driving": True, "v": 20, "lead": {"d": 10}}
-  assert run("copilotNow", slow, {"online": True, "age": 500}, 0) == {"state": "live", "moment": ["moving", "slow_follow"]}
+  assert run("copilotNow", slow, {"online": True, "age": 500}, 0) == {"state": "live", "moment": ["moving", "city", "slow_follow"]}
   assert run("copilotNow", slow, {"online": True, "age": 60000}, 0) == {"state": "stale", "moment": [], "age": 60}
   assert run("copilotNow", {"driving": False}, {"online": True, "age": 500}, 0) == {"state": "off", "moment": []}
   assert run("copilotNow", None, {"online": True, "age": 500}, 0)["state"] == "none"
@@ -627,8 +628,9 @@ def test_a_mark_that_did_not_work_never_counts_as_progress():  # CTO review of a
   assert run("missionProgress", cat, {"pending": [{"key": "x"}]}, [])["x"]["toCheck"] == 1  # an older mark, no result: "Fiz agora"
 
 
-CAT_Q = {"max_active": 3, "missions": [_m("a", "marca"), _m("b", "auto"), _m("c", "marca", version="v1"), _m("d", "parado", drive=True, version="v1"),
-                                       _m("e", "marca", version="v1", lock="x"), _m("f", "parado", version="v1")]}
+CAT_Q = {"max_active": 12, "route": {"key": "v1", "old": ["v0"]},
+         "missions": [_m("a", "marca"), _m("b", "auto"), _m("d", "parado", drive=True, route=2), _m("c", "marca", route=1),
+                                        _m("e", "marca", route=3, lock="x"), _m("f", "parado", route=4), _m("g", "marca", 2, route=5)]}
 
 
 def test_missions_chosen_away_from_the_comma_wait_in_order():  # owner, 03/11 (D3)
@@ -637,7 +639,10 @@ def test_missions_chosen_away_from_the_comma_wait_in_order():  # owner, 03/11 (D
   assert q == [{"action": "take", "key": "a"}, {"action": "take", "key": "b"}]
   assert run("queueAdd", q, {"action": "take", "key": "a"}) == q  # twice: once
   assert run("queueAdd", q, {"action": "drop", "key": "a"}) == [{"action": "take", "key": "b"}]  # taken and dropped: nothing to send
-  assert run("queueAdd", q, {"action": "pack", "key": "v1"}) == [{"action": "pack", "key": "v1"}]
+  # the route goes after what was picked, once: a second one takes the first one's place at the end
+  assert run("queueAdd", q, {"action": "pack", "key": "v1"}) == q + [{"action": "pack", "key": "v1"}]
+  assert run("queueAdd", [{"action": "pack", "key": "v1"}, {"action": "take", "key": "a"}], {"action": "pack", "key": "v1"}) == \
+    [{"action": "take", "key": "a"}, {"action": "pack", "key": "v1"}]
   for bad in ({"action": "answer", "key": "a"}, {"action": "mark", "key": "a"}, {"action": "take"}, None):  # only missions wait
     assert run("queueAdd", q, bad) == q
   after_pack = run("queueAdd", [{"action": "pack", "key": "v1"}], {"action": "drop", "key": "c"})
@@ -647,10 +652,17 @@ def test_missions_chosen_away_from_the_comma_wait_in_order():  # owner, 03/11 (D
 def test_missions_waiting_show_on_top_of_the_comma_state():
   st = {"active": ["a"], "answers": {}, "pending": []}
   assert run("applyQueue", st, [{"action": "take", "key": "b"}, {"action": "drop", "key": "a"}], CAT_Q)["active"] == ["b"]
-  assert run("applyQueue", st, [{"action": "pack", "key": "v1"}], CAT_Q)["active"] == ["c", "d"]  # the route, as the comma takes it
+  assert run("applyQueue", st, [{"action": "pack", "key": "v1"}], CAT_Q)["active"] == ["a", "c", "d", "g"]  # after what was picked, in order
+  assert run("applyQueue", dict(st, answers={"g": 2}), [{"action": "pack", "key": "v1"}], CAT_Q)["active"] == ["a", "c", "d"]  # answered: out
   assert run("applyQueue", st, [], CAT_Q) == st
-  assert sorted(run("queuedKeys", [{"action": "pack", "key": "v1"}, {"action": "take", "key": "a"}], CAT_Q)) == ["a", "c", "d"]
-  assert [m["key"] for m in CAT_Q["missions"] if run("canTake", m)] == ["a", "b", "c", "d"]
+  assert sorted(run("queuedKeys", [{"action": "pack", "key": "v1"}, {"action": "take", "key": "a"}], CAT_Q)) == ["a", "c", "d", "g"]
+  # what waits, as it will land: what the comma already has, or the answers took out, isn't "vai para o comma"
+  assert run("queuedKeys", [{"action": "pack", "key": "v1"}], CAT_Q, {"active": ["c"], "answers": {"g": 2}}) == ["d"]
+  assert run("applyQueue", st, [{"action": "pack", "key": "zzz"}], CAT_Q) == st  # the comma refuses a route it doesn't know
+  assert run("applyQueue", st, [{"action": "pack", "key": "v0"}], CAT_Q)["active"] == ["a", "c", "d", "g"]  # an old one is this one
+  full = {"active": [f"x{i}" for i in range(12)]}
+  assert run("applyQueue", full, [{"action": "take", "key": "a"}], CAT_Q) == full  # never past the 12 the comma takes
+  assert [m["key"] for m in CAT_Q["missions"] if run("canTake", m)] == ["a", "b", "d", "c", "g"]
 
 
 def test_the_phone_takes_the_same_missions_as_the_comma_and_the_same_results_count():
@@ -661,3 +673,13 @@ def test_the_phone_takes_the_same_missions_as_the_comma_and_the_same_results_cou
   took, advanced = json.loads(subprocess.run([NODE, "-e", script], capture_output=True, text=True, timeout=30, check=True).stdout)
   assert took == [M.can_take(m) for m in M.CATALOG] and took == [M.can_mark(m) for m in M.CATALOG]
   assert advanced == list(M.ADVANCED) and set(M.RESULTS) == {"done", "ok", "bad", "stop"}
+
+
+def test_the_phone_counts_the_same_route_as_the_comma():
+  from openpilot.selfdrive.hexa import missions as M
+  cat = {k: v for k, v in M.public().items() if k in ("missions", "route")}
+  for answers in ({}, {"fila": 1}, {"parar-perto": 5, "sempre-ativa": 4}):
+    assert run("routeKeys", cat, answers) == M.route_keys(answers), answers
+    st = M.clean({"active": ["noite", "fila"], "answers": answers})
+    for key in (M.ROUTE_KEY, *M.OLD_ROUTES):
+      assert run("applyQueue", st, [{"action": "pack", "key": key}], cat)["active"] == M.take_pack(st, key)["active"], (answers, key)

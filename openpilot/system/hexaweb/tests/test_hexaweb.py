@@ -1279,7 +1279,7 @@ def test_missions_need_pairing_and_come_with_the_state(panel):
   tok = panel.pair()
   status, body = panel.json("/api/missions", token=tok)
   assert status == 200 and body["state"] == {"active": [], "answers": {}, "pending": []} and len(body["missions"]) > 50
-  assert body["packs"]["b3ac6fe"]["before"]
+  assert body["route"]["before"] and body["route"]["key"] == "proxima" and body["max_active"] == 12
 
 
 def test_take_while_driving_but_answer_only_parked(panel):
@@ -1294,7 +1294,8 @@ def test_take_while_driving_but_answer_only_parked(panel):
   assert status == 200 and body["state"]["answers"] == {"portas": 1}
   assert panel.json("/api/missions", {"action": "take", "key": "x"}, token=tok)[0] == 404
   assert panel.json("/api/missions", {"action": "voar", "key": "noite"}, token=tok)[0] == 400
-  assert panel.json("/api/missions", {"action": "pack", "key": "b3ac6fe"}, token=tok)[0] == 200
+  assert panel.json("/api/missions", {"action": "pack", "key": "proxima"}, token=tok)[0] == 200
+  assert panel.json("/api/missions", {"action": "pack", "key": "x"}, token=tok)[0] == 400
 
 
 def test_did_it_now_is_a_real_mark_with_the_mission(panel):

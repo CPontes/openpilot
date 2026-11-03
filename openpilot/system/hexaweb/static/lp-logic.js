@@ -471,14 +471,21 @@
   }
   // The missions that go on a drive (missions.py can_take)
   function canTake(m) { return !!m && !m.lock && (m.how === "auto" || m.how === "marca" || (m.how === "parado" && !!m.drive)); }
-  // Missions chosen away from the comma (owner, 03/11: D3): take, drop and a version's route wait on the phone, in order, and
+  // The route's missions still open, in the CTO's order (missions.py route_keys): what the comma takes with "pack". The
+  // route goes along with what the owner picked, never in its place (owner, 03/11)
+  function isRoute(cat, key) { const r = cat && cat.route; return !!r && (key === r.key || (r.old || []).includes(key)); }
+  function routeKeys(cat, answers) {
+    const a = answers || {}, open = (m) => Math.max(m.done || 0, a[m.key] || 0) < m.total;
+    return ((cat && cat.missions) || []).filter((m) => m.route && canTake(m) && open(m)).sort((x, y) => x.route - y.route).map((m) => m.key);
+  }
+  // Missions chosen away from the comma (owner, 03/11: D3): take, drop and the route wait on the phone, in order, and
   // go by the same POST /api/missions when the comma answers. Only these: nothing else waits for the comma.
   const QUEUE_ACTIONS = ["take", "drop", "pack"];
   const MAX_PACK = 12;  // missions.py MAX_PACK
   function queueAdd(queue, item) {
     const q = (queue || []).slice();
     if (!item || !QUEUE_ACTIONS.includes(item.action) || typeof item.key !== "string") return q;
-    if (item.action === "pack") return [item];  // the route replaces what goes along: what waited before it no longer counts
+    if (item.action === "pack") return q.filter((x) => x.action !== "pack").concat([item]);  // once, after what was picked
     const after = q.map((x) => x.action).lastIndexOf("pack");
     const i = q.findIndex((x, k) => k > after && x.key === item.key);
     if (i < 0) return q.concat([item]);
@@ -489,24 +496,21 @@
   function applyQueue(state, queue, cat) {
     let active = ((state && state.active) || []).slice();
     for (const x of queue || []) {
-      if (x.action === "take" && !active.includes(x.key)) active.push(x.key);
+      if (x.action === "take" && !active.includes(x.key) && active.length < MAX_PACK) active.push(x.key);
       else if (x.action === "drop") active = active.filter((k) => k !== x.key);
-      else if (x.action === "pack") active = ((cat && cat.missions) || []).filter((m) => m.version === x.key && canTake(m)).map((m) => m.key).slice(0, MAX_PACK);
+      else if (x.action === "pack" && isRoute(cat, x.key)) active = [...new Set(active.concat(routeKeys(cat, state && state.answers)))].slice(0, MAX_PACK);
     }
     return Object.assign({}, state || {}, { active });
   }
-  function queuedKeys(queue, cat) {
-    const out = new Set();
-    for (const x of queue || []) {
-      if (x.action === "pack") ((cat && cat.missions) || []).filter((m) => m.version === x.key && canTake(m)).forEach((m) => out.add(m.key));
-      else out.add(x.key);
-    }
-    return [...out];
+  // What still waits to reach the comma, as it will land: the comma's state with the queue on top, minus what it already has
+  function queuedKeys(queue, cat, state) {
+    const had = new Set(((state && state.active) || [])), now = applyQueue(state, queue, cat).active;
+    return now.filter((k) => !had.has(k) && (queue || []).some((x) => x.key === k || x.action === "pack"));
   }
 
   // The passenger's copilot (owner, 03/11): what the live data says fits now, so the right test comes up at the right moment.
   // Only reads /api/live, which the drive screen already asks every second: nothing more for the comma.
-  const COP_STOP_KMH = 1, COP_LONG_S = 60, COP_MOVING_KMH = 5;
+  const COP_STOP_KMH = 1, COP_LONG_S = 60, COP_MOVING_KMH = 5, COP_CITY_KMH = 60;
   function copilotMoment(l, stoppedS) {
     if (!l || !l.driving) return [];
     const v = l.v || 0, lead = !!l.lead, out = [];
@@ -515,6 +519,7 @@
       if ((stoppedS || 0) >= COP_LONG_S) out.push("stop_long");
     } else {
       if (v >= COP_MOVING_KMH) out.push("moving");
+      if (v >= COP_MOVING_KMH && v <= COP_CITY_KMH) out.push("city");
       if (lead && v >= 40 && v <= 60) out.push("follow_mid");
       if (lead && v < 30) out.push("slow_follow");
     }
@@ -594,7 +599,7 @@
   // what "Apagar dados deste celular" takes from localStorage besides the copy: data, never the language or the view
   const DATA_KEYS = ["lpTrips", "lpMissionSnap"];
 
-  root.LPL = { copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
+  root.LPL = { copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
                tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);
