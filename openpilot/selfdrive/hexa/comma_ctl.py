@@ -50,7 +50,12 @@ ITEMS: tuple[CommaItem, ...] = (
             "so", dev_only=True),
   CommaItem("AlphaLongitudinalEnabled", "dev", "longitudinal do openpilot (alfa)",
             "Usar o controle de acelerador e freio do openpilot no lugar do ACC original.", "trav", dev_only=True,
-            warnings=("AVISO: o longitudinal alfa pode desligar a frenagem automática de emergência (AEB).",),
+            warnings=("AVISO: o longitudinal alfa pode desligar a frenagem automática de emergência (AEB).",
+                      # what the logs show between the two, for the owner to choose (CTO, 03/11, routes 23 to 31)
+                      "Freio mais forte: o comma vai até −3,5 m/s². O ACC da Haval já chegou a −4,8 m/s² nos seus logs.",
+                      "Frenagem de emergência da Haval: não provada com o comma no controle. O mais provável é que ela não atue com esta opção ligada.",
+                      "Distância do carro da frente: o radar da Haval mede. O comma estima pela câmera e pode errar com moto ou carro parado.",
+                      "O aviso de colisão do comma só toca o som: não freia além do plano."),
             blocked="O celular não muda isso. Só na tela do comma."),
 )
 

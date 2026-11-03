@@ -1046,5 +1046,9 @@
  "as paradas sem carro à frente ainda acabam no seu pedal": "las paradas sin auto adelante todavía terminan en tu pedal",
  "balanço em reta": "balanceo en recta",
  "Missões · {p}% ›": "Misiones · {p}% ›",
- "Missões: {d} de {n}": "Misiones: {d} de {n}"
+ "Missões: {d} de {n}": "Misiones: {d} de {n}",
+ "Freio mais forte: o comma vai até −3,5 m/s². O ACC da Haval já chegou a −4,8 m/s² nos seus logs.": "Freno más fuerte: el comma llega a −3,5 m/s². El ACC del Haval ya llegó a −4,8 m/s² en tus registros.",
+ "Frenagem de emergência da Haval: não provada com o comma no controle. O mais provável é que ela não atue com esta opção ligada.": "Frenado de emergencia del Haval: no probado con el comma al mando. Lo más probable es que no actúe con esta opción activada.",
+ "Distância do carro da frente: o radar da Haval mede. O comma estima pela câmera e pode errar com moto ou carro parado.": "Distancia al auto de adelante: el radar del Haval la mide. El comma la estima con la cámara y puede errar con una moto o un auto detenido.",
+ "O aviso de colisão do comma só toca o som: não freia além do plano.": "El aviso de colisión del comma solo suena: no frena más allá del plan."
 }
