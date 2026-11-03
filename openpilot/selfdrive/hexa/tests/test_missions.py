@@ -87,3 +87,32 @@ def test_clean_drops_what_isnt_a_mission():
          "pending": [{"key": "fila", "mark": "ab", "t": 1}, {"key": "x"}, "y"]}
   st = M.clean(raw)
   assert st == {"active": ["noite"], "answers": {"portas": 4, "pedais": 0}, "pending": [{"key": "fila", "mark": "ab", "t": 1}]}
+
+
+def test_the_history_holds_together():  # owner, 03/11: "saber o quanto performou"
+  import re
+  for key, tries in M.TRIES.items():
+    assert key in M.BY_KEY and tries, key
+    assert [t.date for t in tries] == sorted(t.date for t in tries), key  # oldest first
+    for t in tries:
+      assert re.fullmatch(r"2\d{3}-\d{2}-\d{2}(T\d{2}:\d{2})?", t.date) and t.result in M.TRY_RESULTS and t.route and t.version, key
+      assert "T" in t.date or t.result == "base", key  # a day alone would check a later drive's marks too
+      assert not re.search(r"-?\d{1,2}[.,]\d{4,}", t.measured), key  # a number, never a place
+    # a complete mission says so in its last check; one with only a reference isn't done
+    m = M.BY_KEY[key]
+    if m.done >= m.total:
+      assert any(t.result != "base" for t in tries), key
+  # what a drive proved is in the history, with its number
+  assert {m.key for m in M.CATALOG if m.done >= m.total or (m.done and m.proof.startswith("rota"))} <= set(M.TRIES)
+  pub = {m["key"]: m for m in M.public()["missions"]}
+  assert pub["estrada"]["tries"] == [{"date": "2026-11-01T12:56", "route": "rota 16", "version": "17554ba", "result": "ok", "measured": "98,8% engajado"}]
+  assert [t.route for t in M.TRIES["cancelar-alavanca"]] == ["rota 16", "rota 1c"]  # 1 + 4: the 5 came from two drives
+  assert pub["parar-perto"]["goal"] and pub["parar-perto"]["tries"][0]["result"] == "base"
+
+
+def test_the_owners_marks_are_kept_for_the_history():
+  st = M.clean(None)
+  for i in range(M.MAX_PENDING + 5):
+    st = M.add_pending(st, "fila", f"m{i}", 1000 + i)
+  assert len(st["pending"]) == M.MAX_PENDING and st["pending"][0]["mark"] == "m5" and st["pending"][-1]["mark"] == f"m{M.MAX_PENDING + 4}"
+  assert M.MAX_PENDING >= 300  # weeks of marks, not the last 50

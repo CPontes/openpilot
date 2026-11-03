@@ -18,7 +18,7 @@ PY_SOURCES = [ROOT / "system/hexaweb/hexaweb.py", HEXA / "phone.py", HEXA / "upd
 PAGES = [ROOT / "system/hexaweb/static" / n for n in ("index.html", "viagens.html", "replay.html", "lp-logic.js")]
 # objects in the pages whose values are passed through t() by name
 PAGE_TABLES = ("UPDATE_ACTIONS", "EVENTS", "RADAR_ACTIONS", "RESUME", "SIDES", "SIDE_CHIPS", "POINT", "KINDS",
-               "COMMA_ACTIONS", "LEVEL_TEXT", "SAFETY_TEXT", "SAFETY_NAMES", "MARK_POINTS", "HOW_TEXT", "HOW_LONG", "MOMENT_TEXT")
+               "COMMA_ACTIONS", "LEVEL_TEXT", "SAFETY_TEXT", "SAFETY_NAMES", "MARK_POINTS", "HOW_TEXT", "HOW_LONG", "MOMENT_TEXT", "MARK_RESULT")
 FIELD = re.compile(r"\{[^{}]*\}")
 PT = re.compile(r"[a-zà-ú]", re.I)
 
@@ -80,9 +80,10 @@ def option_texts() -> set[str]:
 
 def mission_texts() -> set[str]:
   """The missions as the phone shows them (missions.py)."""
-  out = {title for _, title in missions.TRAILS} | set(missions.RESULTS.values())
+  out = {title for _, title in missions.TRAILS} | set(missions.RESULTS.values()) | set(missions.TRY_RESULTS.values())
   for m in missions.CATALOG:
-    out |= {m.title, m.note, m.why, m.proof, m.lock, *m.steps}
+    out |= {m.title, m.note, m.why, m.proof, m.lock, m.goal, *m.steps}
+  out |= {t.measured for tries in missions.TRIES.values() for t in tries}
   pk = missions.ROUTE
   out |= {pk["intro"], pk["during"], pk["back"], pk["after"], *pk["before"], *pk["stop_if"]}  # "old" holds commits, not text
   return {x for x in out if x}

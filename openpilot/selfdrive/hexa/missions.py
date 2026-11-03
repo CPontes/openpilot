@@ -21,7 +21,8 @@ MISSIONS_PARAM = "HexaMissions"
 # as many as the owner picks for a drive (owner, 03/11), the route too: the copilot still brings one at a time, the one that fits
 MAX_ACTIVE = 12
 MAX_PACK = 12
-MAX_PENDING = 50  # "Fiz agora" marks waiting for the CTO
+# the owner's mission marks, kept for the history: a mark checked in the log stays, as "conferida" (owner, 03/11)
+MAX_PENDING = 300
 HOW = ("auto", "marca", "parado", "cto", "decisao")
 DETECT = ("slow10", "night30", "highway", "km200", "marks10", "installed")
 # the passenger's copilot (owner, 03/11): what the live data says fits now
@@ -30,6 +31,8 @@ WHEN = ("stop_free", "stop_queue", "stop_long", "follow_mid", "slow_follow", "mo
 # "bad" and "stop" wait as "não deu", never as progress. None of them completes a mission: the CTO checks it in the log
 RESULTS = {"done": "missão feita", "ok": "missão: deu certo", "bad": "missão: não deu", "stop": "missão: parei o teste"}
 ADVANCED = ("done", "ok")
+# How a try went, checked in the log; "base" is the number before the change, to compare with
+TRY_RESULTS = {"ok": "deu certo", "partial": "em parte", "bad": "não deu", "base": "referência"}
 
 TRAILS: tuple[tuple[str, str], ...] = (
   ("direcao", "Direção"),
@@ -67,14 +70,28 @@ class Mission:
   version: str = ""  # new in this version: the phone says "nova" while it's the one in the route
   route: int = 0  # its place in the next drive's route (the CTO's order); 0: only when the owner picks it
   when: str = ""  # copilot: the moment that fits it, seen live on the phone (WHEN)
+  goal: str = ""  # what counts as performing well, to read each try's number against
+
+
+@dataclass(frozen=True)
+class Try:
+  """One time the mission was checked in the log (owner, 03/11: "saber o quanto performou"). Only numbers and the route's
+  short name: never a place."""
+  # when the drive checked ended, "2026-11-03T18:30": the owner's marks up to it were checked with this try. A day alone
+  # would take a later drive's marks too, so only a "base" (it checks none) may have no time
+  date: str
+  route: str
+  version: str
+  result: str  # TRY_RESULTS
+  measured: str = ""
 
 
 CATALOG: tuple[Mission, ...] = (
   # *** Direção ***
   Mission("base", "direcao", "Primeira volta com a versão base", 1, "cto", done=1, proof="30/10 · melhor que a do Sato"),
-  Mission("ajuda-mesmo-sentido", "direcao", "Ajuda no mesmo sentido não solta o volante", 1, "cto", done=1, proof="rota 07 · torque mantido em 88–95%"),
+  Mission("ajuda-mesmo-sentido", "direcao", "Ajuda no mesmo sentido não solta o volante", 1, "cto", done=1, proof="rota 7 · torque mantido em 88–93%"),
   Mission("estrada", "direcao", "Estrada de 60 a 90 km/h sem cair", 1, "cto", done=1, proof="rota 16 · 98,8% engajado"),
-  Mission("filtro-baixa", "direcao", "Filtro de baixa velocidade agindo", 1, "cto", done=1, proof="rota 14 · sem falhas"),
+  Mission("filtro-baixa", "direcao", "Filtro de baixa velocidade agindo", 1, "cto", done=1, proof="rota 14 · tremida em 58–65% da de antes"),
   Mission("balanco-normal", "direcao", "Balanço normal de novo", 1, "cto", done=1, proof="rota 2c · nota 9"),
   Mission("mao-na-curva", "direcao", "O volante segue a sua mão na curva", 1, "cto", done=1, proof="rota 29 · 0 de 55 contra a mão"),
   Mission("sinuosa", "direcao", "Rua sinuosa da rota diária medida", 1, "cto", done=1, proof="rota 0f · falta força em 9 de 19"),
@@ -100,14 +117,15 @@ CATALOG: tuple[Mission, ...] = (
   Mission("falha-falsa", "direcao", "Sem falha falsa ao forçar contra", 1, "marca", note="1 viagem sem falha com a sua mão"),
   Mission("perto-de-zero", "direcao", "Direção perto de 0 km/h", 1, "marca", note="falta a ida e volta perto do 0"),
   Mission("devolver-volante", "direcao", "Devolver o volante aos poucos", 3, "marca", when="city", option="SoftHandoff",
-          version="00e5ba7", route=1, why="Hoje, uma força leve contra a curva corta a força do comma de uma vez. Com a opção, ela sai aos poucos.",
+          version="00e5ba7", route=1, goal="nenhuma falha da direção e nenhum tranco ao forçar",
+          why="Hoje, uma força leve contra a curva corta a força do comma de uma vez. Com a opção, ela sai aos poucos.",
           steps=("Numa curva de cidade, até 60 km/h, com o openpilot no volante, faça uma força leve contra.",
                  "Certo: o volante cede aos poucos, sem tranco, e volta quando você solta.",
                  "Se aparecer falha da direção, marque «não deu». Parado, desligue a opção.")),
   Mission("modo-sombra", "direcao", "Sinuosa com o modo sombra", 3, "marca", note="3 passagens", lock="Depende do modo sombra (LEARN-01)"),
   # *** Velocidade e ACC ***
   Mission("alavanca-parada", "acc", "A alavanca tira o carro da parada", 4, "cto", done=4, proof="rota 16 · sem acelerador"),
-  Mission("cancelar-alavanca", "acc", "Cancelar pela alavanca", 5, "cto", done=5, proof="rota 16 · com o ACC ativo"),
+  Mission("cancelar-alavanca", "acc", "Cancelar pela alavanca", 5, "cto", done=5, proof="rotas 16 e 1c · com o ACC ativo"),
   Mission("retomar", "acc", "Retomar sem falha de ACC", 6, "cto", done=6, proof="rota 29"),
   Mission("descida", "acc", "Sem freada falsa em descida", 1, "cto", done=1, proof="rota 2c"),
   Mission("sair-sozinho", "acc", "Sair sozinho quando o da frente anda", 5, "marca", when="stop_queue", option="AutoResume", done=1, proof="rota 1c",
@@ -116,7 +134,8 @@ CATALOG: tuple[Mission, ...] = (
   Mission("cancelar-comma", "acc", "Cancelar pelo comma", 5, "marca", lock="Ainda não liberado para teste"),
   # 00e5ba7 (03/11): two options, off until the owner turns them on
   Mission("parar-perto", "acc", "Parar mais perto do carro da frente", 5, "marca", when="slow_follow", option="StopCloser",
-          version="00e5ba7", route=2, why="O comma parava a 4,7 m do carro da frente, e a Haval para a uns 3 m. Com a opção, o esperado é uns 4 m.",
+          version="00e5ba7", route=2, goal="parar a até 4,0 m do carro da frente",
+          why="O comma parava a 4,7 m do carro da frente, e a Haval para a uns 3 m. Com a opção, o esperado é uns 4 m.",
           steps=("No trânsito lento, deixe o comma parar sozinho atrás de um carro.", "Certo: para um pouco mais perto que antes, sem tranco.",
                  "Se chegar perto demais ou frear forte, freie e marque «não deu».")),
   # the CTO's route for b3ac6fe (02/11), in its order: what isn't proved yet stays in the route
@@ -200,6 +219,32 @@ CATALOG: tuple[Mission, ...] = (
 )
 BY_KEY = {m.key: m for m in CATALOG}
 
+# What was checked in the log, per mission, oldest first. Checking a mission is adding a Try here (and raising `done`)
+TRIES: dict[str, tuple[Try, ...]] = {
+  "base": (Try("2026-10-30T23:59", "rota 1", "7d2bedb", "ok", "melhor que a do Sato"),),
+  "ajuda-mesmo-sentido": (Try("2026-10-31T11:00", "rota 7", "1bd6c53", "ok", "torque mantido em 88–93%"),),
+  "estrada": (Try("2026-11-01T12:56", "rota 16", "17554ba", "ok", "98,8% engajado"),),
+  "filtro-baixa": (Try("2026-11-01T11:56", "rota 14", "e1241a1", "ok", "tremida abaixo de 22 km/h em 58–65% da de antes"),),
+  "balanco-normal": (Try("2026-11-02T13:10", "rota 2c", "3b759f6", "ok", "nota 9"),),
+  "mao-na-curva": (Try("2026-11-02T09:50", "rota 29", "d522577", "ok", "0 de 55 contra a mão"),),
+  "sinuosa": (Try("2026-11-01T10:28", "rota 0f", "1bd6c53", "partial", "falta força em 9 de 19"),),
+  "curva-fechada": (Try("2026-11-01T12:56", "rota 16", "17554ba", "ok", "não é o torque"),),
+  "alavanca-parada": (Try("2026-11-01T12:56", "rota 16", "17554ba", "ok", "4 de 4 sem acelerador"),),
+  "cancelar-alavanca": (Try("2026-11-01T12:56", "rota 16", "17554ba", "ok", "1 de 1 com o ACC ativo"),
+                        Try("2026-11-01T16:58", "rota 1c", "3070d0e", "ok", "4 de 4 com o ACC ativo")),
+  "retomar": (Try("2026-11-02T09:50", "rota 29", "d522577", "ok", "6 de 6 sem falha de ACC"),),
+  "descida": (Try("2026-11-02T13:10", "rota 2c", "3b759f6", "ok", "sem freada falsa"),),
+  "sair-sozinho": (Try("2026-11-01T16:58", "rota 1c", "3070d0e", "ok", "1 saída sozinho"),),
+  "long-primeira": (Try("2026-11-01T21:02", "rota 23", "5be82e8", "partial", "funciona, mas não está pronto para o trânsito"),),
+  "long-re": (Try("2026-11-01T23:17", "rota 26", "544108f", "ok", "ré com freio"),),
+  "marcar-10": (Try("2026-11-01T23:17", "rota 26", "544108f", "ok", "27 marcas"),),
+  "rodovia": (Try("2026-11-01T12:56", "rota 16", "17554ba", "ok"),),
+  "cidade": (Try("2026-11-02T09:50", "rota 29", "d522577", "ok"),),
+  "tunel": (Try("2026-11-01T10:28", "rota 0f", "1bd6c53", "ok"),),
+  # before the option: the number to compare with
+  "parar-perto": (Try("2026-11-03", "rota 31", "f203426", "base", "parou a 4,7 m, sem a opção"),),
+}
+
 # The next drive's route (owner, 03/11): one route, not one per version. The new tests come first, then what an older version
 # asked and isn't proved yet. It goes along with what the owner picked, never in its place.
 CURRENT = "00e5ba7"
@@ -226,7 +271,9 @@ def public() -> dict:
           "route": dict({k: list(x) if isinstance(x, tuple) else x for k, x in ROUTE.items()}, key=ROUTE_KEY),
           "missions": [{"key": m.key, "trail": m.trail, "title": m.title, "total": m.total, "how": m.how, "note": m.note, "why": m.why,
                         "steps": list(m.steps), "option": m.option, "lock": m.lock, "drive": m.drive, "detect": m.detect, "arg": m.arg,
-                        "done": m.done, "proof": m.proof, "version": m.version, "route": m.route, "when": m.when} for m in CATALOG]}
+                        "done": m.done, "proof": m.proof, "version": m.version, "route": m.route, "when": m.when, "goal": m.goal,
+                        "tries": [vars(t) for t in TRIES.get(m.key, ())]} for m in CATALOG],
+          "try_results": TRY_RESULTS}
 
 
 def clean(raw) -> dict:

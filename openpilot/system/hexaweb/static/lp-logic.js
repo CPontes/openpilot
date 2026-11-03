@@ -431,11 +431,31 @@
   // "Parei o teste" wait too, but never as progress (CTO review of app-08)
   const ADVANCED = ["done", "ok"];
   function advanced(p) { return !p.result || ADVANCED.includes(p.result); }
+  // A mission's history (owner, 03/11: "saber o quanto performou"): the tries checked in the log, newest first, and the
+  // owner's marks, each one "conferida" once a try covers its day. A mark is never a try by itself.
+  // a try checks the marks up to its time, or its whole day; a reference ("base", before the change) checks none
+  function dayEnd(iso) { const s = String(iso || ""), t = Date.parse(s.includes("T") ? s : s + "T23:59:59"); return isNaN(t) ? 0 : t / 1000; }
+  function checkedUntil(m) { return ((m && m.tries) || []).filter((x) => x.result !== "base").reduce((a, x) => Math.max(a, dayEnd(x.date)), 0); }
+  function markChecked(m, p, until) { return !!until && (p.t || 0) <= until; }
+  function missionHistory(m, pending) {
+    const until = checkedUntil(m);
+    const marks = (pending || []).filter((p) => p.key === m.key).map((p) => ({ t: p.t || 0, result: p.result || "done", checked: markChecked(m, p, until) }));
+    return { tries: ((m && m.tries) || []).slice().reverse(), marks: marks.sort((a, b) => b.t - a.t) };
+  }
+  // What was already checked or is complete, the latest try first: the "Feitas" screen. A reference alone ("base") is the
+  // number before the change, not a check
+  function missionsChecked(cat, prog) {
+    const last = (m) => (m.tries && m.tries.length ? m.tries[m.tries.length - 1].date : "");
+    const checked = (m) => (m.tries || []).some((x) => x.result !== "base");
+    return ((cat && cat.missions) || []).filter((m) => checked(m) || (prog && prog[m.key] && prog[m.key].full))
+      .map((m, i) => ({ m, i })).sort((a, b) => (last(b.m) > last(a.m) ? 1 : last(b.m) < last(a.m) ? -1 : a.i - b.i)).map((x) => x.m);
+  }
   function missionProgress(cat, state, trips) {
     const st = state || {}, answers = st.answers || {}, out = {};
     for (const m of (cat && cat.missions) || []) {
       const d = Math.min(m.total, Math.max(m.done || 0, answers[m.key] || 0, m.how === "auto" ? missionAuto(m, trips) : 0));
-      const mine = (st.pending || []).filter((p) => p.key === m.key), marks = mine.filter(advanced).length;
+      const until = checkedUntil(m);  // a mark a try already checked waits for nothing
+      const mine = (st.pending || []).filter((p) => p.key === m.key && !markChecked(m, p, until)), marks = mine.filter(advanced).length;
       out[m.key] = { d, total: m.total, full: d >= m.total, locked: !!m.lock && d < m.total, toCheck: Math.min(marks, m.total - d),
                      fails: mine.length - marks, active: (st.active || []).includes(m.key) };
     }
@@ -599,7 +619,7 @@
   // what "Apagar dados deste celular" takes from localStorage besides the copy: data, never the language or the view
   const DATA_KEYS = ["lpTrips", "lpMissionSnap"];
 
-  root.LPL = { copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
+  root.LPL = { copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
                tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

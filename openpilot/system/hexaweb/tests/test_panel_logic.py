@@ -683,3 +683,32 @@ def test_the_phone_counts_the_same_route_as_the_comma():
     st = M.clean({"active": ["noite", "fila"], "answers": answers})
     for key in (M.ROUTE_KEY, *M.OLD_ROUTES):
       assert run("applyQueue", st, [{"action": "pack", "key": key}], cat)["active"] == M.take_pack(st, key)["active"], (answers, key)
+
+
+def test_the_history_tells_each_try_and_which_marks_it_checked():  # owner, 03/11
+  import time
+
+  def day(iso, h):
+    return int(time.mktime(time.strptime(f"{iso} {h}", "%Y-%m-%d %H:%M")))
+  m = _m("x", "marca", 3, 1, tries=[{"date": "2026-11-01", "route": "rota 16", "version": "a1", "result": "ok", "measured": "4 de 4"},
+                                    {"date": "2026-11-03", "route": "rota 31", "version": "b2", "result": "partial"}])
+  pend = [{"key": "x", "t": day("2026-11-01", "10:00"), "result": "ok"}, {"key": "x", "t": day("2026-11-03", "22:00"), "result": "bad"},
+          {"key": "x", "t": day("2026-11-04", "08:00"), "result": "done"}, {"key": "y", "t": 5}]
+  h = run("missionHistory", m, pend)
+  assert [x["route"] for x in h["tries"]] == ["rota 31", "rota 16"]  # newest first
+  assert [(x["result"], x["checked"]) for x in h["marks"]] == [("done", False), ("bad", True), ("ok", True)]
+  p = run("missionProgress", {"missions": [m]}, {"pending": pend}, [])["x"]
+  assert p["toCheck"] == 1 and p["fails"] == 0  # what a try checked waits for nothing
+  assert run("missionProgress", {"missions": [dict(m, tries=[])]}, {"pending": pend}, [])["x"]["toCheck"] == 2  # no try: all wait
+  # a reference measured before the change checks none; a try with an hour checks only up to it
+  base = dict(m, tries=[{"date": "2026-11-03", "result": "base"}])
+  assert [x["checked"] for x in run("missionHistory", base, pend)["marks"]] == [False, False, False]
+  timed = dict(m, tries=[{"date": "2026-11-03T12:00", "result": "ok"}])
+  assert [x["checked"] for x in run("missionHistory", timed, pend)["marks"]] == [False, False, True]
+
+
+def test_done_lists_what_was_checked_latest_first():
+  cat = {"missions": [_m("a", "marca", tries=[{"date": "2026-11-01", "result": "ok"}]), _m("b", "marca"), _m("c", "cto", 1, 1),
+                      _m("d", "marca", tries=[{"date": "2026-11-02", "result": "bad"}]), _m("e", "marca", tries=[{"date": "2026-11-03", "result": "base"}])]}
+  prog = run("missionProgress", cat, {}, [])
+  assert [m["key"] for m in run("missionsChecked", cat, prog)] == ["d", "a", "c"]  # a reference alone isn't done

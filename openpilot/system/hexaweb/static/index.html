@@ -238,6 +238,7 @@
   .mrow .n { font-size: 13px; font-weight: 700; white-space: nowrap; color: var(--dim); }
   .mrow .n.half { color: var(--warn); } .mrow .n.full { color: var(--accent); }
   .mtag { display: block; font-size: 12px; font-weight: 700; }
+  .mrow .small { display: block; }
   .mbar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; display: flex; }
   .mbar span { height: 8px; }
   .msteps { margin: 0; padding-left: 22px; color: var(--muted); font-size: 15px; display: flex; flex-direction: column; gap: 6px; }
@@ -1589,6 +1590,39 @@ function mRow(m, p, onClick) {
   b.addEventListener("click", onClick);
   return b;
 }
+const TRY_COLOR = { ok: "var(--accent)", partial: "var(--warn)", bad: "var(--danger)", base: "var(--dim)" };
+function isoDay(iso) { const x = String(iso || "").split("T")[0].split("-"); return x.length === 3 ? `${x[2]}/${x[1]}` : String(iso || ""); }
+function tryLine(x) { return [isoDay(x.date), x.route, x.version].filter(Boolean).join(" · "); }
+function tryTag(x) { const g = el("span", "mtag", t((missions.try_results || {})[x.result] || x.result)); g.style.color = TRY_COLOR[x.result] || "var(--dim)"; return g; }
+// The mission's history: each try checked in the log, with its number, and the owner's marks (owner, 03/11)
+function historyCards(m) {
+  const h = LPL.missionHistory(m, missions.state.pending), out = [];
+  if (!h.tries.length && !h.marks.length) return out;
+  const c = el("section", "card stack"); c.style.gap = "8px"; c.append(el("b", "", t("Histórico")));
+  if (m.goal) c.append(el("span", "small", tf("Meta: {meta}", { meta: t(m.goal) })));
+  if (!h.tries.length) c.append(el("span", "desc", t("Ainda não conferida no log.")));
+  for (const x of h.tries) {
+    const row = el("div", "stack"); row.style.gap = "2px";
+    const top = el("div", "row"); top.append(el("span", "grow small", tryLine(x)), tryTag(x));
+    row.append(top); if (x.measured) row.append(el("span", "desc", t(x.measured)));
+    c.append(row);
+  }
+  out.push(c);
+  if (h.marks.length) {
+    const k = el("section", "card stack"); k.style.gap = "6px";
+    k.append(el("b", "", tf(h.marks.length === 1 ? "Sua marca · 1" : "Suas marcas · {n}", { n: h.marks.length })));
+    for (const x of h.marks.slice(0, 20)) {
+      const row = el("div", "row"); const at = x.t ? `${new Date(x.t * 1000).toLocaleDateString(L(), { day: "2-digit", month: "2-digit" })} ${hhmm(x.t)}` : "";
+      const st = el("span", "small", x.checked ? t("conferida") : t("a conferir")); st.style.color = x.checked ? "var(--accent)" : "var(--warn)";
+      row.append(el("span", "grow small", [at, t((MARK_RESULT[x.result] || MARK_RESULT.done))].filter(Boolean).join(" · ")), st);
+      k.append(row);
+    }
+    if (h.marks.length > 20) k.append(el("span", "small", tf("e mais {n}", { n: h.marks.length - 20 })));
+    out.push(k);
+  }
+  return out;
+}
+const MARK_RESULT = { done: "fiz", ok: "deu certo", bad: "não deu", stop: "parei o teste" };
 function openMission(key, from) { mScreen = { s: "missao", key, from: from || mScreen }; showView("missoes"); }
 function openMissions(scr) { mScreen = scr || { s: "trilhas" }; showView("missoes"); }
 // A mission picked or not, in one tap, next to its row: the owner takes as many as fit a drive (owner, 03/11)
@@ -1748,7 +1782,8 @@ function renderDriveMissions() {
   if (!act.length) return;
   const since = tripSince();
   const list = $("driveMissionList");
-  const sig = JSON.stringify([act.map((m) => m.key), missions.state.pending.length, L()]);
+  const lastMark = missions.state.pending[missions.state.pending.length - 1];  // the length stops changing at the cap
+  const sig = JSON.stringify([act.map((m) => m.key), missions.state.pending.length, lastMark && lastMark.mark, L()]);
   if (list.dataset.sig === sig) return;
   list.dataset.sig = sig; list.replaceChildren();
   for (const m of act) {
@@ -1869,6 +1904,8 @@ function renderMissions() {
       const n = el("span", "title", `${tr.d}/${tr.total}`); n.style.color = tr.seal ? "var(--accent)" : "var(--warn)";
       b.append(g, n); b.addEventListener("click", () => openMissions({ s: "trilha", tr: tr.key })); out.push(b);
     }
+    const done = LPL.missionsChecked(missions, prog);
+    if (done.length) { const fb = el("button", "btn dark", tf("Feitas e histórico · {n}", { n: done.length })); fb.type = "button"; fb.addEventListener("click", () => openMissions({ s: "feitas" })); out.push(fb); }
     const sb = el("button", "btn dark", tf("Selos · {d} de {n}", { d: LPL.missionTrails(missions, prog).filter((x) => x.seal).length, n: missions.trails.length })); sb.type = "button";
     sb.addEventListener("click", () => openMissions({ s: "selos" })); out.push(sb);
     out.push(el("div", "small", tf("Nível {n} de {m}. O nível é do LizPilot e só diz quanto do catálogo já foi testado: não libera nada no carro.", { n: lv.i + 1, m: missions.levels.length })));
@@ -1881,12 +1918,13 @@ function renderMissions() {
     out.push(list);
   } else if (s.s === "missao") {
     const m = mOf(s.key), p = prog[m.key], back = s.from && s.from.s ? s.from : { s: "trilha", tr: m.trail };
-    mBack(back.s === "trilhas" ? t("Missões") : back.s === "roteiro" ? t("Roteiro") : back.s === "resultado" ? t("Resultado") : t("Trilha"), back);
+    mBack(back.s === "trilhas" ? t("Missões") : back.s === "roteiro" ? t("Roteiro") : back.s === "resultado" ? t("Resultado") : back.s === "feitas" ? t("Feitas") : t("Trilha"), back);
     const head = el("div", "row"); head.insertAdjacentHTML("beforeend", ringSvg(p.d, p.total, 76, p.full ? "✓" : `${p.d}/${p.total}`));
     const g = el("div", "grow"); g.append(el("div", "small", t(missions.trails.find((x) => x.key === m.trail).title)));
     const tt = el("div", "big", t(m.title)); g.append(tt);
     const tag = el("span", "mtag", t(howOf(m))); tag.style.color = HOW_COLOR[m.how]; g.append(tag); head.append(g); out.push(head);
     if (p.full) { const c = el("section", "card ok"); c.append(el("span", "title", t("Completa.")), document.createTextNode(" " + t(m.proof || ""))); out.push(c); }
+    out.push(...historyCards(m));
     if (m.why) { const c = el("section", "card stack"); c.style.gap = "4px"; c.append(el("b", "", t("Por que importa")), el("span", "desc", t(m.why))); out.push(c); }
     if (m.steps.length) {
       const c = el("section", "card stack"); c.style.gap = "8px"; c.append(el("b", "", t("Como fazer")));
@@ -1995,6 +2033,26 @@ function renderMissions() {
       if (pk && res.snap.active.some((k) => (mOf(k) || {}).route)) out.push(el("section", "card att", t(pk.after)));
       const ok = el("button", "btn dark", t("Ok, escolher as próximas")); ok.type = "button";
       ok.addEventListener("click", () => { store(MISSION_SNAP, null); openMissions(); }); out.push(ok);
+    }
+  } else if (s.s === "feitas") {
+    mBack(t("Missões"), { s: "trilhas" });
+    out.push(h1(t("Feitas")), el("p", "sub", t("O que já foi conferido no log, a mais recente primeiro. Toque para ver cada vez e as suas marcas.")));
+    for (const tr of missions.trails) {
+      const ms = LPL.missionsChecked(missions, prog).filter((m) => m.trail === tr.key);
+      if (!ms.length) continue;
+      out.push(el("div", "label", t(tr.title)));
+      const list = el("div", "card list"); list.style.padding = "4px 16px";
+      for (const m of ms) {
+        const tr = m.tries || [], x = tr[tr.length - 1], b = el("button", "mrow" + (prog[m.key].full ? " done" : "")); b.type = "button";
+        b.insertAdjacentHTML("beforeend", mIcon(prog[m.key]));
+        const mid = el("span"); mid.style.minWidth = "0"; mid.append(el("b", "", t(m.title)));
+        if (x) { mid.append(el("span", "small", tryLine(x))); if (x.measured) mid.append(el("span", "small", t(x.measured))); }
+        else mid.append(el("span", "small", t(m.proof || "")));
+        if (tr.length > 1) mid.append(el("span", "small", tf("{n} vezes conferida", { n: m.tries.length })));
+        b.append(mid, x ? tryTag(x) : el("span", "n full", mCount(prog[m.key])));
+        b.addEventListener("click", () => openMission(m.key, s)); list.append(b);
+      }
+      out.push(list);
     }
   } else if (s.s === "selos") {
     mBack(t("Missões"), { s: "trilhas" });
