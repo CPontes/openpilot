@@ -473,7 +473,37 @@
     return { ok, ask: !!car.on && !!car.moving && !ok };
   }
 
-  root.LPL = { missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
+  // ----- the phone's own copy (APP-01): it opens with what it has, then asks the comma only for what changed -----
+  // /api/trips?since=<v>: {same} nothing new · {delta, trips: only the changed, ids: every drive, hidden} · or the whole list.
+  // missing: the comma listed a drive this copy never had (a copy cut short): ask for the whole list once.
+  function applyTrips(base, ans) {
+    const b = base || {};
+    const kept = { trips: b.trips || [], marks: b.marks || [], v: b.v || "" };
+    if (!ans) return kept;
+    if (ans.same) return Object.assign(kept, { v: ans.v || kept.v });
+    const marks = Array.isArray(ans.marks) ? ans.marks : kept.marks;
+    if (!ans.delta) return { trips: ans.trips || [], marks, v: ans.v || "" };
+    const byId = new Map(kept.trips.map((t) => [t.id, t]));
+    for (const t of ans.trips || []) byId.set(t.id, t);
+    const ids = ans.ids || [], hidden = new Set(ans.hidden || []);
+    const missing = ids.filter((id) => !byId.has(id)).length;
+    return { trips: ids.filter((id) => byId.has(id)).map((id) => Object.assign({}, byId.get(id), { hidden: hidden.has(id) })), marks, v: ans.v || "", missing };
+  }
+  // marks, missions: small, so the whole when it changed; {same} keeps the copy
+  function applyWhole(base, ans) {
+    if (!ans) return base || null;
+    if (ans.same) return base ? Object.assign({}, base, { v: ans.v || base.v }) : null;
+    return ans;
+  }
+  function since(v) { return v ? "since=" + encodeURIComponent(v) : ""; }
+  // what the copy keeps of a drive's path: nothing with "guardar sem o mapa" (the paths say where the car went)
+  function keepPath(got, noMap) { return !noMap && got && Array.isArray(got.points) && got.points.length ? { points: got.points, v: got.v || "" } : null; }
+  // Read only: without the comma, or before the first answer of a page opened from the copy. Commands wait for the comma.
+  function readOnly(online, fromCopy) { return !online || !!fromCopy; }
+  // what "Apagar dados deste celular" takes from localStorage besides the copy: data, never the language or the view
+  const DATA_KEYS = ["lpTrips", "lpMissionSnap"];
+
+  root.LPL = { missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
                tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

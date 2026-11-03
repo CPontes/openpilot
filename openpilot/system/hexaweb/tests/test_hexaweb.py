@@ -1308,3 +1308,145 @@ def test_did_it_now_is_a_real_mark_with_the_mission(panel):
   assert panel.store.get_bool(marks.BOOKMARK_REQUEST_PARAM)  # the comma raises its own bookmark: the minute is in the log
   assert panel.json("/api/missions", {"action": "mark", "key": "fila"}, token=tok)[0] == 429  # same pace as Marcar
   assert panel.json("/api/missions", {"action": "mark", "key": "portas"}, token=tok)[0] == 400  # done parked, answered, not marked
+
+
+# ----- sync (APP-01): the phone keeps its own copy and asks only for what's new
+
+def two_old_trips(panel, tmp_path):
+  import os
+  for route in ("0000000e--1111111111", "0000000f--8784034901"):
+    for n in (0, 1):
+      d = tmp_path / f"{route}--{n}"
+      d.mkdir()
+      (d / "qlog.zst").write_bytes(b"")
+      os.utime(d / "qlog.zst", (500, 500))  # drives from before the phone's cursor
+  panel.backend.log_root = str(tmp_path)
+  summary = {"segments": 2, "km": 3., "sv": hexaweb.SUMMARY_VERSION, "at": 600}
+  panel.store.put(hexaweb.SUMMARY_PARAM, {"0000000e--1111111111": dict(summary), "0000000f--8784034901": dict(summary)})
+
+
+class Spy:
+  """Counts what a call reads: the summaries param, a log, a trip's path file."""
+  def __init__(self, panel, monkeypatch):
+    self.reads: list[str] = []
+    get = panel.store.get
+    monkeypatch.setattr(panel.store, "get", lambda key: self.reads.append(key) or get(key))
+    read_text = Path.read_text
+    monkeypatch.setattr(Path, "read_text", lambda p, *a, **k: self.reads.append(f"file:{p.name}") or read_text(p, *a, **k))
+    monkeypatch.setattr(hexaweb.timeline, "read_rlog", lambda *a, **k: self.reads.append("rlog") or [])
+    panel.backend._summarize = lambda *a, **k: self.reads.append("summarize")
+
+  def big(self):
+    return [r for r in self.reads if r in (hexaweb.SUMMARY_PARAM, marks.MARKS_PARAM, "rlog", "summarize") or r.startswith("file:")]
+
+
+def test_sync_a_second_call_with_nothing_new_reads_no_log_and_no_summaries(panel, tmp_path, monkeypatch):
+  two_old_trips(panel, tmp_path)
+  token = panel.pair()
+  full = panel.json("/api/trips", token=token)[1]
+  assert len(full["trips"]) == 2 and "delta" not in full and full["v"] and not full["pending"]
+  spy = Spy(panel, monkeypatch)
+  panel.now += 5
+  status, again = panel.json("/api/trips?since=" + full["v"], token=token)
+  assert status == 200 and again == {"same": True, "v": full["v"]}
+  assert spy.big() == []  # a folder listing at most, never a log nor the 300 summaries
+
+
+def test_sync_brings_only_the_drive_that_changed(panel, tmp_path):
+  two_old_trips(panel, tmp_path)
+  token = panel.pair()
+  v = panel.json("/api/trips", token=token)[1]["v"]
+  panel.now += 1000  # later, the comma keeps a new summary of one drive, and the owner hides the other
+  kept = panel.store.get(hexaweb.SUMMARY_PARAM)
+  kept["0000000f--8784034901"] = dict(kept["0000000f--8784034901"], km=9., at=int(panel.now))
+  panel.backend._put(hexaweb.SUMMARY_PARAM, kept)
+  assert panel.json("/api/trip/hide", {"route": "0000000e--1111111111", "hidden": True}, token=token)[0] == 200
+  status, d = panel.json("/api/trips?since=" + v, token=token)
+  assert status == 200 and d["delta"] is True
+  assert [t["id"] for t in d["trips"]] == ["0000000f--8784034901"] and d["trips"][0]["summary"]["km"] == 9.
+  assert sorted(d["ids"]) == ["0000000e--1111111111", "0000000f--8784034901"] and d["hidden"] == ["0000000e--1111111111"]
+  assert "marks" not in d  # no new mark: the phone keeps its own
+  assert d["v"] != v and panel.json("/api/trips?since=" + d["v"], token=token)[1]["same"] is True
+
+
+def test_sync_a_new_mark_comes_with_the_delta(panel, tmp_path):
+  two_old_trips(panel, tmp_path)
+  token = panel.pair()
+  v = panel.json("/api/trips", token=token)[1]["v"]
+  assert panel.json("/api/mark", {"reason": "balancou"}, token=token)[0] == 200
+  d = panel.json("/api/trips?since=" + v, token=token)[1]
+  assert d["delta"] and d["trips"] == [] and [m["reason"] for m in d["marks"]] == ["balancou"]
+
+
+def test_sync_a_bad_cursor_or_a_clock_that_went_back_gets_everything(panel, tmp_path):
+  two_old_trips(panel, tmp_path)
+  token = panel.pair()
+  v = panel.json("/api/trips", token=token)[1]["v"]
+  for since in ("x", "../etc", "abc.def", v.rsplit(".", 1)[0] + ".99999999999"):
+    d = panel.json("/api/trips?since=" + since, token=token)[1]
+    assert len(d["trips"]) == 2 and "delta" not in d
+
+
+def test_sync_drives_still_to_summarize_are_asked_for_again(panel, tmp_path):
+  two_old_trips(panel, tmp_path)
+  panel.store.put(hexaweb.SUMMARY_PARAM, {})
+  jobs = []
+  panel.backend._spawn = jobs.append
+  token = panel.pair()
+  v = panel.json("/api/trips", token=token)[1]["v"]
+  assert len(jobs) == 1
+  jobs.clear()
+  panel.backend._summary_busy = False  # the job stopped (the car turned on) before finishing
+  d = panel.json("/api/trips?since=" + v, token=token)[1]
+  assert "same" not in d and len(jobs) == 1  # not "nothing new": the summaries start again
+
+
+def test_sync_trips_never_with_the_car_on(panel, tmp_path):
+  two_old_trips(panel, tmp_path)
+  token = panel.pair()
+  v = panel.json("/api/trips", token=token)[1]["v"]
+  panel.vs = VehicleState(onroad=True, parked=True, standstill=True)
+  assert panel.json("/api/trips?since=" + v, token=token)[0] == 409
+
+
+def test_sync_marks_and_missions_answer_same_when_nothing_changed(panel, monkeypatch):
+  token = panel.pair()
+  m = panel.json("/api/marks", token=token)[1]
+  ms = panel.json("/api/missions", token=token)[1]
+  assert m["v"] and ms["v"] and ms["missions"]
+  spy = Spy(panel, monkeypatch)
+  assert panel.json("/api/marks?since=" + m["v"], token=token)[1] == {"same": True, "v": m["v"]}
+  assert panel.json("/api/missions?since=" + ms["v"], token=token)[1] == {"same": True, "v": ms["v"]}
+  assert spy.big() == [] and "HexaMissions" not in spy.reads
+  panel.json("/api/mark", {"reason": "curva"}, token=token)
+  m2 = panel.json("/api/marks?since=" + m["v"], token=token)[1]
+  assert m2["v"] != m["v"] and m2["marks"][0]["reason"] == "curva"
+  key = "noite"
+  assert panel.json("/api/missions", {"action": "take", "key": key}, token=token)[0] == 200
+  ms2 = panel.json("/api/missions?since=" + ms["v"], token=token)[1]
+  assert ms2["v"] != ms["v"] and key in ms2["state"]["active"]
+
+
+def test_sync_a_path_the_phone_has_is_not_read_again(panel, tmp_path, monkeypatch):
+  two_old_trips(panel, tmp_path)
+  token = panel.pair()
+  panel.backend._keep_path("0000000f--8784034901", [[1.0, 2.0, 0, 0], [1.001, 2.0, 0, 10]])
+  p = panel.json("/api/trip/path?route=0000000f--8784034901", token=token)[1]
+  assert len(p["points"]) == 2 and p["v"]
+  spy = Spy(panel, monkeypatch)
+  assert panel.json("/api/trip/path?route=0000000f--8784034901&since=" + p["v"], token=token)[1] == {"same": True, "v": p["v"]}
+  assert spy.big() == []
+
+
+def test_sync_a_param_another_process_wrote_changes_the_version(tmp_path):
+  class FileStore(FakeStore):  # as Params: one file per key
+    def get_param_path(self, key):
+      return str(tmp_path / key)
+
+  store = FileStore()
+  b = hexaweb.PanelBackend(store, lambda: VehicleState(onroad=False))
+  v = b._stamp(marks.MARKS_PARAM)
+  assert b._stamp(marks.MARKS_PARAM) == v
+  (tmp_path / marks.MARKS_PARAM).write_text("[]")  # written by someone else: no _put here
+  assert b._stamp(marks.MARKS_PARAM) != v
+  assert hexaweb.PanelBackend(store, lambda: VehicleState(onroad=False))._stamp(marks.MARKS_PARAM) != b._stamp(marks.MARKS_PARAM)  # a restart

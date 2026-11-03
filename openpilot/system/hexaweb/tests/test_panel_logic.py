@@ -386,7 +386,13 @@ def test_a_hard_brake_shows_on_its_trip_page():
 
 def test_unpairing_leaves_no_list_of_drives_on_the_phone():
   html = (Path(__file__).parents[1] / "static" / "index.html").read_text()
-  assert 'if (!v) { store("lpTrips", null); trips = null; }' in html
+  assert 'if (!v) wipeBase(); }' in html  # APP-01: the whole copy leaves, not only the list
+  wipe = html[html.index("async function wipeBase()"):]
+  wipe = wipe[:wipe.index("\n}\n")]
+  assert "await DB.clear();" in wipe and "LPL.DATA_KEYS" in wipe and "trips = null" in wipe and "paths.clear()" in wipe
+  keys = subprocess.run([NODE, "-e", f"process.stdout.write(JSON.stringify(require({json.dumps(str(LOGIC))}).DATA_KEYS))"],
+                        capture_output=True, text=True, timeout=30, check=True).stdout
+  assert set(json.loads(keys)) == {"lpTrips", "lpMissionSnap"}  # data only: the language and the view stay
 
 
 def test_no_path_yet_is_not_no_gps():
@@ -498,3 +504,59 @@ def test_the_level_and_what_moved_after_a_drive():
   assert order[0] == "fila" and order[-2:] == ["lento", "inst"] and order.index("aeb") > order.index("portas")
   tr = run("missionTrails", CAT, after)[0]
   assert tr["d"] == 2 and tr["next"] == "Fila" and not tr["seal"]
+
+
+# ----- the phone's own copy (APP-01)
+
+def ctrip(i, km=1., hidden=False):
+  return {"id": i, "mtime": 100, "summary": {"km": km}, "hidden": hidden}
+
+
+def test_copy_nothing_new_keeps_everything():
+  base = {"trips": [ctrip("b"), ctrip("a")], "marks": [{"id": "m1"}], "v": "v1"}
+  out = run("applyTrips", base, {"same": True, "v": "v1"})
+  assert out == {"trips": base["trips"], "marks": base["marks"], "v": "v1"}
+
+
+def test_copy_a_delta_replaces_only_the_drive_that_changed_and_keeps_the_comma_order():
+  base = {"trips": [ctrip("b"), ctrip("a")], "marks": [{"id": "m1"}], "v": "v1"}
+  out = run("applyTrips", base, {"delta": True, "trips": [ctrip("c"), ctrip("a", 9.)], "ids": ["c", "b", "a"], "hidden": ["b"], "v": "v2"})
+  assert [t["id"] for t in out["trips"]] == ["c", "b", "a"] and out["trips"][2]["summary"]["km"] == 9.
+  assert [t["hidden"] for t in out["trips"]] == [False, True, False]
+  assert out["marks"] == [{"id": "m1"}] and out["v"] == "v2" and out["missing"] == 0  # no marks in the answer: the copy's stay
+
+
+def test_copy_a_drive_the_comma_deleted_leaves_and_new_marks_replace():
+  base = {"trips": [ctrip("b"), ctrip("a")], "marks": [{"id": "m1"}], "v": "v1"}
+  out = run("applyTrips", base, {"delta": True, "trips": [], "ids": ["b"], "hidden": [], "marks": [{"id": "m2"}], "v": "v2"})
+  assert [t["id"] for t in out["trips"]] == ["b"] and out["marks"] == [{"id": "m2"}]
+
+
+def test_copy_cut_short_asks_for_the_whole_list():
+  out = run("applyTrips", {"trips": [ctrip("a")], "v": "v1"}, {"delta": True, "trips": [], "ids": ["z", "a"], "hidden": [], "v": "v2"})
+  assert out["missing"] == 1
+
+
+def test_copy_a_whole_answer_replaces_it():
+  out = run("applyTrips", {"trips": [ctrip("a")], "marks": [{"id": "m1"}], "v": "v1"}, {"trips": [ctrip("x")], "marks": [], "v": "v9"})
+  assert [t["id"] for t in out["trips"]] == ["x"] and out["marks"] == [] and out["v"] == "v9"
+  assert run("applyTrips", None, None) == {"trips": [], "marks": [], "v": ""}
+
+
+def test_copy_marks_and_missions_whole_or_kept():
+  base = {"marks": [1], "v": "a"}
+  assert run("applyWhole", base, {"same": True, "v": "a"}) == base
+  assert run("applyWhole", base, {"marks": [2], "v": "b"}) == {"marks": [2], "v": "b"}
+  assert run("applyWhole", None, {"same": True, "v": "a"}) is None
+  assert run("since", "a.b.1") == "since=a.b.1" and run("since", "") == ""
+
+
+def test_copy_without_the_map_keeps_no_path():
+  got = {"points": [[1, 2, 0, 0]], "v": "p1"}
+  assert run("keepPath", got, False) == got
+  assert run("keepPath", got, True) is None and run("keepPath", {"status": "none"}, False) is None
+
+
+def test_copy_read_only_without_the_comma_or_before_its_first_answer():
+  assert run("readOnly", True, False) is False
+  assert run("readOnly", False, False) is True and run("readOnly", True, True) is True

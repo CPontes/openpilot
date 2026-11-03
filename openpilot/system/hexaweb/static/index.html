@@ -246,7 +246,8 @@
   .undo { position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 21; width: min(528px, calc(100% - 32px));
           display: flex; align-items: center; gap: 12px; background: #1C242B; border: 1px solid var(--line-2); color: var(--text); padding: 4px 8px 4px 16px; border-radius: 14px;
           font-size: 15px; font-weight: 600; box-shadow: 0 10px 28px rgba(0, 0, 0, .55); }
-  .offline [data-view] { opacity: .55; }
+  .readonly :is(#fab, #tripHide, #addRadar, #addSignal, #addBump, #radarUpdate, #radarImport, #exportBtn, #addReasonBtn, #pendingBtn, #phoneList button, #missionGo,
+    [data-subview="opcoes"] :is(button, select, .switch, input:not(#optSearch)), [data-subview="comma"] :is(button, select, input)) { opacity: .45; }
   .steps { list-style: none; margin: 18px 0 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }
   .steps li { display: flex; gap: 14px; align-items: flex-start; }
   .steps .n { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--switch-off); color: var(--dim); display: flex; align-items: center; justify-content: center; font-weight: 700; }
@@ -292,7 +293,7 @@
       <span class="conn"><span class="dot"></span><span id="conn">—</span></span>
     </div>
     <div class="card att hidden" id="offlineCard" role="status">
-      <div class="title" data-t>Sem conexão com o comma</div>
+      <div class="title" data-t>Sem o comma: só leitura</div>
       <div class="desc" id="offlineDesc"></div>
     </div>
 
@@ -559,6 +560,16 @@
         <div class="card"><div class="title num" id="thisAddress">—</div>
           <div class="desc" id="thisNote"></div>
           <div class="desc" id="thisHow" style="margin-top:6px"></div></div>
+        <div class="label" data-t>Dados neste celular</div>
+        <section class="card stack" id="baseCard" style="gap:8px">
+          <div class="title" id="baseWhat">—</div>
+          <div class="desc" data-t>Viagens, marcas e Missões ficam guardadas neste celular, para abrir sem o comma. Nada vai para a internet.</div>
+          <div class="desc hidden" id="baseAddr" style="color:var(--warn)" data-t>Esta cópia fica presa a este endereço. Se o endereço do comma mudar, ela some: abra pelo lizpilot.local.</div>
+          <label class="confirm" style="margin:4px 0 0"><input type="checkbox" id="noMap"><span data-t>Guardar sem o mapa</span></label>
+          <div class="small" data-t>Os caminhos mostram por onde o carro passou. Ligado, o celular não guarda nenhum: o mapa só aparece com o comma por perto.</div>
+          <button class="link danger" id="wipeBtn" type="button" data-t>Apagar dados deste celular</button>
+          <div class="small" data-t>Apaga só a cópia deste celular. No comma fica tudo, e ele manda de novo na próxima vez.</div>
+        </section>
         <button class="link danger" id="logoutBtn" type="button" data-t>Desconectar este celular</button>
       </div>
     </div>
@@ -667,7 +678,7 @@ const API_TIMEOUT_MS = 8000;
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
 function store(k, v) { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }
 function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
-function saveToken(v) { token = v; store("hexaToken", v); if (!v) { store("lpTrips", null); trips = null; } }  // unpaired: the trip list leaves the phone too
+function saveToken(v) { token = v; store("hexaToken", v); if (!v) wipeBase(); }  // unpaired: the phone's copy leaves the phone too
 function toast(msg) { const e = $("toast"); e.textContent = msg; e.classList.add("show"); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove("show"), 2800); }
 const hhmm = (s) => new Date(s * 1000).toLocaleTimeString(L(), { hour: "2-digit", minute: "2-digit" });
 const hhmmss = (s) => new Date(s * 1000).toLocaleTimeString(L(), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -735,8 +746,90 @@ function langPickers() {
   });
 }
 
+// ----- the phone's own copy (APP-01): IndexedDB, on this address only. Nothing leaves the phone, nothing goes to the internet -----
+// state (a read-only copy of the options), trips (+ every mark), marks, missions, path:<route>, meta {at}. Opens with it, then
+// asks the comma only for what changed (?since=). Without the comma: read only, with the hour of the data.
+const DB = (() => {
+  let db = null;
+  const mem = new Map();  // no IndexedDB (a private tab): page memory only
+  const ready = new Promise((ok) => {
+    try {
+      const r = indexedDB.open("lizpilot", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("kv");
+      r.onsuccess = () => { db = r.result; ok(); };
+      r.onerror = r.onblocked = () => ok();
+    } catch (e) { ok(); }
+  });
+  function run(mode, fn, fallback) {
+    return ready.then(() => new Promise((ok) => {
+      if (!db) { ok(fallback()); return; }
+      try { const tx = db.transaction("kv", mode), req = fn(tx.objectStore("kv")); tx.oncomplete = () => ok(req.result); tx.onerror = tx.onabort = () => ok(undefined); }
+      catch (e) { ok(undefined); }
+    }));
+  }
+  return {
+    get: (k) => run("readonly", (st) => st.get(k), () => mem.get(k)),
+    put: (k, v) => run("readwrite", (st) => st.put(v, k), () => { mem.set(k, v); }),
+    del: (k) => run("readwrite", (st) => st.delete(k), () => { mem.delete(k); }),
+    keys: () => run("readonly", (st) => st.getAllKeys(), () => [...mem.keys()]),
+    clear: () => run("readwrite", (st) => st.clear(), () => { mem.clear(); }),
+  };
+})();
+let fromBase = false, baseAt = 0, baseSeenAt = 0, stateJson = "", tripsV = "", noMap = load("lpNoMap") === "1";
+function baseWhen() {
+  const at = Math.max(lastOk || 0, baseAt || 0);
+  return at ? (isToday(at / 1000) ? hhmm(at / 1000) : dayTime(at / 1000)) : "—";
+}
+function roReason() { return tf("Sem o comma: só leitura, dados de {hora}. Conecte o celular à rede do comma para mudar.", { hora: baseWhen() }); }
+function baseSeen() {  // the hour of the data: the last answer from the comma, kept at most once a minute
+  if (Date.now() - baseSeenAt < 60000) return;
+  baseSeenAt = baseAt = Date.now(); DB.put("meta", { at: baseAt });
+}
+async function baseLoad() {
+  const [meta, st, tr, mk, ms] = await Promise.all(["meta", "state", "trips", "marks", "missions"].map((k) => DB.get(k)));
+  try { const old = JSON.parse(load("lpTrips") || "null"); if (!tr && old && Array.isArray(old.trips)) trips = old.trips; } catch (e) {}  // before the copy
+  store("lpTrips", null);
+  if (meta) baseAt = meta.at || 0;
+  if (tr && Array.isArray(tr.trips)) { trips = tr.trips; histMarks = tr.marks || null; tripsV = tr.v || ""; }
+  if (mk && Array.isArray(mk.marks)) renderMarks(mk);
+  if (ms && Array.isArray(ms.missions)) missions = ms;
+  if (st && st.vehicle && st.groups) {  // how the car was is not known now: never the driving screen from a copy
+    fromBase = true; document.body.classList.add("readonly");
+    render(Object.assign({}, st, { vehicle: { onroad: false } }), true);
+    $("conn").textContent = t("procurando o comma…");
+    if (missions) setTimeout(() => { renderMissionCard(); renderReadyMissions(); }, 0);
+    setTimeout(() => { if (fromBase && online) setOnline(false); }, 1500);  // no answer yet: say it, the copy is on the screen
+  }
+  return !!(st || tr);
+}
+async function wipeBase() {
+  await DB.clear();
+  for (const k of LPL.DATA_KEYS) store(k, null);
+  trips = null; histMarks = null; tripsV = ""; missions = null; stateJson = ""; baseAt = 0; baseSeenAt = 0; paths.clear(); mapSig = ""; histSig = "";
+  marksState = { reasons: marksState.reasons || [], marks: [], pending: 0 };
+}
+async function renderBase() {
+  const keys = await DB.keys() || [];
+  const n = (trips || []).length, p = keys.filter((k) => String(k).startsWith("path:")).length;
+  $("baseWhat").textContent = n ? tf("{n} viagens e {p} mapas guardados · dados de {hora}", { n, p, hora: baseWhen() }) : t("Nada guardado ainda.");
+  $("baseAddr").classList.toggle("hidden", location.hostname.toLowerCase() === LPL.FIXED_HOST);
+  $("noMap").checked = noMap;
+}
+document.addEventListener("click", (e) => {  // read only: a command never leaves, and says why
+  if (!LPL.readOnly(online, fromBase)) return;
+  const c = e.target.closest(RO_CMDS);
+  if (!c) return;
+  e.preventDefault(); e.stopPropagation(); toast(roReason());
+}, true);
+const RO_CMDS = '#fab, #tripHide, #addRadar, #addSignal, #addBump, #radarUpdate, #radarImport, #exportBtn, #addReasonBtn, #pendingBtn, #phoneList button, #missionGo, ' +
+  '[data-subview="opcoes"] :is(button, select, .switch, input:not(#optSearch)), [data-subview="comma"] :is(button, select, input)';
+
 // ----- network: nothing old passes as current, and nothing can be touched that wouldn't reach the comma -----
 async function api(path, body) {
+  if (body !== undefined && path !== "/api/pair" && path !== "/api/logout" && LPL.readOnly(online, fromBase)) {  // read only: nothing is sent
+    failures = 0; refresh();
+    toast(roReason()); return { status: 0, data: { error: roReason() } };
+  }
   const opts = { method: body === undefined ? "GET" : "POST", headers: {} };
   if (token) opts.headers.Authorization = "Bearer " + token;
   if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
@@ -751,6 +844,7 @@ async function api(path, body) {
   if (data && typeof data.error === "string") data.error = t(data.error);
   if (data && typeof data.message === "string") data.message = t(data.message);
   if (r.status === 401) { saveToken(null); show("pair"); }
+  if (r.status !== 0) setTimeout(baseSeen, 0);
   return { status: r.status, data };
 }
 
@@ -759,14 +853,13 @@ function setOnline(on) {
   if (on !== online) {
     online = on;
     document.body.classList.toggle("offline", !on);
-    document.querySelectorAll("[data-view], #fab").forEach((e) => { e.inert = !on; });
+    document.body.classList.toggle("readonly", LPL.readOnly(on, fromBase));
     $("offlineCard").classList.toggle("hidden", on);
     if (view === "inicio" && driving) renderDrive();
   }
   if (!on) {
     $("tabs").querySelector('[data-go="pontos"]').classList.remove("near");
-    const at = lastOk ? new Date(lastOk).toLocaleTimeString(L(), { hour: "2-digit", minute: "2-digit" }) : "—";
-    $("offlineDesc").textContent = tf("Dados de {hora}. Tentando de novo…\nConfira se o celular está na rede do comma. Se o endereço mudou, leia o QR no comma.", { hora: at });
+    $("offlineDesc").textContent = tf("Dados de {hora}. Opções, ajustes e marcas voltam quando o celular estiver na rede do comma. Se o endereço mudou, leia o QR no comma.", { hora: baseWhen() });
     $("conn").textContent = t("sem conexão");
   }
 }
@@ -793,7 +886,7 @@ function showSub(name) {
   document.querySelectorAll("[data-sub]").forEach((b) => b.setAttribute("aria-selected", b.dataset.sub === name ? "true" : "false"));
   document.querySelectorAll("[data-subview]").forEach((e) => e.classList.toggle("hidden", e.dataset.subview !== name));
   if (name === "comma") { refreshUpdate(); refreshHealth(); refreshCommaCtl(); }
-  if (name === "celulares") refreshPhones();
+  if (name === "celulares") { refreshPhones(); renderBase(); }
 }
 
 function refreshView() {
@@ -821,7 +914,11 @@ function show(which) {
 }
 
 // ----- state: car, options, history -----
-function render(s) {
+function render(s, copy) {
+  if (!copy) {
+    if (fromBase) { fromBase = false; document.body.classList.toggle("readonly", !online); }
+    const j = JSON.stringify(s); if (j !== stateJson) { stateJson = j; DB.put("state", s); }
+  }
   state = s;
   titles = s.titles || {};
   const v = s.vehicle;
@@ -1247,7 +1344,11 @@ function renderMarks(m) {
   if (view === "inicio" && !driving) renderGarage();
 }
 
-async function refreshMarks() { const r = await api("/api/marks"); if (r.status === 200) renderMarks(r.data); }
+async function refreshMarks() {
+  if (!online) return;
+  const r = await api("/api/marks" + (marksState.v ? "?" + LPL.since(marksState.v) : ""));
+  if (r.status === 200 && !r.data.same) { renderMarks(r.data); DB.put("marks", r.data); }
+}
 
 // Nothing exists until Salvar: a tap only opens the box. The tap's time goes along, because writing takes a while.
 async function openMark(mark, reason) {
@@ -1362,9 +1463,9 @@ const MISSION_SNAP = "lpMissionSnap";
 async function refreshMissions() {
   if (Date.now() - missionsAt < 2500) return;
   missionsAt = Date.now();
-  const r = await api("/api/missions");
-  if (r.status !== 200) return;
-  missions = r.data;
+  const r = online ? await api("/api/missions" + (missions && missions.v ? "?" + LPL.since(missions.v) : "")) : { status: 0, data: {} };
+  if (r.status === 200 && !r.data.same) { missions = LPL.applyWhole(missions, r.data); DB.put("missions", missions); }  // same: the copy is the comma's
+  if (!missions) return;  // without the comma, the copy is drawn
   renderMissionCard();
   renderReadyMissions();
   if (view === "missoes") renderMissions();
@@ -1669,11 +1770,15 @@ function splitBar(box, split) {
 }
 async function refreshTrips(force) {
   if (!force && Date.now() - tripsAt < 30000) { renderTrips(); return; }
-  if (carOn) { trips = null; renderTrips(); return; }
-  const r = await api("/api/trips");
+  if (carOn || !online) { renderTrips(); return; }  // the comma reads no log with the car on; the phone's copy stays
+  const r = await api("/api/trips" + (trips && tripsV ? "?" + LPL.since(tripsV) : ""));
   tripsAt = r.status === 200 && r.data.pending ? Date.now() - 25000 : Date.now();  // still reading drives: ask again in 5 s
-  if (r.status === 200) { trips = r.data.trips; histMarks = r.data.marks || null; tripsPending = r.data.pending_n || 0; cacheTrips(); }
-  else if (r.status !== 0) trips = null;  // no answer from the comma: the last list stays on the screen
+  if (r.status === 200) {
+    const b = LPL.applyTrips({ trips: trips || [], marks: histMarks || [], v: tripsV }, r.data);
+    if (b.missing) { tripsV = ""; tripsAt = 0; return refreshTrips(true); }  // a copy cut short: the whole list once
+    trips = b.trips; histMarks = b.marks; tripsV = b.v; tripsPending = r.data.same ? 0 : r.data.pending_n || 0;
+    if (!r.data.same) cacheTrips();
+  }  // no answer, or the car on: the copy stays on the screen
   renderTrips(r.status === 200 ? "" : (r.data.error || ""));
   if (view === "inicio" && !driving) renderGarage();
 }
@@ -1685,8 +1790,7 @@ let tripsPending = 0, mapSig = "", tileFails = 0, histMarks = null;
 function allMarks() { return LPL.mergeMarks(marksState.marks, histMarks); }  // /api/marks brings the newest, the history needs every one
 let streets = load("lpStreets") === "1";  // the street map behind the path: off unless turned on on this phone (CTO, 02/11)
 const paths = new Map();  // route → { points } or { status }: page memory only
-function cacheTrips() { if (trips) store("lpTrips", JSON.stringify({ at: Date.now(), trips })); }
-try { const c = JSON.parse(load("lpTrips") || "null"); if (c && Array.isArray(c.trips)) trips = c.trips; } catch (e) {}  // opens with the last list
+function cacheTrips() { if (trips) DB.put("trips", { trips, marks: histMarks || [], v: tripsV }); }  // the phone's copy (baseLoad opens with it)
 function markText(m) {
   return [t(m.label || ""), m.note || "", m.source === "auto" ? t("automática") : "", m.source === "comma" ? t("bandeira") : ""].join(" ");
 }
@@ -1822,8 +1926,15 @@ function drawTrip(tr) {
   }
 }
 async function fetchPath(tr) {
-  const r = await api("/api/trip/path?route=" + encodeURIComponent(tr.id));
-  paths.set(tr.id, r.status === 200 ? { points: r.data.points } : r.status === 404 ? { status: "none", summarized: LPL.pathSettled(tr, tripsPending), at: Date.now() } : { status: "error", at: Date.now() });
+  const kept = noMap ? null : await DB.get("path:" + tr.id);
+  if (kept && kept.points && (!online || carOn)) { paths.set(tr.id, kept); mapSig = ""; }
+  const r = online && !carOn ? await api("/api/trip/path?route=" + encodeURIComponent(tr.id) + (kept && kept.v ? "&" + LPL.since(kept.v) : "")) : { status: 0, data: {} };
+  if (r.status === 200 && r.data.same && kept) paths.set(tr.id, kept);
+  else if (r.status === 200 && r.data.points) {
+    const got = { points: r.data.points, v: r.data.v || "" }, keep = LPL.keepPath(got, noMap);
+    paths.set(tr.id, got); if (keep) DB.put("path:" + tr.id, keep);
+  } else if (kept && kept.points) paths.set(tr.id, kept);
+  else paths.set(tr.id, r.status === 404 ? { status: "none", summarized: LPL.pathSettled(tr, tripsPending), at: Date.now() } : { status: "error", at: Date.now() });
   mapSig = "";
   if (view === "inicio" && !driving && lastHist) { const cur = tripPicked(lastHist); if (cur && cur.id === tr.id) drawTrip(cur); }
 }
@@ -2486,6 +2597,7 @@ function fixedSame() {  // one check per page
     fixedProbe = fetch("/api/fixed/nonce", { cache: "no-store", signal }).then((r) => (r.ok ? r.json() : null))
       .then((d) => (d && d.nonce ? fetch(fixedUrl("api/fixed/check?n=" + encodeURIComponent(d.nonce)), { cache: "no-store", signal })
         .then((r) => (r.ok ? r.json() : null)).then((c) => !!(c && c.answer && c.answer === d.answer)) : false), () => false)
+      .catch(() => false)  // the fixed name not found on this network: by address (was an unhandled error on the page)
       .finally(() => clearTimeout(timer));
   }
   return fixedProbe;
@@ -2524,7 +2636,8 @@ LP.ready.then(() => {
   if (!token) fixedSame().then((ok) => {
     if (!token && !$("pin").value && LPL.addressPlan(location.hostname, ok, false) === "move") location.replace(fixedUrl(location.hash === "#parear" ? "#parear" : ""));
   });
-  refresh();
+  if (token) baseLoad().then((had) => { if (had && $("app").classList.contains("hidden")) show("app"); refresh(); });
+  else refresh();
 });
 
 $("pin").addEventListener("input", () => {
@@ -2652,6 +2765,16 @@ $("updMain").addEventListener("click", () => {
   else if (updStep) updateAction(updStep);
 });
 $("updBranch").addEventListener("change", (e) => updateAction("branch", e.target.value));
+$("noMap").addEventListener("change", async (e) => {
+  noMap = e.target.checked; store("lpNoMap", noMap ? "1" : "0");
+  if (noMap) for (const k of await DB.keys() || []) if (String(k).startsWith("path:")) await DB.del(k);  // the maps leave the phone now
+  renderBase();
+});
+$("wipeBtn").addEventListener("click", async () => {
+  if (!confirm(t("Apagar viagens, marcas e Missões guardadas neste celular? No comma fica tudo."))) return;
+  await wipeBase(); toast(t("Dados deste celular apagados.")); renderBase();
+  tripsAt = 0; missionsAt = 0; if (token && online && !fromBase) refresh();
+});
 $("logoutBtn").addEventListener("click", async () => {
   if (!confirm(t("Desconectar este celular? Para voltar, será preciso parear de novo."))) return;
   await api("/api/logout", {});

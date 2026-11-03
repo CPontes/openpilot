@@ -5,6 +5,7 @@ Runs only while the "painel no celular" option (HexaWebEnabled) is on. Security 
 openpilot/selfdrive/hexa/phone.py; this file only parses HTTP and calls PanelBackend.
 """
 import gzip
+import hashlib
 import json
 import math
 import os
@@ -69,6 +70,7 @@ PRESERVE_ATTR = "user.preserve"  # system/loggerd/deleter.py: what keeps a flagg
 SUMMARY_VERSION = 5  # 2: version, alerts. 3: the path. 4: the KPIs (wobble, lane seen, where it let go).
 # 5: time in slow traffic (the missions).
 # An older summary is read again, the newest SUMMARY_NEWEST only
+SYNC_SLACK_S = 120.  # a delta reaches back this far before the phone's cursor: a summary kept in the same second isn't missed
 ERRORS_EVERY_S = 30.
 CLIP_BEFORE_S = 10.  # the clip of a mark starts this long before it
 CLIP_TICKET_S = 600.  # a clip link works this long, for that clip only
@@ -133,6 +135,10 @@ class PanelBackend:
     self._clips: dict[str, dict] = {}  # ticket -> {expires, files, start, name}
     self._fixed_nonces: dict[str, tuple] = {}  # one-time code -> (expiry, answer, phone), to prove lizpilot.local is this comma
     self.fixed_status: Callable[[], dict] = hexa_mdns.status
+    self._boot = secrets.token_hex(4)  # a new process starts new versions: the phone asks for everything once
+    self._revs: dict[str, int] = {}  # param -> how many times this process wrote it
+    self._todo_left = False  # drives still to summarize: a same version must not stop asking for them
+    self._catalog_v = ""
 
   def vehicle_state(self) -> VehicleState:
     with self._vs_lock:
@@ -511,6 +517,36 @@ class PanelBackend:
       self._audit({"event": "profile_removed", "who": who.get("name", ""), "new": name})
     return 200, {"ok": True}
 
+  # *** sync (APP-01): the phone keeps its own copy, and asks only for what changed ***
+
+  def _put(self, key: str, value) -> None:
+    self.store.put(key, value)
+    self._revs[key] = self._revs.get(key, 0) + 1
+
+  def _stamp(self, *keys: str) -> str:
+    """A cheap version of some params: this process's writes, plus each file's time and size on the comma. Never reads a value."""
+    parts = [self._boot]
+    path_of = getattr(self.store, "get_param_path", None)
+    for k in keys:
+      parts.append(str(self._revs.get(k, 0)))
+      if path_of is not None:
+        try:
+          st = os.stat(path_of(k))
+          parts.append(f"{st.st_mtime_ns:x}-{st.st_size:x}")
+        except (OSError, TypeError, ValueError):
+          parts.append("-")
+    return hashlib.sha1(".".join(parts).encode()).hexdigest()[:12]
+
+  @staticmethod
+  def _cursor(since: str) -> tuple[str, str, int | None]:
+    """'<trips version>.<marks version>.<wall second>', as the last answer gave it. Anything else: no cursor."""
+    m = re.fullmatch(r"([0-9a-f]{1,16})\.([0-9a-f]{1,16})\.([0-9]{1,12})", since or "")
+    return (m.group(1), m.group(2), int(m.group(3))) if m else ("", "", None)
+
+  def _trips_version(self, trips: list[dict]) -> str:
+    index = ";".join(f"{t['id']}:{len(t['files'])}:{int(t['mtime'])}" for t in trips)  # the folder listing: no log is opened
+    return hashlib.sha1(f"{SUMMARY_VERSION}|{self._stamp(SUMMARY_PARAM, HIDDEN_PARAM)}|{index}".encode()).hexdigest()[:12]
+
   # *** marks ***
 
   def _marks(self) -> list[dict]:
@@ -519,13 +555,17 @@ class PanelBackend:
   def _custom_reasons(self) -> list[dict]:
     return self.store.get(hexa_marks.REASONS_PARAM) or []
 
-  def marks_state(self) -> dict:
+  def marks_state(self, since: str = "") -> dict:
     with self.lock:
+      v = self._stamp(hexa_marks.MARKS_PARAM, hexa_marks.REASONS_PARAM)
+      if since == v:
+        return {"same": True, "v": v}
       marks = self._marks()
       return {
         "reasons": hexa_marks.reasons(self._custom_reasons()),
         "marks": [hexa_marks.public(m) for m in reversed(marks[-30:])],
         "pending": sum(1 for m in marks if not m.get("reason")),
+        "v": v,
       }
 
   def export_marks(self) -> dict:
@@ -548,7 +588,7 @@ class PanelBackend:
                                  note=hexa_marks.clean_note(note), now=self.clock() - delay)
       mark["delay_s"] = delay
       mark["_req_mono_ns"] = int(now_mono * 1e9)
-      self.store.put(hexa_marks.MARKS_PARAM, hexa_marks.append(self._marks(), mark))
+      self._put(hexa_marks.MARKS_PARAM, hexa_marks.append(self._marks(), mark))
       self.store.put_bool(hexa_marks.BOOKMARK_REQUEST_PARAM, True)  # the comma raises its own bookmark
     self.log_event(hexa_marks.log_fields(mark))
     return 200, {"ok": True, "mark": hexa_marks.public(mark)}
@@ -564,7 +604,7 @@ class PanelBackend:
         return 404, {"error": "Marca não encontrada."}
       mark = dict(mark, who=mark.get("who") or who.get("name", ""))
       marks = [mark if m.get("id") == mark_id else m for m in marks]
-      self.store.put(hexa_marks.MARKS_PARAM, marks)
+      self._put(hexa_marks.MARKS_PARAM, marks)
     self.log_event(hexa_marks.log_fields(mark))
     return 200, {"ok": True, "mark": hexa_marks.public(mark)}
 
@@ -572,7 +612,7 @@ class PanelBackend:
     """A bookmark showed up in the log (comma flag, or the one a phone mark asked for)."""
     with self.lock:
       marks, mark, created = hexa_marks.attach_bookmark(self._marks(), mono_ns)
-      self.store.put(hexa_marks.MARKS_PARAM, marks)
+      self._put(hexa_marks.MARKS_PARAM, marks)
     if not created:
       self.log_event(hexa_marks.log_fields(mark))  # now with the bookmark's exact log time
     return mark
@@ -583,7 +623,7 @@ class PanelBackend:
         custom, reason = hexa_marks.add_reason(self._custom_reasons(), label)
       except ValueError as e:
         return 400, {"error": str(e)}
-      self.store.put(hexa_marks.REASONS_PARAM, custom)
+      self._put(hexa_marks.REASONS_PARAM, custom)
       self._audit({"event": "reason_added", "who": who.get("name", ""), "key": reason["key"], "new": reason["label"]})
     return 200, {"ok": True, "reason": reason}
 
@@ -592,16 +632,22 @@ class PanelBackend:
       custom = self._custom_reasons()
       if not any(c.get("key") == key for c in custom):
         return 404, {"error": "Só dá para remover os motivos criados por você."}
-      self.store.put(hexa_marks.REASONS_PARAM, hexa_marks.remove_reason(custom, key))
+      self._put(hexa_marks.REASONS_PARAM, hexa_marks.remove_reason(custom, key))
       self._audit({"event": "reason_removed", "who": who.get("name", ""), "key": key})
     return 200, {"ok": True}
 
   # *** missions (owner, 02/11): the tests the car still needs ***
 
-  def missions_state(self) -> dict:
+  def missions_state(self, since: str = "") -> dict:
+    catalog = hexa_missions.public()  # static: built from the code, no disk
+    if not self._catalog_v:
+      self._catalog_v = hashlib.sha1(json.dumps(catalog, sort_keys=True, default=str).encode()).hexdigest()[:8]
     with self.lock:
+      v = self._catalog_v + self._stamp(hexa_missions.MISSIONS_PARAM)[:8]
+      if since == v:
+        return {"same": True, "v": v}
       st = hexa_missions.clean(self.store.get(hexa_missions.MISSIONS_PARAM))
-    return dict(hexa_missions.public(), state=st)
+    return dict(catalog, state=st, v=v)
 
   def missions_action(self, who: dict, body: dict) -> tuple[int, dict]:
     """take / drop: what goes on the next drive, any time (it changes nothing in the car).
@@ -613,7 +659,7 @@ class PanelBackend:
           st = hexa_missions.take_pack(hexa_missions.clean(self.store.get(hexa_missions.MISSIONS_PARAM)), key)
         except ValueError as e:
           return 400, {"error": str(e)}
-        self.store.put(hexa_missions.MISSIONS_PARAM, st)
+        self._put(hexa_missions.MISSIONS_PARAM, st)
       return 200, {"ok": True, "state": st}
     m = hexa_missions.BY_KEY.get(key)
     if m is None:
@@ -643,7 +689,7 @@ class PanelBackend:
           return 400, {"error": "Ação desconhecida."}
       except ValueError as e:
         return 400, {"error": str(e)}
-      self.store.put(hexa_missions.MISSIONS_PARAM, st)
+      self._put(hexa_missions.MISSIONS_PARAM, st)
     return 200, {"ok": True, "state": st}
 
   # *** replay ***
@@ -683,7 +729,9 @@ class PanelBackend:
       self._trip_index = (self.mono(), trips)
     return trips
 
-  def trips_list(self) -> tuple[int, dict]:
+  def trips_list(self, since: str = "") -> tuple[int, dict]:
+    """The drives with their summaries. With the cursor of the last answer (since), only what changed after it:
+    nothing new costs a folder listing (kept 30 s) and a stat, never a log or the summaries."""
     if self.vehicle_state().onroad:
       return 409, {"error": "As viagens só abrem com o carro desligado."}
     if not self.log_root:
@@ -691,20 +739,34 @@ class PanelBackend:
     with self._replay_lock:
       every = self._trips()
     trips = every[:TRIPS_LISTED]
+    v, mv = self._trips_version(trips), self._stamp(hexa_marks.MARKS_PARAM)
+    old_v, old_mv, old_t = self._cursor(since)
+    now = int(self.clock())
+    if old_t is not None and old_t > now + SYNC_SLACK_S:  # the comma's clock went back: start over
+      old_v, old_mv, old_t = "", "", None
+    if old_v == v and old_mv == mv and not self._todo_left:
+      return 200, {"same": True, "v": since}  # the old cursor stays: nothing happened since it
     self._prune_paths({t["id"] for t in every})
     kept = self.store.get(SUMMARY_PARAM) or {}  # read once: the whole history is in it
     newest = {t["id"] for t in trips[:SUMMARY_NEWEST]}
     summaries = {t["id"]: self._summary_of(t, kept, newest) for t in trips}
     todo = [t for t in trips[:SUMMARY_NEWEST] if summaries[t["id"]] is None]
+    self._todo_left = bool(todo)
     if todo and not self._summary_busy:
       self._summary_busy = True
       self._spawn(lambda: self._summarize_trips(todo))
     hidden = set(self.store.get(HIDDEN_PARAM) or [])
-    with self.lock:
-      marks = [hexa_marks.public(m) for m in self._marks()]  # /api/marks brings only the newest: the history covers every drive
-    return 200, {"marks": marks, "trips": [{"id": t["id"], "mtime": int(t["mtime"]), "minutes": len(t["files"]), "segments": sorted(t["files"]),
-                            "summary": summaries[t["id"]], "hidden": t["id"] in hidden} for t in trips],
-                 "pending": bool(todo), "pending_n": len(todo)}
+    listed = [{"id": t["id"], "mtime": int(t["mtime"]), "minutes": len(t["files"]), "segments": sorted(t["files"]),
+               "summary": summaries[t["id"]], "hidden": t["id"] in hidden} for t in trips]
+    out: dict = {"pending": bool(todo), "pending_n": len(todo), "v": f"{v}.{mv}.{now}"}
+    if old_mv != mv:
+      with self.lock:
+        out["marks"] = [hexa_marks.public(m) for m in self._marks()]  # /api/marks brings only the newest: the history covers every drive
+    if old_t is None:
+      return 200, dict(out, trips=listed, marks=out.get("marks", []))
+    after = old_t - SYNC_SLACK_S
+    changed = [t for t in listed if t["mtime"] >= after or t["summary"] is None or (t["summary"].get("at") or 0) >= after]
+    return 200, dict(out, delta=True, trips=changed, ids=[t["id"] for t in listed], hidden=sorted(hidden & {t["id"] for t in listed}))
 
   def trip_hide(self, who: dict, route: str, hidden: bool) -> tuple[int, dict]:
     """Hides a drive from the phone's lists, or shows it again. Only a name on the list: nothing is deleted."""
@@ -716,7 +778,7 @@ class PanelBackend:
       return 404, {"error": "Viagem não encontrada."}
     with self.lock:
       kept = [r for r in (self.store.get(HIDDEN_PARAM) or []) if r != route]
-      self.store.put(HIDDEN_PARAM, (kept + [route])[-HIDDEN_KEEP:] if hidden else kept)
+      self._put(HIDDEN_PARAM, (kept + [route])[-HIDDEN_KEEP:] if hidden else kept)
       self._audit({"event": "trip_hidden" if hidden else "trip_shown", "who": who.get("name", ""), "key": route})
     return 200, {"ok": True, "hidden": hidden}
 
@@ -758,7 +820,7 @@ class PanelBackend:
     except OSError:
       pass
 
-  def trip_path(self, route: str) -> tuple[int, dict]:
+  def trip_path(self, route: str, since: str = "") -> tuple[int, dict]:
     """The drive's path for the map on the phone: [lat, lon, who, s from the start], a point every ~10 s. Car off only."""
     if self.vehicle_state().onroad:
       return 409, {"error": "As viagens só abrem com o carro desligado."}
@@ -766,12 +828,19 @@ class PanelBackend:
       known = any(t["id"] == route for t in self._trips())  # only ids from the list: no paths from outside
     f = self._path_file(route) if known else None
     try:
-      points = json.loads(f.read_text()) if f is not None else None
+      st = f.stat() if f is not None else None
+    except OSError:
+      st = None
+    v = f"{st.st_mtime_ns:x}-{st.st_size:x}" if st is not None else ""
+    if v and since == v:
+      return 200, {"same": True, "v": v}  # the phone has this one: a stat, not the file
+    try:
+      points = json.loads(f.read_text()) if st is not None else None
     except (OSError, ValueError):
       points = None
     if not isinstance(points, list):
       return 404, {"error": "Sem caminho desta viagem ainda."}
-    return 200, {"points": points}
+    return 200, {"points": points, "v": v}
 
   def _summarize_trips(self, todo: list[dict]) -> None:
     """Reads each drive once, after it ended, and keeps the numbers. Stops as soon as the car is on again."""
@@ -782,7 +851,7 @@ class PanelBackend:
         summary = self._summarize(trip["files"], lambda: self.vehicle_state().onroad)
         if summary is None:
           return
-        summary = {**summary, "sv": SUMMARY_VERSION}
+        summary = {**summary, "sv": SUMMARY_VERSION, "at": int(self.clock())}  # at: when it was kept, for the phone's delta
         self._keep_path(trip["id"], summary.pop("path", None))
         self._auto_marks(trip, summary)
         with self.lock:
@@ -790,7 +859,7 @@ class PanelBackend:
           kept[trip["id"]] = summary
           for old in sorted(kept)[:-SUMMARY_KEEP]:  # route names grow with each drive
             del kept[old]
-          self.store.put(SUMMARY_PARAM, kept)
+          self._put(SUMMARY_PARAM, kept)
     finally:
       self._summary_busy = False
 
@@ -807,7 +876,7 @@ class PanelBackend:
         continue
     if found:
       with self.lock:
-        self.store.put(hexa_marks.MARKS_PARAM, hexa_marks.auto_marks(self._marks(), found))
+        self._put(hexa_marks.MARKS_PARAM, hexa_marks.auto_marks(self._marks(), found))
 
   def _with_reasons(self, events: list[dict]) -> list[dict]:
     with self.lock:
@@ -1136,14 +1205,14 @@ def make_handler(backend: PanelBackend):
       elif path == "/api/marks":
         who = self._who()
         if who is not None:
-          self._json(200, backend.marks_state())
+          self._json(200, backend.marks_state(parse_qs(query).get("since", [""])[0]))
       elif path == "/api/marks/export":
         who = self._who()
         if who is not None:
           self._json(200, backend.export_marks())
       elif path == "/api/missions":
         if self._who() is not None:
-          self._json(200, backend.missions_state())
+          self._json(200, backend.missions_state(parse_qs(query).get("since", [""])[0]))
       elif path == "/api/replay/list":
         if self._who() is not None:
           self._json(*backend.replay_list())
@@ -1152,10 +1221,11 @@ def make_handler(backend: PanelBackend):
           self._json(*backend.replay_data(parse_qs(query).get("id", [""])[0]))
       elif path == "/api/trips":
         if self._who() is not None:
-          self._json(*backend.trips_list())
+          self._json(*backend.trips_list(parse_qs(query).get("since", [""])[0]))
       elif path == "/api/trip/path":
         if self._who() is not None:
-          self._json(*backend.trip_path(parse_qs(query).get("route", [""])[0]))
+          q = parse_qs(query)
+          self._json(*backend.trip_path(q.get("route", [""])[0], q.get("since", [""])[0]))
       elif path == "/api/trip/segment":
         if self._who() is not None:
           q = parse_qs(query)
