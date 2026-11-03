@@ -12,6 +12,10 @@ LEAD_CLOSING_MIN_PROB = 0.7
 LEAD_CLOSING_MAX_RESIDUAL = (0.6, 0.03)  # m, and fraction of the distance: a jump is another target, or none (it reads 3.7 m)
 LEAD_CLOSING_AGREE = (4., 0.25)  # m, and fraction of the distance: both have to be looking at the same car
 LEAD_CLOSING_GAP = 7.  # m, what is left at the end
+# The field (with the DBC's 3.7 m) reads more than the comma near: 3.4 m under 10 m, 2.7 m at 10 to 20 m, 0.4 m at 20 to 40 m
+# (routes 31, 2e, 29); the owner's 4 m at a stop matched the comma, not the field. Taken off, in the field's own reading
+LEAD_CLOSING_HAVAL_OFFSET = ([6.8, 17.7, 30.4], [3.4, 2.7, 0.4])
+LEAD_CLOSING_HAVAL_NONE = 3.75  # m, with no target the field reads the DBC's 3.7
 LEAD_CLOSING_START = -1.  # m/s^2, no touch on the smaller differences
 LEAD_CLOSING_ACCEL_MIN = -2.  # m/s^2, only an earlier start: anything harder stays with the planner
 LEAD_CLOSING_JERK = 2.5  # m/s^3
@@ -41,6 +45,7 @@ class LeadClosing:
     self.rest_time = 0.
 
   def _target(self, v_ego, distance, lead):
+    distance = distance - float(np.interp(distance, *LEAD_CLOSING_HAVAL_OFFSET)) if distance >= LEAD_CLOSING_HAVAL_NONE else 0.
     self.distances.append(distance)
     if len(self.distances) < self.size:
       return 0.
