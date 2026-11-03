@@ -152,7 +152,10 @@
   .card.ok.compact { padding: 10px 14px; }
   .card.ok.compact #readyIcon { width: 28px; height: 28px; }
   .card.ok.compact .big { font-size: 18px; }
-  .card.ok.compact #readySub, .card.ok.compact #readyChecks { display: none; }
+  .card.ok.compact #readySub, .card.ok.compact #readyChecks, .card.ok.compact #readyLinks { display: none; }
+  #readyCard:not(.compact) .mpill { display: none; }  /* open, or not all well: the two buttons below take its place */
+  .mpill { flex: none; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--ok-line); background: var(--card);
+           color: var(--accent); font-weight: 700; font-size: 15px; white-space: nowrap; }
   .navbtn { flex: none; width: 48px; height: 48px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); display: inline-flex; align-items: center; justify-content: center; padding: 0; }
   .navbtn:disabled { opacity: .3; }
   .map { position: relative; height: 240px; margin: 0 -16px; overflow: hidden; background: var(--card-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); cursor: pointer; }
@@ -304,13 +307,13 @@
           <div class="row">
             <svg width="52" height="52" viewBox="0 0 24 24" aria-hidden="true" id="readyIcon"><path d="M12 1.8l8.8 5.1v10.2L12 22.2l-8.8-5.1V6.9z" fill="currentColor"/><path id="readyMark" d="M8.5 12h7" fill="none" stroke="var(--bg)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <div class="grow"><div class="big" id="readyTitle">—</div><div class="desc" id="readySub"></div></div>
+            <button class="mpill hidden" id="readyMissions" type="button"></button>
           </div>
           <div class="checks" id="readyChecks"></div>
-        </section>
-        <section class="hidden" id="kpiBox">
-          <div class="row" style="margin:6px 4px 8px;align-items:baseline"><span class="label grow" style="margin:0" data-t>Últimas 4 semanas</span><span class="small" data-t>contra as 4 antes</span></div>
-          <div class="kpis" id="kpiGrid"></div>
-          <button class="link hidden" id="kpiVersion" type="button" style="margin:2px 4px 0"></button>
+          <div class="grid2" id="readyLinks">
+            <button class="btn dark" id="readyHealth" type="button" data-t>Saúde do comma</button>
+            <button class="btn dark" id="readyMissionsBtn" type="button" data-t>Missões</button>
+          </div>
         </section>
         <section class="card stack hidden" id="missionCard" style="gap:12px">
           <button class="mhead" id="missionOpen" type="button"><span id="missionRing"></span>
@@ -320,6 +323,11 @@
           <div class="row" style="margin-top:4px"><span class="label grow" style="margin:0" data-t>Na próxima viagem</span><span class="small" id="missionActiveN"></span></div>
           <div class="list" id="missionActive"></div>
           <button class="btn" id="missionGo" type="button" data-t>Vou dirigir</button>
+        </section>
+        <section class="hidden" id="kpiBox">
+          <div class="row" style="margin:6px 4px 8px;align-items:baseline"><span class="label grow" style="margin:0" data-t>Últimas 4 semanas</span><span class="small" data-t>contra as 4 antes</span></div>
+          <div class="kpis" id="kpiGrid"></div>
+          <button class="link hidden" id="kpiVersion" type="button" style="margin:2px 4px 0"></button>
         </section>
         <a class="card att row hidden" id="updateCard" href="#" style="text-decoration:none;color:inherit">
           <span class="grow"><span class="title" data-t>Versão nova pronta</span><br><span class="desc" id="updateCardDesc"></span></span>
@@ -1058,6 +1066,7 @@ function renderGarage() {
   }));
   renderKpis();
   renderMissionCard();
+  renderReadyMissions();
   // a new version waiting
   const u = update;
   $("updateCard").classList.toggle("hidden", !(u && (u.ready || u.fetch_available)));
@@ -1357,6 +1366,7 @@ async function refreshMissions() {
   if (r.status !== 200) return;
   missions = r.data;
   renderMissionCard();
+  renderReadyMissions();
   if (view === "missoes") renderMissions();
   if (driving) renderDriveMissions();
 }
@@ -1412,6 +1422,17 @@ function missionResult(prog) {  // after the drive: what moved since "Pronto, vo
   const after = trips.find((x) => x.mtime > snap.at && x.summary);
   if (!after) return null;
   return { snap, rows: LPL.missionDiff(snap.prog, prog), asks: snap.active.map(mOf).filter((m) => m && m.how === "parado" && m.drive && !prog[m.key].full) };
+}
+
+// The way into the missions from the comma card (owner, 03/11: "não to achando"): a pill on the one-line card, and the
+// comma's health and the missions as two buttons when it is open
+function renderReadyMissions() {
+  const pill = $("readyMissions");
+  pill.classList.toggle("hidden", !missions);
+  if (!missions) return;
+  const lv = LPL.missionLevel(missions, mProg());
+  pill.textContent = tf("Missões · {p}% ›", { p: Math.round(100 * lv.n / lv.total) });
+  pill.setAttribute("aria-label", tf("Missões: {d} de {n}", { d: lv.n, n: lv.total }));
 }
 
 function renderMissionCard() {
@@ -2526,6 +2547,9 @@ $("markScrim").addEventListener("click", closeMark);
 $("markNote").addEventListener("focus", () => clearTimeout(markTimer));
 $("pendingBtn").addEventListener("click", () => { const p = marksState.marks.filter((m) => !m.reason).pop(); if (p) openMark(p, null); });
 $("readyCard").addEventListener("click", () => { readyOpen = !readyOpen; renderGarage(); });
+$("readyMissions").addEventListener("click", (e) => { e.stopPropagation(); openMissions(); });
+$("readyMissionsBtn").addEventListener("click", (e) => { e.stopPropagation(); openMissions(); });
+$("readyHealth").addEventListener("click", (e) => { e.stopPropagation(); sub = "comma"; showView("ajustes"); });
 $("kpiVersion").addEventListener("click", () => { showView("viagens"); setTimeout(() => { const v = document.getElementById("versionVerdict"); if (v) v.scrollIntoView({ behavior: "smooth", block: "start" }); }, 300); });
 $("tripOlder").addEventListener("click", () => { const h = lastHist, tr = h && tripPicked(h); if (tr) { const o = h.list[h.list.indexOf(tr) + 1]; if (o) { tripSel = o.id; renderGarage(); } } });
 $("tripNewer").addEventListener("click", () => { const h = lastHist, tr = h && tripPicked(h); if (tr) { const o = h.list[h.list.indexOf(tr) - 1]; if (o) { tripSel = o.id; renderGarage(); } } });

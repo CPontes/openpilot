@@ -1044,5 +1044,7 @@
  "Pouca estrada para dizer: com menos de {km} km de cada lado, trânsito e caminho mudam mais que a versão. Os números ficam abaixo, sem veredito.": "Too little road to tell: under {km} km on each side, traffic and route change more than the version. The numbers are below, with no verdict.",
  "aguarda o CTO conferir a medição": "waiting for the CTO to check the measurement",
  "as paradas sem carro à frente ainda acabam no seu pedal": "stops with no car ahead still end on your pedal",
- "balanço em reta": "wobble on straights"
+ "balanço em reta": "wobble on straights",
+ "Missões · {p}% ›": "Missions · {p}% ›",
+ "Missões: {d} de {n}": "Missions: {d} of {n}"
 }

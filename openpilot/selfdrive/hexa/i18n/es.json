@@ -1044,5 +1044,7 @@
  "Pouca estrada para dizer: com menos de {km} km de cada lado, trânsito e caminho mudam mais que a versão. Os números ficam abaixo, sem veredito.": "Poca ruta para decir: con menos de {km} km de cada lado, el tránsito y el camino cambian más que la versión. Los números quedan abajo, sin veredicto.",
  "aguarda o CTO conferir a medição": "espera que el CTO revise la medición",
  "as paradas sem carro à frente ainda acabam no seu pedal": "las paradas sin auto adelante todavía terminan en tu pedal",
- "balanço em reta": "balanceo en recta"
+ "balanço em reta": "balanceo en recta",
+ "Missões · {p}% ›": "Misiones · {p}% ›",
+ "Missões: {d} de {n}": "Misiones: {d} de {n}"
 }
