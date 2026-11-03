@@ -18,7 +18,7 @@ from opendbc.car.carlog import carlog
 from opendbc.car.fw_versions import ObdCallback
 from opendbc.car.car_helpers import get_car, interfaces
 from opendbc.car.interfaces import CarInterfaceBase, RadarInterfaceBase
-from opendbc.car.gwm.values import GwmSafetyFlags
+from opendbc.car.gwm.values import GwmFlags, GwmSafetyFlags
 from openpilot.selfdrive.pandad import can_capnp_to_list, can_list_to_can_capnp
 from openpilot.selfdrive.car.cruise import VCruiseHelper
 from openpilot.selfdrive.hexa.options import is_on
@@ -128,6 +128,9 @@ class Car:
       if self.params.get_bool("BumpSlowdown"):
         # the minus button of the ACC, at a speed bump. Never the plus
         self.CP.safetyConfigs[-1].safetyParam |= GwmSafetyFlags.ACC_MINUS.value
+      if is_on(self.params, "SoftHandoff"):
+        # a light push against the wheel fades openpilot's torque out instead of cutting it; the panda doesn't change
+        self.CP.flags |= GwmFlags.SOFT_HANDOFF.value
 
     if self.CP.secOcRequired:
       # Copy user key if available

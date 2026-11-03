@@ -64,6 +64,16 @@ OPTIONS: tuple[HexaOption, ...] = (
     restart_needed=True,
   ),
   HexaOption(
+    key="SoftHandoff",
+    group="direcao",
+    title="devolver o volante aos poucos",
+    description="Quando você força o volante de leve contra o openpilot, ele solta a força aos poucos, em menos de 1 s, e volta de onde parou " +
+                "ao você aliviar. Na curva, o volante não volta de repente. Com força firme (acima de 1,5 Nm), solta na hora, como hoje.\n" +
+                "Em teste: o panda não muda.",
+    restart_needed=True,
+    testing=True,
+  ),
+  HexaOption(
     key="AlwaysOnLateral",
     group="direcao",
     title="direção sempre ativa",

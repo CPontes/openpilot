@@ -89,6 +89,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"LeadClosing", {PERSISTENT, BOOL, "0"}},
     {"StopFinish", {PERSISTENT, BOOL, "0"}},
     {"StopCloser", {PERSISTENT, BOOL, "0"}},
+    {"SoftHandoff", {PERSISTENT, BOOL, "0"}},
     {"LanguageSetting", {PERSISTENT, STRING, "en"}},
     {"LastAthenaPingTime", {CLEAR_ON_MANAGER_START, INT}},
     {"LastGPSPosition", {PERSISTENT, BYTES}},

@@ -1112,5 +1112,7 @@
  "o passageiro marca andando; você confirma parado": "the passenger marks it driving; you confirm it parked",
  "o passageiro marca no copiloto; no fim, parado, pergunto": "the passenger marks it in the copilot; at the end, parked, I ask",
  "vai para o comma quando ele aparecer": "goes to the comma when it shows up",
- "{n} não deu": "{n} didn't work"
+ "{n} não deu": "{n} didn't work",
+ "devolver o volante aos poucos": "give the wheel back gradually",
+ "Quando você força o volante de leve contra o openpilot, ele solta a força aos poucos, em menos de 1 s, e volta de onde parou ao você aliviar. Na curva, o volante não volta de repente. Com força firme (acima de 1,5 Nm), solta na hora, como hoje.\nEm teste: o panda não muda.": "When you push the wheel lightly against openpilot, it lets go of its force gradually, in under 1 s, and comes back from where it was when you ease off. In a curve the wheel doesn't spring back. With a firm push (over 1.5 Nm) it lets go at once, as today.\nIn testing: the panda doesn't change."
 }

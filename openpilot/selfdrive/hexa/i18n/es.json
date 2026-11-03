@@ -1112,5 +1112,7 @@
  "o passageiro marca andando; você confirma parado": "el pasajero lo marca en marcha; usted lo confirma detenido",
  "o passageiro marca no copiloto; no fim, parado, pergunto": "el pasajero lo marca en el copiloto; al final, detenido, pregunto",
  "vai para o comma quando ele aparecer": "va al comma cuando aparezca",
- "{n} não deu": "{n} no funcionó"
+ "{n} não deu": "{n} no funcionó",
+ "devolver o volante aos poucos": "devolver el volante de a poco",
+ "Quando você força o volante de leve contra o openpilot, ele solta a força aos poucos, em menos de 1 s, e volta de onde parou ao você aliviar. Na curva, o volante não volta de repente. Com força firme (acima de 1,5 Nm), solta na hora, como hoje.\nEm teste: o panda não muda.": "Cuando empujas el volante suavemente contra openpilot, suelta su fuerza de a poco, en menos de 1 s, y vuelve desde donde estaba al aflojar. En la curva el volante no vuelve de golpe. Con fuerza firme (más de 1,5 Nm) suelta enseguida, como hoy.\nEn prueba: el panda no cambia."
 }
