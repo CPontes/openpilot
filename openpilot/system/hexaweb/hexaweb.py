@@ -45,6 +45,11 @@ STATIC_FILES = {
   "/icon-180.png": ("icon-180.png", "image/png"),
   "/icon-192.png": ("icon-192.png", "image/png"),
   "/icon-512.png": ("icon-512.png", "image/png"),
+  # where iOS and browsers look on their own, whatever page was saved to the home screen (owner, 03/11: a plain "L")
+  "/apple-touch-icon.png": ("icon-180.png", "image/png"),
+  "/apple-touch-icon-precomposed.png": ("icon-180.png", "image/png"),
+  "/favicon.ico": ("favicon.png", "image/png"),
+  "/favicon.png": ("favicon.png", "image/png"),
   "/lp.css": ("lp.css", "text/css; charset=utf-8"),
   "/i18n.js": ("i18n.js", "text/javascript; charset=utf-8"),
   "/lp-logic.js": ("lp-logic.js", "text/javascript; charset=utf-8"),
@@ -56,6 +61,7 @@ STATIC_FILES = {
   "/i18n/en.json": (i18n.CATALOG_DIR / "en.json", "application/json; charset=utf-8"),
   "/i18n/es.json": (i18n.CATALOG_DIR / "es.json", "application/json; charset=utf-8"),
 }
+ICON_CACHE = {"Cache-Control": "public, max-age=604800"}  # the home screen keeps the icon: "no-store" may leave it out
 REPLAY_CACHE = 3
 TRIP_CACHE = 120  # minutes of trips kept in memory
 TRIP_INDEX_S = 30.  # the page asks once per minute of the trip: don't walk the log folder every time
@@ -1209,13 +1215,32 @@ def make_handler(backend: PanelBackend):
         return None
       return body
 
+    def do_HEAD(self):
+      """Some phones ask HEAD before saving the icon: the static files only, the same headers, no body."""
+      if not self._allowed():
+        return
+      path = self.path.partition("?")[0]
+      if path not in STATIC_FILES:
+        self.send_response(404)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return
+      fn, ctype = STATIC_FILES[path]
+      size = (fn if isinstance(fn, Path) else STATIC_DIR / fn).stat().st_size
+      self.send_response(200)
+      self.send_header("Content-Type", ctype)
+      self.send_header("Content-Length", str(size))
+      for k, v in {**SECURITY_HEADERS, **(ICON_CACHE if ctype == "image/png" else {})}.items():
+        self.send_header(k, v)
+      self.end_headers()
+
     def do_GET(self):
       if not self._allowed():
         return
       path, _, query = self.path.partition("?")
       if path in STATIC_FILES:
         fn, ctype = STATIC_FILES[path]
-        self._send(200, (fn if isinstance(fn, Path) else STATIC_DIR / fn).read_bytes(), ctype)
+        self._send(200, (fn if isinstance(fn, Path) else STATIC_DIR / fn).read_bytes(), ctype, extra=ICON_CACHE if ctype == "image/png" else None)
       elif path == "/api/state":
         who = self._who()
         if who is not None:

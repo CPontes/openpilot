@@ -1518,3 +1518,18 @@ def test_versions_need_pairing_and_come_newest_first(panel):
   assert panel.request("/api/versions")[0] == 401
   status, body = panel.json("/api/versions", token=panel.pair())
   assert status == 200 and body["releases"][0]["commit"] and body["releases"][-1]["commit"] == "7d2bedb"
+
+
+def test_the_home_screen_icon_is_where_phones_look(panel):
+  # owner, 03/11: the iPhone saved a plain "L". The icon answers at the linked path and at the ones iOS tries on its own
+  for path in ("/icon-180.png", "/apple-touch-icon.png", "/apple-touch-icon-precomposed.png", "/favicon.ico"):
+    status, headers, body = panel.request(path)
+    assert status == 200 and headers["Content-Type"] == "image/png" and body[:8] == b"\x89PNG\r\n\x1a\n", path
+    assert "max-age" in headers["Cache-Control"], path  # kept by the home screen, unlike the pages
+  req = urllib.request.Request(panel.url + "/apple-touch-icon.png", method="HEAD")
+  with urllib.request.urlopen(req, timeout=5) as r:
+    assert r.status == 200 and r.read() == b"" and int(r.headers["Content-Length"]) > 1000
+  assert panel.request("/")[1]["Cache-Control"] == "no-store"
+  for page in ("index.html", "viagens.html", "replay.html"):
+    html = (hexaweb.STATIC_DIR / page).read_text()
+    assert 'rel="apple-touch-icon" href="/icon-180.png"' in html and 'name="apple-mobile-web-app-title" content="LizPilot"' in html, page
