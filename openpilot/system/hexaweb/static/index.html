@@ -54,6 +54,9 @@
   .chip { min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line-2); background: none; color: var(--text); font-weight: 600; font-size: 15px; }
   .chip[aria-pressed="true"], .seg button[aria-selected="true"], .seg button[aria-checked="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chips.oneline { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
+  .chips.oneline::-webkit-scrollbar { display: none; }
+  .chips.oneline > .chip { flex: none; padding: 0 10px; font-size: 14px; }
   .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 4px; }
   .seg button { min-height: 44px; border: 0; border-radius: 10px; background: none; color: var(--muted); font-weight: 700; font-size: 15px; }
   .seg button[aria-selected="true"], .seg button[aria-checked="true"] { background: var(--line); color: var(--text); }
@@ -465,6 +468,12 @@
         <div class="chips" id="mineList" style="margin-top:6px"></div>
         <button class="link" id="exportBtn" type="button" data-t>Exportar marcas (para análise)</button>
       </details>
+    </div>
+
+    <!-- Versões: every version, each on its own screen (owner, 03/11) -->
+    <div data-view="versoes" class="hidden">
+      <p class="sub" style="margin:0 0 8px"><button class="back" id="vBack" type="button" style="border:0;color:var(--text);font:inherit;font-weight:700"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span id="vBackText"></span></button></p>
+      <div id="vBody" class="stack" style="gap:10px"></div>
     </div>
 
     <!-- Missões -->
@@ -929,12 +938,12 @@ function renderCarState() {  // Ajustes: without the comma nothing can change, w
 
 // ----- areas: the last one opened stays; nothing switches by itself -----
 let view = load("lpView") || "inicio", sub = load("lpSub") || "opcoes";
-if (!["inicio", "viagens", "pontos", "ajustes", "missoes"].includes(view)) view = "inicio";
+if (!["inicio", "viagens", "pontos", "ajustes", "missoes", "versoes"].includes(view)) view = "inicio";
 
 function showView(name) {
   view = name; store("lpView", name);
   document.querySelectorAll("[data-view]").forEach((e) => e.classList.toggle("hidden", e.dataset.view !== name));
-  const tab = name === "missoes" ? "viagens" : name;  // Missões lives in Viagens (owner, 03/11)
+  const tab = name === "missoes" || name === "versoes" ? "viagens" : name;  // Missões lives in Viagens (owner, 03/11)
   document.querySelectorAll("[data-go]").forEach((b) => b.dataset.go === tab ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
   clearInterval(liveTimer); liveTimer = null;
   if (name === "inicio") { refreshHome(true); liveTimer = setInterval(() => { if ((!driving && !copOpen) || document.hidden) return; if (online) refreshLive(); renderDrive(); }, LIVE_MS); }  // the copilot reads live data parked too
@@ -942,6 +951,7 @@ function showView(name) {
   if (name === "pontos") { refreshRadars(); refreshNear(); }
   if (name === "ajustes") showSub(sub);
   if (name === "missoes") { renderMissions(); refreshMissions(); }
+  if (name === "versoes") { renderVersions(); refreshVersions(); }
   window.scrollTo(0, 0);
 }
 
@@ -1687,6 +1697,57 @@ function renderMissionCard() {
   const next = act.length ? tf(act.length === 1 ? "Próxima viagem: 1 missão" : "Próxima viagem: {n} missões", { n: act.length })
     : pack ? tf("Roteiro: {d} de {n}", { d: pack.d, n: pack.ms.length }) : "";
   $("missionNext").textContent = [lv.next ? tf(lv.next.left === 1 ? "Falta 1 para o nível {n}" : "Faltam {k} para o nível {n}", { k: lv.next.left, n: lv.i + 2 }) : t("Tudo provado no seu carro."), next].filter(Boolean).join(" · ");
+}
+
+// ----- versions: the release notes from the comma, and your drives on each -----
+let releases = null, vScreen = { s: "lista" };
+async function refreshVersions() {
+  if (releases) return;
+  const r = await api("/api/versions");
+  if (r.status === 200) { releases = r.data.releases; if (view === "versoes") renderVersions(); }
+}
+function openVersions(scr) { vScreen = scr || { s: "lista" }; showView("versoes"); }
+function renderVersions() {
+  const body = $("vBody"), list = trips ? LPL.listed(trips) : [], all = LPL.versionList(list, releases || []), out = [];
+  const back = (label, fn) => { $("vBackText").textContent = label; $("vBack").onclick = fn; };
+  if (vScreen.s === "lista") {
+    back(t("Viagens"), () => showView("viagens"));
+    out.push(el("h1", "page", t("Versões")), el("p", "sub", t("Cada versão que foi para o carro, a mais nova primeiro. Toque para ver o que mudou e como foram as suas viagens nela.")));
+    for (const r of all) {
+      const b = el("button", "card stack"); b.type = "button"; b.style.cssText = "width:100%;text-align:left;color:inherit;font:inherit;margin:0;gap:4px";
+      const top = el("div", "row"); top.append(el("span", "title num grow", r.commit), el("span", "small", r.date || ""));
+      b.append(top, el("span", "desc", r.title ? t(r.title) : t("Sem notas desta versão")));
+      const facts = [r.trips ? tf(r.trips === 1 ? "1 viagem · {km} km" : "{n} viagens · {km} km", { n: r.trips, km: num(r.km, 0) }) : t("nenhuma viagem sua"),
+                     r.driving === false ? t("só o celular") : null, r.panda ? t("muda o panda") : null].filter(Boolean);
+      b.append(el("span", "small", facts.join(" · ")));
+      b.addEventListener("click", () => openVersions({ s: "versao", v: r.commit })); out.push(b);
+    }
+    if (!releases) out.push(el("div", "small", t("Carregando as notas do comma…")));
+  } else {
+    back(t("Versões"), () => openVersions());
+    const r = all.find((x) => x.commit === vScreen.v) || { commit: vScreen.v, changes: [], trips: 0, km: 0 };
+    out.push(el("div", "small", r.date ? tf("No carro desde {d}", { d: r.date }) : ""), el("h1", "page num", r.commit));
+    if (r.title) out.push(el("div", "title", t(r.title)));
+    if (r.changes && r.changes.length) {
+      const c = el("section", "card stack"); c.style.gap = "6px"; c.append(el("b", "", t("O que mudou")));
+      const ul = el("ul", "msteps"); r.changes.forEach((x) => ul.append(el("li", "", t(x)))); c.append(ul);
+      c.append(el("span", "small", [r.driving === false ? t("Só o celular: direção e velocidade iguais.") : t("Mexe em como o carro dirige."),
+                                    r.panda ? t("Muda o panda.") : t("O panda não muda."), t("Opções novas começam desligadas.")].join(" ")));
+      out.push(c);
+    } else out.push(el("div", "card desc", t("Sem notas desta versão")));
+    if (r.trips) {
+      out.push(versionCard(list, r.commit));
+      const go = el("button", "btn dark", tf(r.trips === 1 ? "Ver a viagem nesta versão" : "Ver as {n} viagens nesta versão", { n: r.trips })); go.type = "button";
+      go.addEventListener("click", () => { tripVersion = r.commit; showView("viagens"); }); out.push(go);
+    } else out.push(el("div", "small", t("Nenhuma viagem sua nesta versão ainda.")));
+    if (r.before) {
+      const b = el("button", "link", tf("Versão anterior: {v} ›", { v: r.before })); b.type = "button";
+      b.addEventListener("click", () => openVersions({ s: "versao", v: r.before })); out.push(b);
+    }
+    out.push(el("div", "small", t("Voltar de versão é pelo canal: desinstalar apaga logs e calibração.")));
+  }
+  body.replaceChildren(...out);
+  window.scrollTo(0, 0);
 }
 
 // ----- copiloto: the passenger leads the next drive's missions, the right one at the right moment -----
@@ -2565,15 +2626,24 @@ function renderTrips(err) {
   }
   const versions = LPL.versions(list);
   if (versions.length >= 2 || tripVersion) {
-    const row = el("div", "chips"); row.setAttribute("aria-label", t("Filtrar por versão"));
-    for (const v of [null, ...versions]) {
-      const b = el("button", "chip num", v || t("Todas as versões")); b.type = "button";
+    // the newest few, and "…" for every version, each with its own screen (owner, 03/11: less room here)
+    const row = el("div", "chips oneline"); row.setAttribute("aria-label", t("Filtrar por versão"));
+    const vc = LPL.versionChips(versions, tripVersion);
+    for (const v of vc.chips) {
+      const b = el("button", "chip num", v || t("Todas")); b.type = "button";
       b.setAttribute("aria-pressed", v === tripVersion ? "true" : "false");
       b.addEventListener("click", () => { tripVersion = v; renderTrips(); });
       row.append(b);
     }
+    const more = el("button", "chip", vc.more ? tf("… +{n}", { n: vc.more }) : t("Versões ›")); more.type = "button";
+    more.setAttribute("aria-label", t("Ver todas as versões"));
+    more.addEventListener("click", () => openVersions());
+    row.append(more);
     cards.push(row);
-    if (tripVersion) cards.push(versionCard(list, tripVersion));
+    if (tripVersion) {
+      const vcd = versionCard(list, tripVersion), go = el("button", "link", t("O que mudou nesta versão ›")); go.type = "button";
+      go.addEventListener("click", () => openVersions({ s: "versao", v: tripVersion })); vcd.append(go); cards.push(vcd);
+    }
   }
   cards.push(speedCard(list));
   const carCard = carReportCard(list);

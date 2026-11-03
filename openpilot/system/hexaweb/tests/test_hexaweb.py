@@ -1512,3 +1512,9 @@ def test_the_copilot_answer_is_a_mark_with_the_result(panel):
   assert panel.json("/api/missions", {"action": "mark", "key": "aviso-acc", "result": "ok"}, token=tok)[0] == 200  # asked after a drive, answered driving
   panel.now += 3
   assert panel.json("/api/missions", {"action": "mark", "key": "fila", "result": "voar"}, token=tok)[0] == 400
+
+
+def test_versions_need_pairing_and_come_newest_first(panel):
+  assert panel.request("/api/versions")[0] == 401
+  status, body = panel.json("/api/versions", token=panel.pair())
+  assert status == 200 and body["releases"][0]["commit"] and body["releases"][-1]["commit"] == "7d2bedb"

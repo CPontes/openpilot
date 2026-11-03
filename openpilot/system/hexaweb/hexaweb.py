@@ -29,6 +29,7 @@ from openpilot.selfdrive.hexa import radars
 from openpilot.selfdrive.hexa import phone
 from openpilot.selfdrive.hexa import timeline
 from openpilot.selfdrive.hexa import updates
+from openpilot.selfdrive.hexa import versions as hexa_versions
 from openpilot.selfdrive.hexa.options import GROUPS, LONG_CALIBRATED, OPTIONS, get_option, supported
 from openpilot.selfdrive.hexa.phone import VehicleState
 
@@ -1227,6 +1228,9 @@ def make_handler(backend: PanelBackend):
         who = self._who()
         if who is not None:
           self._json(200, backend.export_marks())
+      elif path == "/api/versions":  # what each channel version brought: static, read once
+        if self._who() is not None:
+          self._json(200, hexa_versions.public())
       elif path == "/api/missions":
         if self._who() is not None:
           self._json(200, backend.missions_state(parse_qs(query).get("since", [""])[0]))

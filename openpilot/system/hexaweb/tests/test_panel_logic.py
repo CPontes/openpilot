@@ -712,3 +712,21 @@ def test_done_lists_what_was_checked_latest_first():
                       _m("d", "marca", tries=[{"date": "2026-11-02", "result": "bad"}]), _m("e", "marca", tries=[{"date": "2026-11-03", "result": "base"}])]}
   prog = run("missionProgress", cat, {}, [])
   assert [m["key"] for m in run("missionsChecked", cat, prog)] == ["d", "a", "c"]  # a reference alone isn't done
+
+
+# ----- versions (owner, 03/11): fewer chips, every version on its own screen
+
+def test_version_chips_show_the_newest_few_and_how_many_more():
+  seen = ["f2", "a6", "3b", "00", "d5"]
+  assert run("versionChips", seen, None) == {"chips": [None, "f2", "a6", "3b"], "more": 2}
+  assert run("versionChips", seen, "d5") == {"chips": [None, "f2", "a6", "3b", "d5"], "more": 1}  # the one picked stays visible
+  assert run("versionChips", ["f2"], None) == {"chips": [None, "f2"], "more": 0}
+
+
+def test_version_list_has_the_notes_and_your_drives():
+  rel = [{"commit": "b2", "date": "03/11", "title": "Nova", "changes": ["x"]}, {"commit": "a1", "date": "02/11", "title": "Velha", "changes": ["y"]}]
+  trips = [kdrive(SAT, commit="b2"), kdrive(SAT - 3600, commit="b2"), kdrive(SAT - 7200, commit="zz9")]
+  out = run("versionList", trips, rel)
+  assert [r["commit"] for r in out] == ["b2", "a1", "zz9"]  # the channel's order, then what only the drives know
+  assert out[0]["trips"] == 2 and out[0]["km"] == 40 and out[0]["before"] == "a1"
+  assert out[1]["trips"] == 0 and out[1]["before"] is None and out[2]["title"] is None

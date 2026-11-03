@@ -9,7 +9,7 @@ import re
 import sys
 from pathlib import Path
 
-from openpilot.selfdrive.hexa import comma_ctl, i18n, live, marks, missions, options
+from openpilot.selfdrive.hexa import comma_ctl, i18n, live, marks, missions, options, versions
 
 HEXA = Path(__file__).parent
 ROOT = HEXA.parents[1]  # openpilot/openpilot
@@ -75,6 +75,7 @@ def option_texts() -> set[str]:
   out |= comma_ctl_texts()
   out |= set(live.EVENT_TEXT.values())
   out |= mission_texts()
+  out |= {x for r in versions.RELEASES for x in (r.title, *r.changes)}
   return out
 
 

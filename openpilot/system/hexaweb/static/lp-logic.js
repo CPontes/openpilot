@@ -578,6 +578,29 @@
     return ms.map((m, i) => ({ key: m.key, fits: fits(m), i })).sort((a, b) => (b.fits - a.fits) || (a.i - b.i)).map(({ key, fits: f }) => ({ key, fits: f }));
   }
 
+  // Versions (selfdrive/hexa/versions.py, owner 03/11): every version, the release notes when the CTO wrote them, and what
+  // your drives on it add up to. Newest first: the channel's order, then any version only the drives know, by its last drive.
+  const VERSION_CHIPS = 3;
+  function versionList(trips, releases) {
+    const ts = (trips || []).filter((t) => t.summary && !t.hidden && !idle(t) && versionOf(t));
+    const of = (v) => ts.filter((t) => versionOf(t) === v);
+    const known = (releases || []).map((r, i) => ({ ...r, i }));
+    const extra = versions(ts).filter((v) => !known.some((r) => r.commit === v))
+      .map((v) => ({ commit: v, title: null, changes: [], i: null, last: Math.max(...of(v).map((t) => t.mtime)) }));
+    const out = known.concat(extra.sort((a, b) => b.last - a.last)).map((r) => {
+      const mine = of(r.commit), k = kpiOf(mine);
+      return { ...r, trips: mine.length, km: k.km, last: mine.length ? Math.max(...mine.map((t) => t.mtime)) : null };
+    });
+    out.forEach((r, i) => { r.before = r.i != null ? (known[r.i + 1] || {}).commit || null : null; });
+    return out;
+  }
+  // The chips on Viagens: all, the newest few the drives have, the one picked if it isn't among them, and how many more
+  function versionChips(seen, picked, n) {
+    const top = (seen || []).slice(0, n || VERSION_CHIPS);
+    if (picked && !top.includes(picked)) top.push(picked);
+    return { chips: [null, ...top], more: Math.max(0, (seen || []).length - top.filter(Boolean).length) };
+  }
+
   // openpilot's three following distances (longitudinal_mpc_lib/long_mpc.py:71-79), in seconds and in meters at a speed
   const PERSONALITIES = [[T("perto"), 1.25], [T("padrão"), 1.45], [T("folgada"), 1.75]];
   function gapMeters(gapS, kmh) { return Math.round(gapS * kmh / 3.6); }
@@ -619,7 +642,7 @@
   // what "Apagar dados deste celular" takes from localStorage besides the copy: data, never the language or the view
   const DATA_KEYS = ["lpTrips", "lpMissionSnap"];
 
-  root.LPL = { copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
+  root.LPL = { versionList, versionChips, VERSION_CHIPS, copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
                tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);
