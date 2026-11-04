@@ -20,10 +20,13 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "03/11", "2060c4e", "A troca de faixa não volta sozinha",
+  Release("", "04/11", "2060c4e", "A troca de faixa não volta sozinha, copiloto por eventos e comma 3X",
           ("Logo depois de uma troca, um toque na alavanca para o outro lado não traz o carro de volta",
            "Para voltar de propósito: seta ligada 4,5 s e um empurrão novo no volante; a troca automática nunca volta",
-           "Versões no meio com pouca estrada aparecem à parte em «A atualização valeu?»")),
+           "Avisos que pedem reinício ficam travados com o openpilot engatado, na tela do comma",
+           "Copiloto: o que acabou de acontecer, com a hora, e nada salva sem Salvar",
+           "LizPilot na tela do comma 3X: opções, pareamento e marca pelo celular",
+           "Missões da rota 32 no histórico; versões no meio com pouca estrada à parte em «A atualização valeu?»")),
   Release("5c47e8f", "03/11", "2060c4e", "Comparar com a última versão testada",
           ("«A atualização valeu?» compara com a última versão que você testou (30 km ou mais), e lista as versões sem viagem no meio",),
           driving=False),

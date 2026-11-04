@@ -1299,12 +1299,10 @@
  "Inclui 1 versão sem viagem no meio: {v}": "Incluye 1 versión en medio sin viaje: {v}",
  "Inclui {n} versões sem viagem no meio: {v}": "Incluye {n} versiones en medio sin viaje: {v}",
  "Comparar com a última versão testada": "Comparar con la última versión probada",
- "A troca de faixa não volta sozinha": "El cambio de carril no se deshace solo",
  "E 1 com menos de {km} km, fora da conta: {v}": "Y 1 con menos de {km} km, fuera de la cuenta: {v}",
  "E {n} com menos de {km} km, fora da conta: {v}": "Y {n} con menos de {km} km, fuera de la cuenta: {v}",
  "Logo depois de uma troca, um toque na alavanca para o outro lado não traz o carro de volta": "Justo después de un cambio, un toque de la palanca hacia el otro lado no devuelve el auto",
  "Para voltar de propósito: seta ligada 4,5 s e um empurrão novo no volante; a troca automática nunca volta": "Para volver a propósito: direccional encendida 4,5 s y un nuevo empujón al volante; el cambio automático nunca vuelve",
- "Versões no meio com pouca estrada aparecem à parte em «A atualização valeu?»": "Las versiones en medio con poca ruta aparecen aparte en «¿Valió la actualización?»",
  "«A atualização valeu?» compara com a última versão que você testou (30 km ou mais), e lista as versões sem viagem no meio": "«¿Valió la actualización?» compara con la última versión que probaste (30 km o más), y lista las versiones en medio sin viaje",
  "E 1 testada antes, fora da conta: {v}": "Y 1 probada antes, fuera de la cuenta: {v}",
  "E {n} testadas antes, fora da conta: {v}": "Y {n} probadas antes, fuera de la cuenta: {v}",
@@ -1395,5 +1393,10 @@
  "sai daqui em {m}:{s}": "sale de aquí en {m}:{s}",
  "você a {v} km/h": "tú a {v} km/h",
  "você ainda parado": "tú aún detenido",
- "você saiu {s} s depois": "arrancaste {s} s después"
+ "você saiu {s} s depois": "arrancaste {s} s después",
+ "A troca de faixa não volta sozinha, copiloto por eventos e comma 3X": "El cambio de carril no se deshace solo, copiloto por eventos y comma 3X",
+ "Avisos que pedem reinício ficam travados com o openpilot engatado, na tela do comma": "Los avisos que piden reinicio quedan bloqueados con openpilot activado, en la pantalla del comma",
+ "Copiloto: o que acabou de acontecer, com a hora, e nada salva sem Salvar": "Copiloto: lo que acaba de pasar, con la hora, y nada se guarda sin Guardar",
+ "LizPilot na tela do comma 3X: opções, pareamento e marca pelo celular": "LizPilot en la pantalla del comma 3X: opciones, emparejamiento y marca desde el celular",
+ "Missões da rota 32 no histórico; versões no meio com pouca estrada à parte em «A atualização valeu?»": "Misiones de la ruta 32 en el historial; versiones en medio con poca ruta aparte en «¿Valió la actualización?»"
 }
