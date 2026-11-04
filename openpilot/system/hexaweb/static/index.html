@@ -931,7 +931,7 @@ async function baseLoad() {
 async function wipeBase() {  // the epoch moves first: an answer still on its way writes nothing, not even the hour
   const done = DB.clear();
   for (const k of LPL.DATA_KEYS) store(k, null);
-  evList = [];  // the copilot's events go with them
+  evList = []; evAnswers = {};  // the copilot's events and the answers go with them
   trips = null; histMarks = null; tripsV = ""; missions = null; stateJson = ""; syncAt = {}; syncSaved = 0; paths.clear(); mapSig = ""; histSig = "";
   mQueue = []; mQueueNotes = [];
   marksState = { reasons: marksState.reasons || [], marks: [], pending: 0 };
@@ -1074,7 +1074,9 @@ function render(s, copy, ep) {
   if (v.onroad && !carOn) driveAt = Date.now();  // this drive (or this page, if opened mid-drive): older events stay on the phone
   carOn = v.onroad;
   passengerOk = LPL.passenger({ ok: passengerOk }, carNow()).ok;
-  if (!carOn) { stopSince = null; evSt = null; passSt = null; evPick = null; }  // a new drive starts the detectors again; the log stays for review
+  // a new drive starts the detectors again; the log stays for review. The review keeps what you picked: it runs with the car
+  // off, and this runs on every refresh (CTO review of app-12: the card jumped back to the newest in seconds)
+  if (!carOn) { stopSince = null; evSt = null; passSt = null; if (!copReview) evPick = null; }
   if (copOpen && (copReview ? carNow().moving && !passengerOk : LPL.copilotGate({ ok: passengerOk }, carNow()).close)) closeCop();  // off, or moving with nobody confirmed (the review: parked or off is fine)
   const was = driving;
   driving = v.onroad && !parked;
@@ -1793,7 +1795,6 @@ function renderMissionCard() {
     a.append(g, el("span", "link", t("Ver"))); a.addEventListener("click", () => openMissions({ s: "resultado" })); rb.append(a);
   }
   // what the last drives left to answer (the copilot's events, live and from the log), parked: owner, 03/11
-  evAddLog();
   const toReview = carOn && !carStopped ? [] : reviewPending();
   if (toReview.length) {
     const b = el("button", "card att row"); b.type = "button"; b.style.cssText = "width:100%;margin:8px 0 0;text-align:left;color:inherit;font:inherit";
@@ -1891,11 +1892,17 @@ const EV_BY = { freio: "freio", acelerador: "acelerador", volante: "volante" };
 let evList = [], evSt = null, passSt = null, evPick = null, evPickAt = 0, evTick = null, evAns = null, evShown = null, evCardAt = 0;
 const EV_TAP_GUARD_MS = 800;
 let copReview = false, evShowAll = false;  // the review, parked or with the car off: what the drive left to answer
+// the answers apart from the events, with kind and time: a log copy of an answered event never comes back (CTO review of app-12)
+const EV_ANS_STORE = "lpCopAnswers", EV_REVIEW_H = 48;
+let evAnswers = {};
 function evLoad() {
   try { const x = JSON.parse(load(EV_STORE) || "[]"); evList = Array.isArray(x) ? x.filter((e) => e && Date.now() - e.t < EV_KEEP_H * 3600e3) : []; }
   catch (e) { evList = []; }
+  try { const a = JSON.parse(load(EV_ANS_STORE) || "{}"); evAnswers = a && typeof a === "object" && !Array.isArray(a) ? a : {}; }
+  catch (e) { evAnswers = {}; }
 }
 function evSave() { store(EV_STORE, evList.length ? JSON.stringify(evList) : null); }
+function ansSave() { store(EV_ANS_STORE, Object.keys(evAnswers).length ? JSON.stringify(evAnswers) : null); }
 function evFeed(events, updates) {
   if (!(events || []).length && !(updates || []).length) return;
   evList = LPL.eventsMerge(evList, events, updates); evSave();
@@ -1905,22 +1912,19 @@ function evFeed(events, updates) {
 // (CTO review of app-11: an event never goes to another drive's log)
 function evSince() {
   if (carOn || !trips) return driveAt;
-  const starts = LPL.listed(trips).filter((tr) => tr.summary).map((tr) => (tr.mtime - (tr.summary.s || tr.minutes * 60)) * 1000 - 60e3);  // a minute of slack
+  const starts = LPL.listed(trips).filter((tr) => tr.summary).map((tr) => (tr.mtime - (tr.summary.end_s || tr.summary.s || tr.minutes * 60)) * 1000 - 60e3);  // a minute of slack
   return Math.max(driveAt, ...starts, 0);
 }
-// The drives' own events (read from the log after the drive) join the phone's, for the last 2 days
-function evAddLog() {
-  if (!trips) return;
-  const add = LPL.logEvents(trips, evList, Date.now() - 48 * 3600e3);
-  if (add.length) { evList = LPL.eventsMerge(evList, add, []); evSave(); }
-}
+// The phone's events and the drives' own (read from the log after the drive), for the last 2 days: listed together, never
+// stored together (the phone's list keeps EV_KEEP)
+function reviewAll() { return LPL.reviewList(evList, trips, evAnswers, Date.now() - EV_REVIEW_H * 3600e3); }
 // What is worth asking after the drive: an event that answers a mission of the drive, or openpilot letting go with no pedal of
 // yours (on 0f and 16 all 14 were your brake: your call, nothing to ask). "Mostrar mais" for the rest.
 function evRelevant(e) {
   if (e.kind === "disengage") return !["freio", "acelerador"].includes((e.data || {}).by);
   return e.kind === "radar" || !!evMission(e);
 }
-function reviewPending() { return evList.filter((e) => !e.answer && Date.now() - e.t >= LPL.EV_RECENT_S * 1000 && (evShowAll || evRelevant(e))); }
+function reviewPending() { return reviewAll().filter((e) => !e.answer && Date.now() - e.t >= LPL.EV_RECENT_S * 1000 && (evShowAll || evRelevant(e))); }
 function openReview() {
   if (copOpen) return;
   copReview = true; evShowAll = false; evPick = null;
@@ -1930,7 +1934,9 @@ function openReview() {
   renderCop();
 }
 function evDone(id, r) {
+  const ev = evList.find((e) => e.id === id) || reviewAll().find((e) => e.id === id);
   evList = evList.map((e) => (e.id === id ? { ...e, answer: { r, at: Date.now() } } : e)); evSave();
+  if (ev) { evAnswers = LPL.answerKeep(evAnswers, ev, r, Date.now(), Date.now() - EV_REVIEW_H * 3600e3); ansSave(); }
   if (evPick === id) evPick = null;
   renderCop();
 }
@@ -2116,7 +2122,7 @@ function renderCop() {
   evShown = v.main ? v.main.id : null;
   const act = copReview ? [] : mState().active.map(mOf).filter((m) => m && !mProg()[m.key].full && !m.lock);
   const pk = missions.route && act.some((m) => m.route && m.option) ? missions.route : null;
-  const hidden = copReview && !evShowAll ? evList.filter((e) => !e.answer && Date.now() - e.t >= LPL.EV_RECENT_S * 1000 && !evRelevant(e)).length : 0;
+  const hidden = copReview && !evShowAll ? reviewAll().filter((e) => !e.answer && Date.now() - e.t >= LPL.EV_RECENT_S * 1000 && !evRelevant(e)).length : 0;
   $("copSheet").querySelector(".copbar").classList.toggle("hidden", copReview);  // marks belong to the drive, not to the review
   const sig = JSON.stringify([v.pending.map((e) => [e.id, e.stage]), v.answered, act.map((m) => m.key), !!pk, hidden, copReview, L()]);
   if (body.dataset.sig === sig) { body.querySelectorAll(".evrow").forEach((r, i) => { if (v.pending[i]) r.lastChild.textContent = clockText(v.pending[i], now); }); return; }

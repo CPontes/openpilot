@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from openpilot.selfdrive.hexa.copilot_events import MAX_EVENTS, CopilotEvents, Lead, Reading
+from openpilot.selfdrive.hexa.copilot_events import PER_KIND, CopilotEvents, Lead, Reading
 
 LOGIC = Path(__file__).parents[3] / "system/hexaweb/static/lp-logic.js"
 NODE = shutil.which("node") or next((p for p in ("/opt/node22/bin/node", "/usr/local/bin/node") if Path(p).exists()), None)
@@ -61,12 +61,31 @@ def test_stops_disengage_and_gaps():
   assert kinds([(0, car(40)), (5, car(0))]) == []  # a gap of 5 s: nothing late as now
 
 
-def test_never_more_than_the_phone_keeps():
+def test_keeps_the_newest_of_each_kind():
+  # CTO review of app-12: a cap on the drive's first 40 kept 25 of route 32's 79 minutes, and the stops pushed the rest out
   c = CopilotEvents()
   for i in range(200):
     c.step(i * 30., car(50))
     c.step(i * 30. + 1, car(50, steering=False))
-  assert len(c.events) == MAX_EVENTS
+  assert len(c.events) == PER_KIND and c.events[-1]["s"] == 199 * 30. + 1 and c.events[0]["s"] == (200 - PER_KIND) * 30. + 1
+  t = 6001.
+  for _ in range(40):  # the stops of a long drive in town
+    for v in (40, 40, 0, 0, 0, 40):
+      t += 1
+      c.step(t, car(v))
+  kinds_now = [e["kind"] for e in c.events]
+  assert kinds_now.count("disengage") == PER_KIND and kinds_now.count("stop_free") == PER_KIND
+
+
+def test_a_pull_away_waiting_still_gets_its_time_after_older_ones_go():
+  c = CopilotEvents()
+  t = 0.
+  for _ in range(PER_KIND + 3):
+    for r in [car(40)] + [car(0, (5, 0))] * 3 + [car(0, (9, 6))] + [car(0)] * 2 + [car(20)] + [car(40)] * 3:
+      t += 1
+      c.step(t, r)
+  pulls = [e for e in c.events if e["kind"] == "pull_away"]
+  assert len(pulls) == PER_KIND and all(e["data"].get("go_s") == 3. for e in pulls)
 
 
 def _random_drive(seed: int, n: int = 1200) -> list:
@@ -111,4 +130,9 @@ def test_the_same_events_as_the_phone_on_the_same_readings(seed, tmp_path):
   py = [[e["s"], e["kind"], e["data"]] for e in run(samples)]
   js = _phone(samples, tmp_path)
   assert len(py) > 5 and len({k for _, k, _ in py}) >= 4  # the drive does something
-  assert py == js[:len(py)] and (len(py) < MAX_EVENTS or len(js) >= len(py))
+  keep, seen = [], {}
+  for e in reversed(js):  # the comma keeps the newest PER_KIND of each kind, in their order
+    seen[e[1]] = seen.get(e[1], 0) + 1
+    if seen[e[1]] <= PER_KIND:
+      keep.append(e)
+  assert py == keep[::-1]

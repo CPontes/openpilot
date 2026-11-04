@@ -18,7 +18,9 @@ CUT_IN_KMH, CUT_IN_M, CUT_IN_NEAR_M, CUT_IN_GAP_S = 15, 8, 30, 2
 BLINKER_S, PULL_NEAR_M, PULL_ARMED_S, PULL_MOVE_KMH, PULL_GAP_M, GO_KMH, MOVED_KMH, DISENGAGE_KMH = 6, 20, 2, 4, 3, 3, 10, 8
 EV_GAP_S = 3.5
 SAMPLE_S = 1.  # one reading a second, like the phone
-MAX_EVENTS = 40  # per drive, like the phone's log
+# per drive and kind, the newest (CTO review of app-12): route 32 had 125 events in 79 min, and a cap on the drive's first 40
+# kept only its first 25 minutes. The review asks about the end of the drive, and a rare kind never loses to the stops
+PER_KIND = 15
 
 
 def _js_round1(x: float) -> float:
@@ -57,7 +59,7 @@ class CopilotEvents:
   blink_at: float = -1e9
   last: dict = field(default_factory=dict)
   armed: dict | None = None
-  wait_go: tuple[int, float] | None = None  # (index of the pull_away event, since)
+  wait_go: tuple[dict, float] | None = None  # (the pull_away event, since)
   cut: dict | None = None
   read_at: float | None = None
   prev: dict | None = None
@@ -71,14 +73,16 @@ class CopilotEvents:
     self._fresh()
     self.read_at = None
 
-  def _fire(self, kind: str, t: float, v: float, data: dict, at: float | None = None) -> int | None:
+  def _fire(self, kind: str, t: float, v: float, data: dict, at: float | None = None) -> dict | None:
     if kind in self.last and t - self.last[kind] < COOLDOWN_S.get(kind, 0):
       return None
     self.last[kind] = t
-    if len(self.events) >= MAX_EVENTS:
-      return None
-    self.events.append({"s": round(at if at is not None else t, 1), "kind": kind, "v": v, "data": data})
-    return len(self.events) - 1
+    ev = {"s": round(at if at is not None else t, 1), "kind": kind, "v": v, "data": data}
+    self.events.append(ev)
+    same = [e for e in self.events if e["kind"] == kind]
+    if len(same) > PER_KIND:
+      self.events.remove(same[0])  # the oldest of its kind; a pull_away still waiting keeps its own dict
+    return ev
 
   def step(self, t: float, r: Reading) -> None:
     v, lead = r.v, r.lead
@@ -130,18 +134,18 @@ class CopilotEvents:
         self.armed["miss"] += 1
       if self.armed and t - self.armed["at"] >= PULL_ARMED_S and \
          (self.armed["miss"] >= 2 or (lead and (lead.v >= PULL_MOVE_KMH or lead.d >= self.armed["d"] + PULL_GAP_M))):
-        i = self._fire("pull_away", t, v, {"d": self.armed["d"]})
+        ev = self._fire("pull_away", t, v, {"d": self.armed["d"]})
         self.armed = None
-        if i is not None:
-          self.wait_go = (i, t)
+        if ev is not None:
+          self.wait_go = (ev, t)
     elif self.stop_at is not None:
       # the car ahead and you left in the same reading: still its leaving, and you went right along
       if self.armed and self.wait_go is None and t - self.armed["at"] >= PULL_ARMED_S and \
          (not lead or lead.v >= PULL_MOVE_KMH or lead.d >= self.armed["d"] + PULL_GAP_M):
         self._fire("pull_away", t, v, {"d": self.armed["d"], "go_s": 0})
       elif self.wait_go is not None:
-        i, since = self.wait_go
-        self.events[i]["data"]["go_s"] = _js_round1(t - since)
+        ev, since = self.wait_go
+        ev["data"]["go_s"] = _js_round1(t - since)
       elif not lead and self.stop_lead is None:
         self._fire("go_free", t, v, {})
       self.stop_at, self.armed, self.wait_go = None, None, None

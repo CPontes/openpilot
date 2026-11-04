@@ -561,5 +561,5 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
     out["se_hard_brakes"] = int(out["se_hard_brakes"])
   out.update({"v_max": round(v_max), "run_km": _r(run_best[0], 2), "run_s": round(run_best[1])})
   return {**out, "segments": len(files), "unread": unread, "version": version.get("version", ""), "commit": version.get("commit", ""),
-          "auto_marks": auto[:AUTO_MARKS_MAX], "path": path, "cop": cop.events,
+          "auto_marks": auto[:AUTO_MARKS_MAX], "path": path, "cop": cop.events, "end_s": _r(end_s),
           "off_at": [x for x in off_at if x < end_s - PIN_END_S][:OFF_AT_MAX]}

@@ -718,15 +718,16 @@
     return { st: s, events };
   }
   // The copilot's events the comma read from the drives' logs after them (timeline.py "cop", owner 03/11): what the phone
-  // missed with its screen off. The start is the drive's end minus how long it ran; the same kind within 20 s of one the
-  // phone already has is that one (the phone's answer, if any, stays).
+  // missed with its screen off. The start is the drive's end minus where its last minute ended (end_s: a missing or unread
+  // minute in the middle doesn't move the clock); the same kind within 20 s of one the phone already has is that one (the
+  // phone's answer, if any, stays).
   const EV_SAME_MS = 20000;
   function logEvents(trips, list, since) {
     const out = [], have = (list || []).slice();
     for (const tr of trips || []) {
       const cop = tr && tr.summary && tr.summary.cop;
       if (!Array.isArray(cop) || tr.hidden) continue;
-      const t0 = (tr.mtime - (tr.summary.s || tr.minutes * 60)) * 1000;
+      const t0 = (tr.mtime - (tr.summary.end_s || tr.summary.s || tr.minutes * 60)) * 1000;
       if (!(t0 >= (since || 0))) continue;
       for (const e of cop) {
         const t = t0 + e.s * 1000, id = `${tr.id}-${e.s}-${e.kind}`;
@@ -736,6 +737,24 @@
       }
     }
     return out.sort((a, b) => a.t - b.t);
+  }
+  // What "A conferir" lists (CTO review of app-12): the phone's own events and the log's, never stored together. The phone
+  // keeps only EV_KEEP events and EV_KEEP_H hours; merging up to 15 a kind per drive into that list pushed events out on
+  // every render, they came back from the log, and an answer went with them. The answers live apart, with the kind and the
+  // time, so a log copy of an event answered on the phone (and since dropped there) never comes back.
+  const EV_ANSWERS_KEEP = 400;
+  function reviewList(list, trips, answers, since) {
+    const ans = answers || {}, known = (list || []).concat(Object.values(ans));
+    const withAns = (e) => (!e.answer && ans[e.id] ? { ...e, answer: { r: ans[e.id].r, at: ans[e.id].at } } : e);
+    const out = (list || []).filter((e) => e.t >= since).map(withAns);
+    for (const e of logEvents(trips, known, since)) if (e.t >= since) out.push(e);
+    return out.sort((a, b) => a.t - b.t);
+  }
+  // An answer kept apart: the event's kind and time with it; only the last `since` and EV_ANSWERS_KEEP of them
+  function answerKeep(answers, ev, r, at, since) {
+    const out = { ...(answers || {}), [ev.id]: { id: ev.id, kind: ev.kind, t: ev.t, r, at } };
+    const ids = Object.keys(out).filter((id) => out[id] && out[id].t >= since).sort((a, b) => out[a].t - out[b].t).slice(-EV_ANSWERS_KEEP);
+    return Object.fromEntries(ids.map((id) => [id, out[id]]));
   }
   // The drive's event log: new ones in, updates merged, never more than EV_KEEP (the oldest answered ones go first)
   function eventsMerge(list, events, updates) {
@@ -835,9 +854,9 @@
   // Read only: without the comma, or before the first answer of a page opened from the copy. Commands wait for the comma.
   function readOnly(online, fromCopy) { return !online || !!fromCopy; }
   // what "Apagar dados deste celular" takes from localStorage besides the copy: data, never the language or the view
-  const DATA_KEYS = ["lpTrips", "lpMissionSnap", "lpCopEvents"];  // lpCopEvents: the copilot's events of the drive
+  const DATA_KEYS = ["lpTrips", "lpMissionSnap", "lpCopEvents", "lpCopAnswers"];  // the copilot's events of the drive, and the answers
 
-  root.LPL = { eventStep, pointPassed, eventsMerge, logEvents, eventMission, copilotView, eventAge, eventStage, eventClock, EV_MISSIONS, EV_REASON, EV_LIVE_S, EV_RECENT_S, EV_KEEP, versionList, versionChips, VERSION_CHIPS, copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
+  root.LPL = { eventStep, pointPassed, eventsMerge, logEvents, reviewList, answerKeep, eventMission, copilotView, eventAge, eventStage, eventClock, EV_MISSIONS, EV_REASON, EV_LIVE_S, EV_RECENT_S, EV_KEEP, versionList, versionChips, VERSION_CHIPS, copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
                tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

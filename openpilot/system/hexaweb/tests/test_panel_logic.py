@@ -393,7 +393,7 @@ def test_unpairing_leaves_no_list_of_drives_on_the_phone():
   assert "LPL.DATA_KEYS" in wipe and "trips = null" in wipe and "paths.clear()" in wipe
   keys = subprocess.run([NODE, "-e", f"process.stdout.write(JSON.stringify(require({json.dumps(str(LOGIC))}).DATA_KEYS))"],
                         capture_output=True, text=True, timeout=30, check=True).stdout
-  assert set(json.loads(keys)) == {"lpTrips", "lpMissionSnap", "lpCopEvents"}  # data only: the language and the view stay
+  assert set(json.loads(keys)) == {"lpTrips", "lpMissionSnap", "lpCopEvents", "lpCopAnswers"}  # data only: the language and the view stay
 
 
 def test_no_path_yet_is_not_no_gps():
@@ -943,3 +943,68 @@ def test_the_review_asks_about_letting_go_only_without_your_pedal():
   rel = html[html.index("function evRelevant(e)"):]
   rel = rel[:rel.index("\n}\n")]
   assert '["freio", "acelerador"].includes' in rel and "evMission(e)" in rel
+
+
+def test_the_drives_clock_starts_where_its_last_minute_ended():
+  # CTO review of app-12: "s" is the time driven, so a minute missing in the middle moved every event of the drive
+  trip = {"id": "r", "mtime": 10_000, "minutes": 11, "hidden": False,
+          "summary": {"s": 600, "end_s": 720, "cop": [{"s": 100.0, "kind": "stop_lead", "v": 0, "data": {}}]}}
+  assert run("logEvents", [trip], [], 0)[0]["t"] == (10_000 - 720 + 100) * 1000
+
+
+def _drive(rid, end_ms, n):
+  cop = [{"s": float(60 * (i + 1)), "kind": ("stop_lead", "pull_away", "cut_in", "lead_brake")[i % 4], "v": 30, "data": {}} for i in range(n)]
+  return {"id": rid, "mtime": end_ms / 1000, "minutes": n + 2, "hidden": False, "summary": {"s": 60 * (n + 2), "end_s": 60 * (n + 2), "cop": cop}}
+
+
+def test_the_review_keeps_its_answers_with_more_events_than_the_phone_keeps():
+  # CTO review of app-12: the log's events merged into the phone's list (EV_KEEP 40) swapped one drive for the other on
+  # every render, and the answers went with them. The list is built on the fly, the answers kept apart
+  now, H = 1_800_000_000_000, 3_600_000
+  trips = [_drive("r2", now - H, 40), _drive("r1", now - 20 * H, 40)]
+  since = now - 48 * H
+  first = run("reviewList", [], trips, {}, since)
+  assert len(first) == 80 and len({e["id"] for e in first}) == 80
+  answers = {}
+  for e in first[-3:]:
+    answers = run("answerKeep", answers, e, "ok", now, since)
+  again = run("reviewList", [], trips, answers, since)
+  assert len(again) == 77 and not any(e["id"] in answers for e in again)  # answered: never back as pending
+  assert run("reviewList", [], trips, answers, since) == again  # the same list on every render
+
+
+def test_a_log_copy_of_an_event_answered_on_the_phone_and_dropped_there_never_comes_back():
+  now = 1_800_000_000_000
+  trip = _drive("r", now, 2)
+  t0 = now - trip["summary"]["end_s"] * 1000
+  phone = {"id": "p1", "kind": "stop_lead", "t": t0 + 65_000, "v": 0, "data": {}}  # the log's first, 5 s off
+  answers = run("answerKeep", {}, phone, "ok", now, 0)
+  out = run("reviewList", [], [trip], answers, 0)  # the phone's list no longer has it (EV_KEEP_H, EV_KEEP)
+  assert [e["kind"] for e in out] == ["pull_away"]
+  live = run("reviewList", [{**phone, "answer": None}], [trip], answers, 0)  # still on the phone: it shows answered
+  assert live[0]["id"] == "p1" and live[0]["answer"]["r"] == "ok"
+
+
+def test_the_answers_kept_apart_stay_bounded():
+  answers = run("answerKeep", {}, {"id": "old", "kind": "stop_lead", "t": 1_000}, "ok", 5, 0)
+  answers = run("answerKeep", answers, {"id": "new", "kind": "stop_lead", "t": 1_449}, "ok", 5, 1_100)
+  assert set(answers) == {"new"}  # older than the window: out
+  big = {f"e{i}": {"id": f"e{i}", "kind": "x", "t": i, "r": "ok", "at": 0} for i in range(500)}
+  kept = run("answerKeep", big, {"id": "new", "kind": "x", "t": 1_000}, "ok", 0, 0)
+  assert len(kept) == 400 and "new" in kept and "e0" not in kept
+
+
+def test_the_review_lists_never_store_the_logs_events_with_the_phones():
+  html = (LOGIC.parent / "index.html").read_text()
+  assert "evAddLog" not in html and "LPL.reviewList(evList, trips, evAnswers" in html
+  done = html[html.index("function evDone(id, r)"):]
+  done = done[:done.index("\n}\n")]
+  assert "LPL.answerKeep(" in done and "ansSave()" in done
+  assert '"lpCopAnswers"' in LOGIC.read_text() and 'EV_ANS_STORE = "lpCopAnswers"' in html
+
+
+def test_the_review_keeps_the_event_you_picked_with_the_car_off():
+  html = (LOGIC.parent / "index.html").read_text()
+  render = html[html.index("function render(s, copy, ep)"):]
+  render = render[:render.index("\n}\n")]
+  assert "if (!copReview) evPick = null;" in render and "passSt = null; evPick = null;" not in render
