@@ -32,6 +32,7 @@ def comma_lang(params) -> str:
   """The comma 4 has no language menu, so its default "en" says nothing about the person: only another value counts."""
   try:
     code = params.get("LanguageSetting")
+    code = code.removeprefix("main_") if isinstance(code, str) else code  # older versions stored "main_en" (multilang.py)
     return SOURCE if code in (None, "", "en") else lang_of(code)
   except Exception:
     return SOURCE

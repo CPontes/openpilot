@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from openpilot.selfdrive.hexa import options
-from openpilot.selfdrive.hexa.options import GROUP_KEYS, OPTIONS, HexaOption, get_option, is_on, options_in_group, supported
+from openpilot.selfdrive.hexa.options import GROUP_KEYS, OPTIONS, HexaOption, get_option, is_on, locked_while_engaged, options_in_group, supported
 
 PARAMS_KEYS_H = Path(__file__).parents[3] / "common" / "params_keys.h"
 
@@ -109,3 +109,16 @@ def test_a_normal_option_reads_its_param():
   assert is_on(Stored(), "AutoResume") is False
   assert is_on(Stored(Unknown=True), "Unknown") is False
 
+
+
+def test_what_restarts_openpilot_is_locked_while_engaged():  # review of the 3X page: an alert's restart mid-drive
+  # hardwared drops "started" for a second on OnroadCycleRequested, with no look at engaged: controlsd and the rest stop
+  for o in OPTIONS:
+    assert locked_while_engaged(o) == (o.driving or o.restart_needed), o.key
+  assert {o.key for o in OPTIONS if o.restart_needed and not o.driving} >= {"RadarAlert", "LeadDepartAlert", "AccLostAlert"}
+  assert all(locked_while_engaged(o) for o in OPTIONS if o.restart_needed)
+  # both comma screens lock by this rule, not by "driving" alone
+  ui = Path(__file__).parents[2] / "ui"
+  for page in (ui / "mici" / "layouts" / "settings" / "hexa.py", ui / "layouts" / "settings" / "hexa.py"):
+    src = page.read_text()
+    assert "if locked_while_engaged(opt):" in src and "if opt.driving:" not in src, page

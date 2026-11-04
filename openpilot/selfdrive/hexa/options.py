@@ -220,6 +220,13 @@ def options_in_group(group: str) -> list[HexaOption]:
   return [o for o in OPTIONS if o.group == group]
 
 
+def locked_while_engaged(opt: HexaOption) -> bool:
+  """The comma's screens lock it while openpilot is engaged: it changes the driving, or it asks for an onroad cycle, which
+  stops controlsd and the rest for a second mid-drive (hardwared). Same rule as the comma's own toggles (toggles.py: "these
+  toggles need restart, block while engaged"). The phone never asks for the cycle: there it counts from the next start."""
+  return opt.driving or opt.restart_needed
+
+
 def supported(opt: HexaOption, params) -> bool:
   """Shown only when this build has the option's param: a base without the feature has no key, and
   reading an unknown key raises. Stores without check_key (tests) know every key."""
