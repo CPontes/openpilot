@@ -602,76 +602,105 @@
   // with no open mission, "não" still becomes a mark with this reason (marks.py DEFAULT_REASONS)
   const EV_REASON = { lead_brake: "freada", pull_away: "outro", stop_lead: "freada", stop_free: "freada", go_free: "outro", stop_long: "outro",
                       cut_in: "freada", disengage: "soltou", bump: "outro" };
-  const LEAD_BRAKE_KMH = 10, LEAD_BRAKE_S = 3, LEAD_BRAKE_MIN_KMH = 20, CUT_IN_KMH = 15, CUT_IN_M = 8, CUT_IN_NEAR_M = 30, CUT_IN_GAP_S = 2,
-        BLINKER_S = 6, PULL_NEAR_M = 20, PULL_ARMED_S = 2, PULL_MOVE_KMH = 4, PULL_GAP_M = 3, GO_KMH = 3, MOVED_KMH = 10, DISENGAGE_KMH = 8;
+  // The car ahead braking, on route 32 (CTO, 03/11): at 35–60 m the comma's own lead speed swings 12 km/h in 3 s (p50), so a
+  // speed drop alone fired 26–34 times in 79 min, a third of them real. With the comma's filtered deceleration (lead.a, aLeadK)
+  // twice in a row, the same car, within 40 m and 8 km/h down: about 18 times, two thirds real, 12 of the 14 real ones caught.
+  // [hipótese] from one route: check it on the next ones.
+  const LEAD_BRAKE_KMH = 8, LEAD_BRAKE_S = 3, LEAD_BRAKE_MIN_KMH = 20, LEAD_BRAKE_A = -0.4, LEAD_BRAKE_NEAR_M = 40, SAME_LEAD_M = 6,
+        CUT_IN_KMH = 15, CUT_IN_M = 8, CUT_IN_NEAR_M = 30, CUT_IN_GAP_S = 2,
+        BLINKER_S = 6, PULL_NEAR_M = 20, PULL_ARMED_S = 2, PULL_MOVE_KMH = 4, PULL_GAP_M = 3, GO_KMH = 3, MOVED_KMH = 10, DISENGAGE_KMH = 8,
+        EV_GAP_S = 3.5;  // readings further apart than this (page hidden, Wi-Fi gone): what was being watched starts over
   function eventAge(ev, now) { return Math.max(0, (now - ev.t) / 1000); }
   function eventStage(ev, now) { const a = eventAge(ev, now); return a < EV_LIVE_S ? "live" : a < EV_RECENT_S ? "recent" : "past"; }
   function eventStep(st, l, now) {
-    const s = Object.assign({ hist: [], stopAt: null, stopLead: null, longDone: false, moved: false, engaged: null, lead: null, leadAt: 0,
-                              blinkAt: -1e9, last: {}, armed: null, waitGo: null, n: 0 }, st || {});
+    const s = Object.assign({ hist: [], stopAt: null, stopLead: null, longDone: false, moved: false, steer: null, lead: null, leadAt: 0,
+                              blinkAt: -1e9, last: {}, armed: null, waitGo: null, cut: null, readAt: null, n: 0 }, st || {});
     const events = [], updates = [];
+    const fresh = { hist: [], stopAt: null, armed: null, waitGo: null, steer: null, lead: null, prev: null, moved: false, cut: null };
     if (!l || !l.driving) {  // car off or no data: nothing is "now", every pending detection starts over
-      Object.assign(s, { hist: [], stopAt: null, armed: null, waitGo: null, engaged: null, lead: null, prev: null, moved: false });
+      Object.assign(s, fresh, { readAt: null });
       return { st: s, events, updates };
     }
     const v = l.v || 0, lead = l.lead || null, sec = now / 1000;
-    const fire = (kind, data) => {
+    // after a gap the first reading can't tell what happened meanwhile, nor when: start over rather than fire late as "now"
+    if (s.readAt != null && (sec - s.readAt > EV_GAP_S || sec < s.readAt)) Object.assign(s, fresh);
+    s.readAt = sec;
+    const fire = (kind, data, at) => {
       if (s.last[kind] != null && sec - s.last[kind] < (EV_COOLDOWN_S[kind] || 0)) return null;
       s.last[kind] = sec; s.n += 1;
-      const ev = { id: `${Math.round(now)}-${s.n}`, kind, t: now, v, data: data || {} };
+      const ev = { id: `${Math.round(now)}-${s.n}`, kind, t: at || now, v, data: data || {} };
       events.push(ev); return ev;
     };
     if (l.blinker) s.blinkAt = sec;
-    // a car cut in: a lead appears close where the last reading had none, or a much closer one replaces it, with you moving
-    // and not changing lanes yourself. A lead that blinked out for a reading and came back at the same place is the same car.
+    // a car cut in: a lead appears close where the last reading had none, or one much closer than you closing in on it explains,
+    // with you moving and not changing lanes yourself. It has to be there in the next reading too: then it counts from the
+    // first. A lead that blinked out for a reading and came back at the same place is the same car.
     const prev = s.prev && sec - s.prev.t <= CUT_IN_GAP_S ? s.prev : null;
-    if (lead && prev && v >= CUT_IN_KMH && lead.d <= CUT_IN_NEAR_M && sec - s.blinkAt > BLINKER_S) {
+    const closing = (from) => Math.max(0, (v - from.v) / 3.6) * (sec - prev.t);  // m you got closer to it since the last reading
+    const sameLead = !!(lead && prev && prev.lead && Math.abs(prev.lead.d - closing(prev.lead) - lead.d) <= SAME_LEAD_M);
+    if (s.cut) {
+      if (lead && prev && Math.abs(s.cut.d - closing(s.cut) - lead.d) <= SAME_LEAD_M) { fire("cut_in", { d: s.cut.d }, s.cut.t); s.hist = []; }
+      s.cut = null;
+    } else if (lead && prev && v >= CUT_IN_KMH && lead.d <= CUT_IN_NEAR_M && sec - s.blinkAt > BLINKER_S) {
       const blip = !prev.lead && s.lead && sec - s.leadAt <= 3 && Math.abs(s.lead.d - lead.d) < 5;
-      if ((!prev.lead && !blip) || (prev.lead && prev.lead.d - lead.d >= CUT_IN_M)) { fire("cut_in", { d: lead.d }); s.hist = []; }
+      if ((!prev.lead && !blip) || (prev.lead && prev.lead.d - closing(prev.lead) - lead.d >= CUT_IN_M)) s.cut = { t: now, d: lead.d, v: lead.v };
     }
-    s.prev = { t: sec, lead: lead ? { d: lead.d } : null };
-    // the car ahead braked: its speed fell 10 km/h or more within 3 s, with you following above 20 km/h
+    s.prev = { t: sec, lead: lead ? { d: lead.d, v: lead.v } : null };
+    // the car ahead braked: the comma's filtered deceleration of the same car, twice in a row, close, and its speed down 8 km/h
+    // in 3 s, with you following above 20 km/h (route 32 above)
     s.hist = s.hist.filter((h) => now - h.t <= LEAD_BRAKE_S * 1000);
     if (lead && v >= LEAD_BRAKE_MIN_KMH) {
-      s.hist.push({ t: now, v: lead.v });
-      const top = Math.max(...s.hist.map((h) => h.v));
-      if (top - lead.v >= LEAD_BRAKE_KMH && fire("lead_brake", { from: top, to: lead.v, d: lead.d })) s.hist = [];
+      if (!sameLead) s.hist = [];
+      s.hist.push({ t: now, v: lead.v, a: lead.a });
+      const top = Math.max(...s.hist.map((h) => h.v)), n = s.hist.length;
+      const decel = n >= 2 && [s.hist[n - 1].a, s.hist[n - 2].a].every((a) => typeof a === "number" && a <= LEAD_BRAKE_A);
+      if (decel && lead.d <= LEAD_BRAKE_NEAR_M && top - lead.v >= LEAD_BRAKE_KMH && fire("lead_brake", { from: top, to: lead.v, d: lead.d })) s.hist = [];
     } else s.hist = [];
     // stops: arriving (behind a car or not), a long one, the car ahead leaving, and you leaving
-    if (v < COP_STOP_KMH) {
+    if (v < COP_STOP_KMH || (s.stopAt != null && v < GO_KMH)) {  // stopped, and still so at 1–2 km/h of creeping
       if (s.stopAt == null) {
         s.stopAt = sec; s.stopLead = lead ? lead.d : null; s.longDone = false;
         if (s.moved) fire(lead ? "stop_lead" : "stop_free", lead ? { d: lead.d } : {});
         s.moved = false;
       }
       if (!s.longDone && sec - s.stopAt >= COP_LONG_S) { s.longDone = true; fire("stop_long", { s: Math.round(sec - s.stopAt) }); }
-      if (lead && lead.d <= PULL_NEAR_M && !s.waitGo) s.armed = s.armed ? { at: s.armed.at, d: Math.min(s.armed.d, lead.d) } : { at: sec, d: lead.d };
-      if (s.armed && sec - s.armed.at >= PULL_ARMED_S && (!lead || lead.v >= PULL_MOVE_KMH || lead.d >= s.armed.d + PULL_GAP_M)) {
+      if (lead && lead.d <= PULL_NEAR_M && !s.waitGo) s.armed = s.armed ? { ...s.armed, d: Math.min(s.armed.d, lead.d), miss: 0 } : { at: sec, d: lead.d, miss: 0 };
+      else if (s.armed && !lead) s.armed.miss += 1;
+      if (s.armed && sec - s.armed.at >= PULL_ARMED_S && (s.armed.miss >= 2 || (lead && (lead.v >= PULL_MOVE_KMH || lead.d >= s.armed.d + PULL_GAP_M)))) {
         const ev = fire("pull_away", { d: s.armed.d });
         s.armed = null;
         if (ev) s.waitGo = { id: ev.id, at: sec };
       }
-    } else if (v >= GO_KMH && s.stopAt != null) {
-      if (s.waitGo) updates.push({ id: s.waitGo.id, data: { go_s: Math.round((sec - s.waitGo.at) * 10) / 10 } });  // how long you took
+    } else if (s.stopAt != null) {
+      // the car ahead and you left in the same reading: still its leaving, and you went right along
+      if (s.armed && !s.waitGo && sec - s.armed.at >= PULL_ARMED_S && (!lead || lead.v >= PULL_MOVE_KMH || lead.d >= s.armed.d + PULL_GAP_M)) {
+        fire("pull_away", { d: s.armed.d, go_s: 0 });
+      } else if (s.waitGo) updates.push({ id: s.waitGo.id, data: { go_s: Math.round((sec - s.waitGo.at) * 10) / 10 } });  // how long you took
       else if (!lead && s.stopLead == null) fire("go_free", {});
       Object.assign(s, { stopAt: null, armed: null, waitGo: null });
     }
     if (v >= MOVED_KMH) s.moved = true;
-    // openpilot let go with the car moving
-    if (s.engaged === true && !l.engaged && v >= DISENGAGE_KMH) fire("disengage", { by: l.brake ? "freio" : l.gas ? "acelerador" : l.driver ? "volante" : null });
-    s.engaged = !!l.engaged;
+    // openpilot let go of the wheel with the car moving. Not `engaged`: with always-on steering it stays on through a brake
+    // (route 32: 11 brakes at speed, enabled throughout); the steering itself (latActive) is what dropped
+    if (typeof l.steering === "boolean") {
+      if (s.steer === true && !l.steering && v >= DISENGAGE_KMH) fire("disengage", { by: l.brake ? "freio" : l.gas ? "acelerador" : l.driver ? "volante" : null });
+      s.steer = l.steering;
+    }
     if (lead) { s.lead = { d: lead.d, v: lead.v }; s.leadAt = sec; }
     return { st: s, events, updates };
   }
-  // A point of the list you just went past (Pontos, /api/radars/near): seen ahead and close, then behind or gone
-  const PASS_WATCH_M = 300, PASS_FORGET_S = 120;
-  function pointPassed(st, near, now) {
+  // A point of the list you just went past (Pontos, /api/radars/near): seen ahead and really close, then behind or gone, with
+  // the car moving (stopped, the GPS heading wanders; and a point only seen far off may be on a street you didn't take)
+  const PASS_WATCH_M = 300, PASS_NEAR_M = 60, PASS_FORGET_S = 120;
+  function pointPassed(st, near, now, moving) {
     const s = Object.assign({ watch: {} }, st || {}), events = [], sec = now / 1000, seen = new Set();
+    if (moving === false) return { st: s, events };
     for (const p of near || []) {
       if (!p.key) continue;
       seen.add(p.key);
       const w = s.watch[p.key];
-      if (p.ahead && p.distance <= PASS_WATCH_M) s.watch[p.key] = { p, at: sec };
+      if (p.ahead && p.distance <= PASS_WATCH_M) s.watch[p.key] = { p, at: sec, min: Math.min(p.distance, w ? w.min : Infinity) };
+      else if (!p.ahead && w && w.min > PASS_NEAR_M) delete s.watch[p.key];
       else if (!p.ahead && w) {
         delete s.watch[p.key];
         events.push({ id: `${Math.round(now)}-${p.key}`, kind: p.kind === "lombada" ? "bump" : "radar", t: now, v: null,
@@ -680,7 +709,7 @@
     }
     for (const [k, w] of Object.entries(s.watch)) {
       if (sec - w.at > PASS_FORGET_S) delete s.watch[k];
-      else if (!seen.has(k) && w.p.distance <= 80) {  // out of the list right after being close: gone past
+      else if (!seen.has(k) && w.min <= PASS_NEAR_M) {  // out of the list right after being close: gone past
         delete s.watch[k];
         events.push({ id: `${Math.round(now)}-${k}`, kind: w.p.kind === "lombada" ? "bump" : "radar", t: now, v: null,
                       data: { key: k, kind: w.p.kind, limit: w.p.limit ?? null, side: w.p.side || null, confirmed: !!w.p.confirmed, mine: !!w.p.mine } });
@@ -699,11 +728,12 @@
     }
     return out;
   }
-  // The mission an event answers: the first of its missions still open, the ones on this drive first
+  // The mission an event answers: the first of its missions still open and taken on this drive. Not one left at home: its
+  // option may be off, and a mark would count for a test nobody ran (CTO review of app-11)
   function eventMission(ev, cat, active, prog) {
     const keys = EV_MISSIONS[ev && ev.kind] || [], act = active || [];
     const open = keys.filter((k) => ((cat && cat.missions) || []).some((m) => m.key === k && !m.lock) && !(prog && prog[k] && prog[k].full));
-    return open.find((k) => act.includes(k)) || open[0] || null;
+    return open.find((k) => act.includes(k)) || null;
   }
   // What the copilot shows: the newest open event in the big card while it is recent; otherwise the one picked for review,
   // or nothing (waiting). An event newer than the pick always takes the big card back. The rest, newest first, is "A conferir".

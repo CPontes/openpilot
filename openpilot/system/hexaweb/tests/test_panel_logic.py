@@ -761,12 +761,13 @@ def run_drive(samples, st=None, t0=0):
 
 
 def car(v, lead=None, **kw):
-  return {"driving": True, "v": v, "engaged": True, "lead": lead, "blinker": "", **kw}
+  return {"driving": True, "v": v, "engaged": True, "steering": True, "lead": lead, "blinker": "", **kw}
 
 
 def test_the_car_ahead_pulling_away_is_an_event_and_you_leaving_completes_it():
   stop = [(i, car(0, {"d": 6, "v": 0})) for i in range(5)]
-  r = run_drive([(-20, car(40)), (-10, car(20)), *stop, (5, car(0, {"d": 7, "v": 8})), (6, car(0, {"d": 10, "v": 12})), (8, car(5, {"d": 14, "v": 15}))])
+  r = run_drive([(-2, car(40)), (-1, car(20)), *stop, (5, car(0, {"d": 7, "v": 8})), (6, car(0, {"d": 10, "v": 12})), (7, car(0, {"d": 12, "v": 13})),
+                 (8, car(5, {"d": 14, "v": 15}))])  # a reading a second, as the page reads
   kinds = [e["kind"] for e in r["evs"]]
   assert kinds == ["stop_lead", "pull_away"]  # the stop behind it, then the car ahead leaving: once
   pull = r["evs"][1]
@@ -775,28 +776,44 @@ def test_the_car_ahead_pulling_away_is_an_event_and_you_leaving_completes_it():
 
 
 def test_a_lead_that_does_not_move_is_no_event_and_a_short_stop_does_not_arm():
-  r = run_drive([(-10, car(30)), *[(i, car(0, {"d": 6, "v": 0})) for i in range(30)]])
+  r = run_drive([(-1, car(30)), *[(i, car(0, {"d": 6, "v": 0})) for i in range(30)]])
   assert [e["kind"] for e in r["evs"]] == ["stop_lead"]
   r = run_drive([(0, car(0, {"d": 6, "v": 0})), (1, car(0, {"d": 9, "v": 6}))])  # 1 s behind it: not armed yet
   assert r["evs"] == []
 
 
-def test_the_car_ahead_braking_needs_a_real_drop_and_you_following():
-  follow = [(i, car(50, {"d": 30, "v": 50})) for i in range(3)]
-  r = run_drive([*follow, (3, car(50, {"d": 28, "v": 44})), (4, car(48, {"d": 25, "v": 38}))])
+def test_the_car_ahead_braking_needs_its_deceleration_close_and_a_real_drop():  # route 32 (CTO review of app-11)
+  follow = [(i, car(50, {"d": 30, "v": 50, "a": 0.})) for i in range(3)]
+  r = run_drive([*follow, (3, car(50, {"d": 28, "v": 45, "a": -0.6})), (4, car(48, {"d": 25, "v": 40, "a": -0.9}))])
   assert [e["kind"] for e in r["evs"]] == ["lead_brake"]
-  assert r["evs"][0]["data"]["from"] == 50 and r["evs"][0]["data"]["to"] == 38
-  slow = run_drive([(i, car(50, {"d": 30, "v": 50 - 2 * i})) for i in range(10)])  # 2 km/h a second: not braking hard
+  assert r["evs"][0]["data"]["from"] == 50 and r["evs"][0]["data"]["to"] == 40
+  # what fired on route 32: the speed of a car 35–60 m ahead swinging, with no deceleration behind it
+  swing = [(3, car(50, {"d": 30, "v": 38, "a": 0.})), (4, car(50, {"d": 30, "v": 52, "a": -0.1})), (5, car(50, {"d": 30, "v": 40, "a": 0.}))]
+  noise = run_drive([*follow, *swing])
+  assert noise["evs"] == []
+  far = run_drive([(i, car(70, {"d": 55, "v": 70 - 6 * i, "a": -1.})) for i in range(5)])  # beyond 40 m: too noisy to tell
+  assert far["evs"] == []
+  other = run_drive([*follow, (3, car(50, {"d": 15, "v": 38, "a": -0.6})), (4, car(50, {"d": 13, "v": 37, "a": -0.6}))])  # another car:
+  assert [e["kind"] for e in other["evs"]] == ["cut_in"]  # it cut in; its speed isn't the first one's braking
+  old = run_drive([*follow, (3, car(50, {"d": 28, "v": 44})), (4, car(48, {"d": 25, "v": 38}))])  # a comma that doesn't send a
+  assert old["evs"] == []
+  slow = run_drive([(i, car(50, {"d": 30, "v": 50 - 2 * i, "a": -0.6})) for i in range(10)])  # 2 km/h a second: not braking hard
   assert slow["evs"] == []
-  crawl = run_drive([(0, car(15, {"d": 10, "v": 30})), (1, car(15, {"d": 9, "v": 10}))])  # you below 20 km/h: not this event
+  crawl = run_drive([(0, car(15, {"d": 10, "v": 30, "a": -2.})), (1, car(15, {"d": 9, "v": 10, "a": -2.}))])  # you below 20 km/h
   assert crawl["evs"] == []
 
 
 def test_a_cut_in_and_not_your_own_lane_change():
-  r = run_drive([(0, car(60)), (1, car(60)), (2, car(60, {"d": 18, "v": 55}))])
+  r = run_drive([(0, car(60)), (1, car(60)), (2, car(60, {"d": 18, "v": 55})), (3, car(60, {"d": 17, "v": 55}))])
   assert [e["kind"] for e in r["evs"]] == ["cut_in"]
-  closer = run_drive([(0, car(60, {"d": 45, "v": 60})), (1, car(60, {"d": 20, "v": 55}))])
+  assert r["evs"][0]["t"] == 2000  # it counts from when it showed up, once the next reading saw it too
+  closer = run_drive([(0, car(60, {"d": 45, "v": 60})), (1, car(60, {"d": 20, "v": 55})), (2, car(60, {"d": 19, "v": 55}))])
   assert [e["kind"] for e in closer["evs"]] == ["cut_in"]
+  # CTO review of app-11: closing in on a slower or stopped car is no cut-in, nor is a reading that flickers closer
+  approach = run_drive([(0, car(50, {"d": 45, "v": 0})), (1, car(50, {"d": 31, "v": 0})), (2, car(50, {"d": 17, "v": 0}))])
+  assert approach["evs"] == []
+  flicker = run_drive([(0, car(50, {"d": 19, "v": 48})), (1, car(50, {"d": 8, "v": 48})), (2, car(50, {"d": 20, "v": 48}))])
+  assert flicker["evs"] == []
   mine = run_drive([(0, car(60, blinker="esquerda")), (2, car(60)), (3, car(60, {"d": 18, "v": 55}))])  # you changed lanes
   assert mine["evs"] == []
   far = run_drive([(0, car(60)), (1, car(60, {"d": 60, "v": 50}))])  # catching up with a far car
@@ -808,13 +825,31 @@ def test_a_cut_in_and_not_your_own_lane_change():
 
 
 def test_stops_long_stops_and_disengaging():
-  r = run_drive([(0, car(40)), (5, car(0)), *[(5 + i, car(0)) for i in range(1, 62)], (70, car(5))])
+  r = run_drive([(0, car(40)), (1, car(0)), *[(1 + i, car(0)) for i in range(1, 62)], (63, car(5))])
   assert [e["kind"] for e in r["evs"]] == ["stop_free", "stop_long", "go_free"]
-  r = run_drive([(0, car(50)), (1, car(50, engaged=False, brake=True))])
+  r = run_drive([(0, car(50)), (1, car(50, steering=False, brake=True))])
   assert [(e["kind"], e["data"]["by"]) for e in r["evs"]] == [("disengage", "freio")]
-  assert run_drive([(0, car(3)), (1, car(3, engaged=False))])["evs"] == []  # parking speed: not this
+  assert run_drive([(0, car(3)), (1, car(3, steering=False))])["evs"] == []  # parking speed: not this
+  # always-on steering: the brake pauses the speed control, the steering stays, `enabled` stays: nothing let go (route 32)
+  assert run_drive([(0, car(50)), (1, car(50, brake=True))])["evs"] == []
   # the car off resets everything: a stop after it is not an arrival
   assert run_drive([(0, car(40)), (1, {"driving": False}), (2, car(0))])["evs"] == []
+
+
+def test_after_a_gap_nothing_fires_late_as_now():  # CTO review of app-11: page hidden, Wi-Fi gone
+  assert run_drive([(0, car(40)), (150, car(0))])["evs"] == []  # it stopped some time in those 150 s: not an arrival now
+  assert run_drive([(0, car(50)), (150, car(50, steering=False, gas=True))])["evs"] == []
+  assert [e["kind"] for e in run_drive([(0, car(40)), (2, car(40)), (4, car(0))])["evs"]] == ["stop_free"]  # 2 s apart: as always
+
+
+def test_the_car_ahead_leaving_with_you_creeping_or_in_the_same_reading():  # CTO review of app-11
+  stop = [(-1, car(40)), *[(i, car(0, {"d": 6, "v": 0})) for i in range(5)]]
+  r = run_drive([*stop, (5, car(5, {"d": 10, "v": 12}))])  # you and it in the same reading
+  assert [(e["kind"], e["data"].get("go_s")) for e in r["evs"]] == [("stop_lead", None), ("pull_away", 0)]
+  r = run_drive([*stop, (5, car(2, {"d": 7, "v": 8})), (8, car(5, {"d": 14, "v": 15}))])  # creeping at 2 km/h is still stopped
+  assert [e["kind"] for e in r["evs"]] == ["stop_lead", "pull_away"] and r["ups"][0]["data"] == {"go_s": 3.0}
+  r = run_drive([*stop, (5, car(0)), (6, car(0, {"d": 6, "v": 0}))])  # it vanished for one reading: still there
+  assert [e["kind"] for e in r["evs"]] == ["stop_lead"]
 
 
 def test_a_stale_reading_is_not_fed():
@@ -826,13 +861,17 @@ def test_a_stale_reading_is_not_fed():
 
 def test_a_point_seen_close_ahead_then_behind_was_passed():
   p = {"key": "k1", "kind": "radar", "limit": 60, "ahead": True, "distance": 120, "confirmed": False, "mine": False}
-  script = f"""const L = require({json.dumps(str(LOGIC))});
-  let a = L.pointPassed(null, [{json.dumps(p)}], 0); const b = L.pointPassed(a.st, [{{ ...{json.dumps(p)}, ahead: false, distance: 40 }}], 9000);
-  const far = L.pointPassed(null, [{{ ...{json.dumps(p)}, distance: 2000 }}], 0);
-  const c = L.pointPassed(far.st, [{{ ...{json.dumps(p)}, ahead: false }}], 9000);
-  process.stdout.write(JSON.stringify([a.events, b.events, c.events]));"""
-  a, b, c = json.loads(subprocess.run([NODE, "-e", script], capture_output=True, text=True, timeout=30, check=True).stdout)
+  script = f"""const L = require({json.dumps(str(LOGIC))}); const P = {json.dumps(p)};
+  let a = L.pointPassed(null, [P], 0); a = L.pointPassed(a.st, [{{ ...P, distance: 45 }}], 4000);
+  const b = L.pointPassed(a.st, [{{ ...P, ahead: false, distance: 40 }}], 9000);
+  const far = L.pointPassed(null, [{{ ...P, distance: 2000 }}], 0);
+  const c = L.pointPassed(far.st, [{{ ...P, ahead: false }}], 9000);
+  const away = L.pointPassed(L.pointPassed(null, [{{ ...P, distance: 250 }}], 0).st, [{{ ...P, ahead: false, distance: 255 }}], 9000);
+  const still = L.pointPassed(a.st, [{{ ...P, ahead: false, distance: 40 }}], 9000, false);
+  process.stdout.write(JSON.stringify([a.events, b.events, c.events, away.events, still.events]));"""
+  a, b, c, away, still = json.loads(subprocess.run([NODE, "-e", script], capture_output=True, text=True, timeout=30, check=True).stdout)
   assert a == [] and c == []  # seen only far away: nothing to ask
+  assert away == [] and still == []  # never closer than 250 m (another street), or the car not moving (the heading wanders)
   assert len(b) == 1 and b[0]["kind"] == "radar"
   assert b[0]["data"] == {"key": "k1", "kind": "radar", "limit": 60, "side": None, "confirmed": False, "mine": False}
 
@@ -856,7 +895,8 @@ def test_an_event_answers_an_open_mission_first_on_the_drive():
   cat = {"missions": [{"key": "sair-sozinho"}, {"key": "fila"}, {"key": "frear-antes", "lock": "x"}]}
   ev = {"kind": "pull_away"}
   assert run("eventMission", ev, cat, ["fila"], {}) == "fila"
-  assert run("eventMission", ev, cat, [], {}) == "sair-sozinho"
+  assert run("eventMission", ev, cat, [], {}) is None  # not taken on this drive: its option may be off (CTO review of app-11)
+  assert run("eventMission", ev, cat, ["sair-sozinho"], {}) == "sair-sozinho"
   assert run("eventMission", ev, cat, [], {"sair-sozinho": {"full": True}, "fila": {"full": True}}) is None
   assert run("eventMission", {"kind": "lead_brake"}, cat, [], {}) is None  # locked: not this one
   assert run("eventMission", {"kind": "cut_in"}, cat, [], {}) is None

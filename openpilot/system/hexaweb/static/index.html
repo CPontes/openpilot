@@ -641,7 +641,7 @@
 <section class="cop hidden" id="copSheet" role="dialog" aria-modal="true" aria-labelledby="copTitle">
   <div class="row" style="justify-content:space-between"><span class="mlevel" id="copTitle" data-t>Copiloto</span>
     <button class="link" id="copClose" type="button" data-t>Fechar</button></div>
-  <div class="small" id="copNow"></div>
+  <div class="small" id="copNow" style="min-height:2.9em"></div>
   <div id="copMain"></div>
   <div id="copBody" class="stack" style="gap:12px"></div>
   <div class="copbar"><button class="btn" id="copMark" type="button" data-t>Marcar</button><button class="btn dark" id="copNote" type="button" data-t>Nota</button></div>
@@ -655,7 +655,7 @@
   <div class="small num" id="evWhen"></div>
   <div class="card stack" style="gap:2px;margin-top:12px"><span class="small" data-t>Sua resposta</span><b id="evAnswer"></b></div>
   <label class="field" for="evText" data-t>Observação (opcional)</label>
-  <textarea id="evText" rows="2" maxlength="500" data-t-ph="ex.: saiu devagar, demorou uns 3 s" placeholder="ex.: saiu devagar, demorou uns 3 s"></textarea>
+  <textarea id="evText" rows="2" maxlength="300" data-t-ph="ex.: saiu devagar, demorou uns 3 s" placeholder="ex.: saiu devagar, demorou uns 3 s"></textarea>
   <button class="btn" id="evSave" type="button" style="margin-top:16px" data-t>Salvar</button>
   <button class="btn ghost" id="evCancel" type="button" data-t>Cancelar</button>
 </section>
@@ -752,7 +752,7 @@ let token = null;
 try { token = localStorage.getItem("hexaToken"); } catch (e) {}
 let state = null, titles = {};
 let marksState = { reasons: [], marks: [], pending: 0 };
-let carStopped = false, carOn = false, driving = false;
+let carStopped = false, carOn = false, driving = false, driveAt = 0;
 const POLL_MS = 3000, POLL_MAX_MS = 30000, LIVE_MS = 1000;
 let pollTimer = null, liveTimer = null, online = true, lastOk = 0, failures = 0, ticks = 0;
 const EDITOR_MS = 20000;  // moving, a box nobody touched leaves by itself and nothing is marked
@@ -1057,7 +1057,7 @@ function show(which) {
   $("app").classList.toggle("hidden", which !== "app");
   $("tabs").classList.toggle("hidden", which !== "app");
   if (which === "app") showView(view);
-  else { closeMark(); closePoint(); closePassenger(); closeClip(); document.body.classList.remove("driving"); }
+  else { closeMark(); closePoint(); closePassenger(); closeClip(); closeCop(); closeEv(); document.body.classList.remove("driving"); }
 }
 
 // ----- state: car, options, history -----
@@ -1071,6 +1071,7 @@ function render(s, copy, ep) {
   const v = s.vehicle;
   const parked = !v.onroad || (v.parked && v.standstill && !v.engaged);
   carStopped = !v.onroad || v.standstill;
+  if (v.onroad && !carOn) driveAt = Date.now();  // this drive (or this page, if opened mid-drive): older events stay on the phone
   carOn = v.onroad;
   passengerOk = LPL.passenger({ ok: passengerOk }, carNow()).ok;
   if (!carOn) { stopSince = null; evSt = null; passSt = null; evPick = null; }  // a new drive starts the detectors again; the log stays for review
@@ -1877,7 +1878,8 @@ const STAGE_TEXT = { live: "Agora", recent: "Há pouco", past: "Revisão · pass
 const EV_BUTTONS = { ok: "Deu certo", bad: "Não deu", nao: "Não aconteceu", forgot: "Não lembro", confirm: "Confirmar", here: "Está lá", gone: "Não existe",
                      notseen: "Não vi", edit: "editar", done: "Fiz agora", stop: "Parar o teste" };
 const EV_BY = { freio: "freio", acelerador: "acelerador", volante: "volante" };
-let evList = [], evSt = null, passSt = null, evPick = null, evPickAt = 0, evTick = null, evAns = null, evShown = null;
+let evList = [], evSt = null, passSt = null, evPick = null, evPickAt = 0, evTick = null, evAns = null, evShown = null, evCardAt = 0;
+const EV_TAP_GUARD_MS = 800;
 function evLoad() {
   try { const x = JSON.parse(load(EV_STORE) || "[]"); evList = Array.isArray(x) ? x.filter((e) => e && Date.now() - e.t < EV_KEEP_H * 3600e3) : []; }
   catch (e) { evList = []; }
@@ -1922,6 +1924,7 @@ function evButtons(ev, stage) {  // [ok, bad, third]: the same three places on e
   return [ui.ok || B.ok, ui.bad || B.bad, stage === "past" ? B.forgot : B.nao];
 }
 function evTap(ev, which, b) {  // which: 0 ok, 1 bad, 2 third
+  if (Date.now() - evCardAt < EV_TAP_GUARD_MS) return;  // the card just changed under the finger: that tap was meant for the last one
   const go = () => {
     const d = ev.data || {}, p = { key: d.key, kind: d.kind, limit: d.limit, side: d.side, confirmed: d.confirmed, own: d.mine, mine: d.mine };
     if (ev.kind === "radar" && which === 0 && !d.confirmed) { openRc(p, () => evDone(ev.id, "ok")); return; }
@@ -1957,17 +1960,21 @@ async function saveEv() {
   }
   const ev = a.ev, age = LPL.eventAge(ev, Date.now());
   const head = `${t((EVENT_UI[ev.kind] || {}).title || ev.kind)}: ${t(a.label)} (${evSource(ev)}${age > EV_DELAY_MAX ? "; " + t("respondido depois") : ""})`;
-  const body = { note: note ? `${head} — ${note}` : head, delay_s: Math.min(EV_DELAY_MAX, Math.round(age * 10) / 10) };
-  const key = a.r === "nao" ? null : evMission(ev);
+  // the mark goes back to the event's time while the comma can still place it (marks.py MAX_MARK_DELAY); later, it's marked
+  // now and its note says so. An event from before this drive never goes to this drive's log: it stays on the phone
+  const body = { note: note ? `${head} — ${note}` : head, ...(age <= EV_DELAY_MAX ? { delay_s: Math.round(age * 10) / 10 } : {}) };
+  const key = a.r === "nao" || ev.t < driveAt ? null : evMission(ev);
   let r = { status: 200, data: {} };
-  if (key) r = await api("/api/missions", { action: "mark", key, result: a.r, ...body });
+  if (ev.t < driveAt) r = { status: 200, data: {} };
+  else if (key) r = await api("/api/missions", { action: "mark", key, result: a.r, ...body });
   else if (a.r === "bad") r = await api("/api/mark", { reason: LPL.EV_REASON[ev.kind] || "outro", ...body });
   $("evSave").disabled = false;
   if (r.status !== 200) { toast(r.data.error || t("Não foi possível salvar.")); return; }
   if (key) missions.state = r.data.state;
   closeEv(); evDone(ev.id, a.r);
-  toast(a.r === "nao" ? t("Guardado neste celular: não aconteceu.") : key || a.r === "bad" ? t("Marcado: fica para conferir no log.") : t("Guardado neste celular."));
-  if (!key && a.r === "bad") refreshMarks();
+  const logged = ev.t >= driveAt && (key || a.r === "bad");
+  toast(a.r === "nao" ? t("Guardado neste celular: não aconteceu.") : logged ? t("Marcado: fica para conferir no log.") : t("Guardado neste celular."));
+  if (logged && !key) refreshMarks();
 }
 
 // Confirmar a point: the short way. Salvar confirms it as the list has it; "Mudar velocidade ou sentido" opens the whole box.
@@ -2021,8 +2028,9 @@ function evClock(c, ev, stage, now) {
   const mk = evMission(ev), left = Math.max(0, LPL.EV_RECENT_S - LPL.eventAge(ev, now));
   c.querySelector(".evclock").textContent = clockText(ev, now);
   c.querySelector(".evbar i").style.width = (stage === "past" ? 0 : Math.round(100 * left / LPL.EV_RECENT_S)) + "%";
-  c.querySelector(".evmis").textContent = [ev.kind === "radar" ? t("Ponto da lista") : mk ? tf("Missão: {m}", { m: t(mOf(mk).title) }) : t("Sem missão aberta: se não deu, vira marca"),
-    stage === "recent" ? tf("sai daqui em {m}:{s}", { m: Math.floor(left / 60), s: String(Math.floor(left % 60)).padStart(2, "0") }) : ""].filter(Boolean).join(" · ");
+  // the countdown first: the line ends in "…" on a narrow phone, and the clock is what must show
+  c.querySelector(".evmis").textContent = [stage === "recent" ? tf("sai daqui em {m}:{s}", { m: Math.floor(left / 60), s: String(Math.floor(left % 60)).padStart(2, "0") }) : "",
+    ev.kind === "radar" ? t("Ponto da lista") : mk ? tf("Missão: {m}", { m: t(mOf(mk).title) }) : t("Sem missão aberta: se não deu, vira marca")].filter(Boolean).join(" · ");
 }
 function waitCard(now) {  // nothing recent: what the copilot is watching for, never a button to skip
   const c = el("section", "evcard wait");
@@ -2051,7 +2059,9 @@ function renderCop() {
   const msig = JSON.stringify(v.main ? [v.main.id, v.stage, evSource(v.main), evMission(v.main), L()] : ["wait", mState().active, L()]);
   if (main.dataset.sig !== msig || !main.firstChild) {
     main.dataset.sig = msig;
+    if (v.main && main.firstChild && (main.firstChild.dataset.ev || null) !== v.main.id) evCardAt = Date.now();  // another event took the card
     main.replaceChildren(v.main ? evCard(v.main, v.stage, now) : waitCard(now));
+    if (v.main) main.firstChild.dataset.ev = v.main.id;
     if (v.main && v.stage === "live" && evShown !== v.main.id) main.firstChild.classList.add("flash");  // a new one: it blinks, once
   } else if (v.main) evClock(main.firstChild, v.main, v.stage, now);
   evShown = v.main ? v.main.id : null;
@@ -2985,7 +2995,7 @@ async function refreshNear() {
   const r = await api("/api/radars/near");
   if (r.status !== 200) return;
   near = r.data;
-  if (carOn) { const pp = LPL.pointPassed(passSt, near.near, Date.now()); passSt = pp.st; evFeed(pp.events); }  // a point just passed
+  if (carOn) { const pp = LPL.pointPassed(passSt, near.near, Date.now(), near.moving); passSt = pp.st; evFeed(pp.events); }  // a point just passed
   const d = near;
   moving = !!d.moving;
   $("gpsDot").style.background = d.gps ? "var(--accent)" : "var(--danger)";
