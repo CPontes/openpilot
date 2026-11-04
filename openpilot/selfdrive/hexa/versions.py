@@ -20,7 +20,13 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "04/11", "2060c4e", "A troca de faixa não volta sozinha, copiloto por eventos e comma 3X",
+  Release("", "04/11", "2060c4e", "«A conferir»: o que a viagem registrou",
+          ("No Início, parado ou com o carro desligado: os momentos da última viagem, também os que o comma tirou do log",
+           "Primeiro o que tem missão aberta e o LizPilot soltando sem pedal seu; o resto em «Mostrar mais»",
+           "Cada resposta vira marca na hora do momento, dentro da viagem",
+           "«Fiz agora» abre a observação antes de salvar e marca a hora do toque"),
+          driving=False),
+  Release("043b391", "04/11", "2060c4e", "A troca de faixa não volta sozinha, copiloto por eventos e comma 3X",
           ("Logo depois de uma troca, um toque na alavanca para o outro lado não traz o carro de volta",
            "Para voltar de propósito: seta ligada 4,5 s e um empurrão novo no volante; a troca automática nunca volta",
            "Avisos que pedem reinício ficam travados com o openpilot engatado, na tela do comma",

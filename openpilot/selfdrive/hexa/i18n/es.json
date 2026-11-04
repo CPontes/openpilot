@@ -1409,5 +1409,10 @@
  "Nada para conferir": "Nada por revisar",
  "O que a viagem registrou. Responda só o que você lembrar; o resto pode ficar.": "Lo que el viaje registró. Responde solo lo que recuerdes; el resto puede quedar.",
  "O que aconteceu e ninguém respondeu. Só o que você lembrar.": "Lo que pasó y nadie respondió. Solo lo que recuerdes.",
- "Tudo respondido": "Todo respondido"
+ "Tudo respondido": "Todo respondido",
+ "«A conferir»: o que a viagem registrou": "«Por revisar»: lo que registró el viaje",
+ "No Início, parado ou com o carro desligado: os momentos da última viagem, também os que o comma tirou do log": "En Inicio, estacionado o con el auto apagado: los momentos del último viaje, también los que el comma sacó del log",
+ "Primeiro o que tem missão aberta e o LizPilot soltando sem pedal seu; o resto em «Mostrar mais»": "Primero lo que tiene una misión abierta y LizPilot soltando sin pedal tuyo; el resto en «Mostrar más»",
+ "Cada resposta vira marca na hora do momento, dentro da viagem": "Cada respuesta se vuelve una marca a la hora del momento, dentro del viaje",
+ "«Fiz agora» abre a observação antes de salvar e marca a hora do toque": "«Lo hice ahora» abre la nota antes de guardar y marca la hora del toque"
 }

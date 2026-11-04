@@ -1409,5 +1409,10 @@
  "Nada para conferir": "Nothing to review",
  "O que a viagem registrou. Responda só o que você lembrar; o resto pode ficar.": "What the drive recorded. Answer only what you remember; the rest can stay.",
  "O que aconteceu e ninguém respondeu. Só o que você lembrar.": "What happened and nobody answered. Only what you remember.",
- "Tudo respondido": "All answered"
+ "Tudo respondido": "All answered",
+ "«A conferir»: o que a viagem registrou": "«To review»: what the drive recorded",
+ "No Início, parado ou com o carro desligado: os momentos da última viagem, também os que o comma tirou do log": "On Home, parked or with the car off: the moments of the last drive, including the ones the comma took from the log",
+ "Primeiro o que tem missão aberta e o LizPilot soltando sem pedal seu; o resto em «Mostrar mais»": "First what has an open mission and LizPilot letting go with no pedal of yours; the rest under «Show more»",
+ "Cada resposta vira marca na hora do momento, dentro da viagem": "Each answer becomes a mark at the moment's time, inside the drive",
+ "«Fiz agora» abre a observação antes de salvar e marca a hora do toque": "«Did it now» opens the note before saving and marks the time of the tap"
 }
