@@ -12,6 +12,20 @@ def test_default_reasons_have_unique_stable_keys():
   assert marks.reason_label(None, "nope") is None
 
 
+def test_road_reasons_and_the_note_come_in_their_groups():
+  rs = marks.reasons(None)
+  road = [r["key"] for r in rs if r.get("group") == "estrada"]
+  assert road == ["buraco", "obra", "placa"]
+  assert [r for r in rs if r.get("group") == "nota"] == [{"key": "nota", "label": "anotação", "custom": False, "group": "nota"}]
+  keys = [r["key"] for r in rs]
+  assert len(keys) == len(set(keys)) and marks.reason_label(None, "obra") == "obra na pista"
+  # his own "Buraco" (made before this) stays the only one, and the old marks keep pointing to it
+  custom = [{"key": "c-buraco", "label": "Buraco"}]
+  assert [r["key"] for r in marks.reasons(custom) if r["label"].lower() == "buraco"] == ["c-buraco"]
+  with pytest.raises(ValueError):
+    marks.add_reason(None, "Obra na pista")
+
+
 def test_old_mark_keeps_its_label():
   old = {"id": "a", "reason": "balancou", "label": "balançou"}
   assert marks.public(old)["label"] == "balançou"

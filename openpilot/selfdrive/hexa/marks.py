@@ -31,6 +31,15 @@ DEFAULT_REASONS: tuple[tuple[str, str], ...] = (
   ("outro", "outro"),
 )
 
+# On the road (owner, 03/11): what was there, not something openpilot did wrong. Radar, signal and bump are points with a place
+# (Pontos); these are marks. "nota" is the copilot's Nota: only the text.
+ROAD_REASONS: tuple[tuple[str, str], ...] = (
+  ("buraco", "buraco"),
+  ("obra", "obra na pista"),
+  ("placa", "placa de velocidade"),
+)
+NOTE_REASON = ("nota", "anotação")
+
 # Marks the comma makes by itself from a drive's sensors (selfdrive/hexa/sensors.py). Not offered on the Marcar sheet.
 AUTO_REASONS: tuple[tuple[str, str], ...] = (("brusca", "freada brusca"), ("missao", "missão feita"))  # "missao": the phone's "Fiz agora"
 AUTO_REASON = {"hardbrake": "brusca"}
@@ -52,6 +61,9 @@ def _slug(label: str) -> str:
 
 def reasons(custom: list[dict] | None) -> list[dict]:
   out = [{"key": k, "label": label, "custom": False} for k, label in DEFAULT_REASONS]
+  mine = {str(c.get("label", "")).lower() for c in custom or []}  # a reason of his own with the same name stays the only one
+  out += [{"key": k, "label": label, "custom": False, "group": "estrada"} for k, label in ROAD_REASONS if label.lower() not in mine]
+  out += [{"key": NOTE_REASON[0], "label": NOTE_REASON[1], "custom": False, "group": "nota"}]
   out += [{"key": c["key"], "label": c["label"], "custom": True} for c in custom or [] if c.get("key") and c.get("label")]
   return out
 

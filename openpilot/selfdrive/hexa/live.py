@@ -165,7 +165,8 @@ def snapshot(cs, sd, cc, out, lead, gps, gps_age: float, ds, car_fresh: bool, ev
     "acc_set": round(cs.cruiseState.speedCluster * 3.6) if cs.cruiseState.speedCluster > 0 else None,
     "torque": round(100 * abs(out.actuatorsOutput.torqueOutputCan) / STEER_MAX),
     # gap: seconds to the lead at this speed, what the ACC's distance setting (and openpilot's personality) keeps
-    "lead": {"d": round(float(lead.dRel)), "v": round(lead.vLead * 3.6),
+    # a: the comma's filtered deceleration of it (aLeadK), what tells real braking from the noise in v (copilot, route 32)
+    "lead": {"d": round(float(lead.dRel)), "v": round(lead.vLead * 3.6), "a": round(float(lead.aLeadK), 1),
              "gap": round(float(lead.dRel) / cs.vEgo, 1) if cs.vEgo > GAP_MIN_SPEED else None} if lead.present else None,
     "blinker": "esquerda" if cs.leftBlinker else ("direita" if cs.rightBlinker else ""),
     "blindspot": {"left": bool(cs.leftBlindspot), "right": bool(cs.rightBlindspot)},

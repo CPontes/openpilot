@@ -14,7 +14,7 @@ def parts():
   cs = NS(vEgo=10., steeringAngleDeg=-12.4, steeringPressed=False, brakePressed=False, gasPressed=False, leftBlinker=True,
           rightBlinker=False, leftBlindspot=False, rightBlindspot=True, cruiseState=NS(enabled=True, speed=-1, speedCluster=16.7, driving=True))
   sd = NS(enabled=True, alertText1="Take Control", alertText2="", alertStatus="userPrompt")
-  return cs, sd, NS(latActive=True), NS(actuatorsOutput=NS(torqueOutputCan=-126)), NS(present=True, dRel=18.6, vLead=9.)
+  return cs, sd, NS(latActive=True), NS(actuatorsOutput=NS(torqueOutputCan=-126)), NS(present=True, dRel=18.6, vLead=9., aLeadK=-0.43)
 
 
 def gps(fix=True):
@@ -24,7 +24,8 @@ def gps(fix=True):
 def test_driving():
   s = live.snapshot(*parts(), gps(), 1., device(), True)
   assert s["driving"] and s["v"] == 36 and s["wheel"] == -12 and s["torque"] == 50
-  assert s["acc_set"] == 60 and s["lead"] == {"d": 19, "v": 32, "gap": 1.9} and s["blinker"] == "esquerda"  # 18.6 m at 36 km/h
+  assert s["acc_set"] == 60 and s["lead"] == {"d": 19, "v": 32, "a": -0.4, "gap": 1.9} and s["blinker"] == "esquerda"  # 18.6 m at 36 km/h
+  # a: the comma's filtered deceleration of the car ahead, for the copilot's "o carro da frente freou" (CTO review of app-11)
   assert s["alert"] == "Take Control" and s["alert_status"] == "userPrompt" and s["blindspot"] == {"left": False, "right": True}
   assert s["device"]["cpu"] == 15 and s["device"]["free"] == 58
 

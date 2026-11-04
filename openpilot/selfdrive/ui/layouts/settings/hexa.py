@@ -19,11 +19,12 @@ from openpilot.system.ui.widgets.list_view import ListItem, button_item, multipl
 from openpilot.system.ui.widgets.scroller_tici import Scroller
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.hexa import i18n, phone
-from openpilot.selfdrive.hexa.options import GROUPS, HexaOption, options_in_group, supported
+from openpilot.selfdrive.hexa.options import GROUPS, HexaOption, locked_while_engaged, options_in_group, supported
 
 PHONE_REFRESH = 1.0  # s
 IP_REFRESH = 10.0  # s
 CHOICE_WIDTH = 200  # px, an option with choices (e.g. 1 s / 2 s / 3 s)
+QR_RETRY = 5.0  # s
 
 
 class HexaPairDialog(Widget):
@@ -37,15 +38,18 @@ class HexaPairDialog(Widget):
     self._url = url
     self._pin = pin
     self._qr: rl.Texture | None = None
+    self._qr_tried = -QR_RETRY
     self._close_btn = IconButton(gui_app.texture("icons/close.png", 80, 80))
     self._close_btn.set_click_callback(gui_app.pop_widget)
 
   def _update_state(self):
-    if phone.parse_pin(self._params.get(phone.PIN_PARAM)) is None:  # used or expired
+    # used or expired; or the car started: the big screen renders only the top widget, and the road view must not wait
+    if phone.parse_pin(self._params.get(phone.PIN_PARAM)) is None or ui_state.started:
       gui_app.pop_widget()
 
   def _qr_texture(self):  # no annotation: in pyray, rl.Texture is a function and "| None" fails on import
-    if self._qr is None:
+    if self._qr is None and time.monotonic() - self._qr_tried >= QR_RETRY:  # a failure is tried again, not every frame
+      self._qr_tried = time.monotonic()
       try:
         self._qr = make_texture(self._url)
       except Exception:
@@ -111,7 +115,7 @@ class HexaLayout(Widget):
         if not supported(opt, self._params):
           continue
         title = i18n.tr(opt.title, lang)
-        description = (i18n.tr("em teste", lang) + " · " if opt.testing else "") + i18n.tr(opt.description, lang)
+        description = (i18n.tr("em teste", lang) + " - " if opt.testing else "") + i18n.tr(opt.description, lang)  # "·" isn't in the font
         if opt.kind == "bool":
           item = toggle_item(title, description, self._params.get_bool(opt.key), callback=lambda state, o=opt: self._set_bool(o, state))
           self._bools[opt.key] = item
@@ -119,7 +123,7 @@ class HexaLayout(Widget):
           item = multiple_button_item(title, description, [i18n.tr(c, lang) for c in opt.choices], self._enum_value(opt),
                                       button_width=CHOICE_WIDTH, callback=lambda i, o=opt: self._set_enum(o, i))
           self._enums[opt.key] = (item, opt)
-        if opt.driving:  # same rule as the comma 4 and the phone: never while openpilot is engaged
+        if locked_while_engaged(opt):  # same rule as the comma 4: driving options, and those whose restart would stop openpilot
           item.action_item.set_enabled(lambda: not ui_state.engaged)
         items.append(item)
 
@@ -195,7 +199,7 @@ class HexaLayout(Widget):
     pin = phone.parse_pin(self._params.get(phone.PIN_PARAM))
     action = self._pair_item.action_item
     if pin is not None:
-      action.set_value(f"{pin} · {self._url()}")
+      action.set_value(f"{pin} - {self._url()}")
     else:
       action.set_value("")
     count = len(self._params.get(phone.TOKENS_PARAM) or [])

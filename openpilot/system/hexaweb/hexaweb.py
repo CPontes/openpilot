@@ -698,7 +698,10 @@ class PanelBackend:
     if action == "mark":  # "Fiz agora", or the passenger's copilot: a mark the CTO checks in the log, never done by itself
       if not hexa_missions.can_mark(m) or result not in hexa_missions.RESULTS:
         return 400, {"error": "Esta missão não vai na viagem."}
-      code, data = self.mark(who, "missao", note=m.title, label=hexa_missions.RESULTS[result])  # the label says how it went
+      # the copilot's answer to an event: the passenger's note after the title, and the mark goes back to when it happened
+      extra = hexa_marks.clean_note(body.get("note", ""))
+      code, data = self.mark(who, "missao", note=f"{m.title} — {extra}" if extra else m.title, label=hexa_missions.RESULTS[result],
+                             delay=body.get("delay_s", 0.))
       if code != 200:
         return code, data
     with self.lock:

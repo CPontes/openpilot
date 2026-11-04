@@ -11,7 +11,7 @@ from openpilot.selfdrive.ui.mici.widgets.qr import QR
 from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.hexa import i18n, phone
-from openpilot.selfdrive.hexa.options import GROUPS, options_in_group, supported
+from openpilot.selfdrive.hexa.options import GROUPS, locked_while_engaged, options_in_group, supported
 
 PHONE_REFRESH = 1.0  # s
 IP_REFRESH = 10.0  # s
@@ -50,14 +50,14 @@ class HexaLayoutMici(NavScroller):
         if not supported(opt, self._params):
           continue
         title = i18n.tr(opt.title, lang)
-        description = (i18n.tr("em teste", lang) + " · " if opt.testing else "") + i18n.tr(opt.description, lang)
+        description = (i18n.tr("em teste", lang) + " - " if opt.testing else "") + i18n.tr(opt.description, lang)  # "·" isn't in the font
         if opt.kind == "bool":
           widget = BigParamControl(title, opt.key, toggle_callback=restart_needed_callback if opt.restart_needed else None,
                                    description=description)
           self._param_controls.append(widget)
         else:
           widget = BigMultiParamToggle(title, opt.key, [i18n.tr(c, lang) for c in opt.choices], description=description)
-        if opt.driving:
+        if locked_while_engaged(opt):  # an alert's restart, too, would stop openpilot for a second mid-drive (3X review)
           widget.set_enabled(lambda: not ui_state.engaged)
         widgets.append(widget)
 

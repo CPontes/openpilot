@@ -117,7 +117,8 @@ CATALOG: tuple[Mission, ...] = (
   Mission("falha-falsa", "direcao", "Sem falha falsa ao forçar contra", 1, "marca", note="1 viagem sem falha com a sua mão"),
   Mission("perto-de-zero", "direcao", "Direção perto de 0 km/h", 1, "marca", note="falta a ida e volta perto do 0"),
   Mission("devolver-volante", "direcao", "Devolver o volante aos poucos", 3, "marca", when="city", option="SoftHandoff",
-          version="00e5ba7", route=1, goal="nenhuma falha da direção e nenhum tranco ao forçar",
+          version="00e5ba7", route=1, done=3, proof="rota 32 · 0 falhas em 862 vezes com a mão no volante",
+          goal="nenhuma falha da direção e nenhum tranco ao forçar",
           why="Hoje, uma força leve contra a curva corta a força do comma de uma vez. Com a opção, ela sai aos poucos.",
           steps=("Numa curva de cidade, até 60 km/h, com o openpilot no volante, faça uma força leve contra.",
                  "Certo: o volante cede aos poucos, sem tranco, e volta quando você solta.",
@@ -134,7 +135,7 @@ CATALOG: tuple[Mission, ...] = (
   Mission("cancelar-comma", "acc", "Cancelar pelo comma", 5, "marca", lock="Ainda não liberado para teste"),
   # 00e5ba7 (03/11): two options, off until the owner turns them on
   Mission("parar-perto", "acc", "Parar mais perto do carro da frente", 5, "marca", when="slow_follow", option="StopCloser",
-          version="00e5ba7", route=2, goal="parar a até 4,0 m do carro da frente",
+          version="00e5ba7", route=2, done=5, proof="rota 32 · mediana de 3,7 m em 36 paradas", goal="parar a até 4,0 m do carro da frente",
           why="O comma parava a 4,7 m do carro da frente, e a Haval para a uns 3 m. Com a opção, o esperado é uns 4 m.",
           steps=("No trânsito lento, deixe o comma parar sozinho atrás de um carro.", "Certo: para um pouco mais perto que antes, sem tranco.",
                  "Se chegar perto demais ou frear forte, freie e marque «não deu».")),
@@ -151,11 +152,13 @@ CATALOG: tuple[Mission, ...] = (
                  "Certo: o carro continua parado até você tocar no acelerador.")),
   Mission("sinal-abrindo", "acc", "Sinal abrindo", 1, "marca", when="stop_free", option="StopFinish", version="b3ac6fe", route=5,
           steps=("Ainda sem carro à frente, quando abrir, toque de leve no acelerador.", "Certo: ele sai normalmente.")),
-  Mission("fila", "acc", "Fila atrás de carro", 1, "marca", when="stop_queue", version="b3ac6fe", route=6,
+  Mission("fila", "acc", "Fila atrás de carro", 1, "marca", when="stop_queue", version="b3ac6fe", route=6, done=1,
+          proof="rota 32 · saiu junto, sem pedal",
           steps=("Pare atrás de um carro e deixe ele sair.", "Certo: o seu sai junto, sem você tocar em nada. Se ficar parado, marque.")),
   Mission("lombada-faixa", "acc", "Lombada e faixa de pedestre", 1, "marca", when="moving", version="b3ac6fe", route=7,
           steps=("Certo: ele reduz e segue.", "Se ficar parado sem motivo, marque.")),
   Mission("frear-antes", "acc", "Carro da frente freando", 3, "marca", when="follow_mid", option="LeadClosing", version="b3ac6fe", route=8,
+          done=1, proof="rota 32 · parou a 3 m, sem pedal",
           why="Usa a distância que a Haval mede para começar a frear mais cedo.", note="desde 00e5ba7, lê a distância da Haval em metros",
           steps=("Siga um carro a 40–60 km/h em avenida.", "Marque «freada estranha» se frear à toa ou muito em cima.")),
   Mission("parada-longa", "acc", "Parada longa e subida", 1, "marca", when="stop_long", version="b3ac6fe", route=9, note="se acontecer naturalmente",
@@ -242,7 +245,11 @@ TRIES: dict[str, tuple[Try, ...]] = {
   "cidade": (Try("2026-11-02T09:50", "rota 29", "d522577", "ok"),),
   "tunel": (Try("2026-11-01T10:28", "rota 0f", "1bd6c53", "ok"),),
   # before the option: the number to compare with
-  "parar-perto": (Try("2026-11-03", "rota 31", "f203426", "base", "parou a 4,7 m, sem a opção"),),
+  "parar-perto": (Try("2026-11-03", "rota 31", "f203426", "base", "parou a 4,7 m, sem a opção"),
+                  Try("2026-11-03T20:05", "rota 32", "5c47e8f", "ok", "mediana de 3,7 m em 36 paradas")),
+  "devolver-volante": (Try("2026-11-03T20:05", "rota 32", "5c47e8f", "ok", "0 falhas em 862 vezes com a mão no volante"),),
+  "fila": (Try("2026-11-03T20:05", "rota 32", "5c47e8f", "ok", "saiu junto, sem pedal"),),
+  "frear-antes": (Try("2026-11-03T20:05", "rota 32", "5c47e8f", "ok", "parou a 3 m, sem pedal; a parte da Haval não medida"),),
 }
 
 # The next drive's route (owner, 03/11): one route, not one per version. The new tests come first, then what an older version

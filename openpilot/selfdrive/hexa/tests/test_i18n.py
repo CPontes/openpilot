@@ -66,6 +66,7 @@ def test_language_from_the_comma():
   assert i18n.comma_lang(Params("de")) == "en"
   assert i18n.comma_lang(Params("pt-BR")) == "pt"
   assert i18n.comma_lang(Params("es")) == "es"
+  assert i18n.comma_lang(Params("main_en")) == "pt" and i18n.comma_lang(Params("main_pt-BR")) == "pt"  # older versions' prefix
 
 
 def test_the_language_menu_of_the_comma_3x_counts():

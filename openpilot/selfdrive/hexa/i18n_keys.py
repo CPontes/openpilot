@@ -18,7 +18,8 @@ PY_SOURCES = [ROOT / "system/hexaweb/hexaweb.py", HEXA / "phone.py", HEXA / "upd
 PAGES = [ROOT / "system/hexaweb/static" / n for n in ("index.html", "viagens.html", "replay.html", "lp-logic.js")]
 # objects in the pages whose values are passed through t() by name
 PAGE_TABLES = ("UPDATE_ACTIONS", "EVENTS", "RADAR_ACTIONS", "RESUME", "SIDES", "SIDE_CHIPS", "POINT", "KINDS",
-               "COMMA_ACTIONS", "LEVEL_TEXT", "SAFETY_TEXT", "SAFETY_NAMES", "MARK_POINTS", "HOW_TEXT", "HOW_LONG", "MOMENT_TEXT", "MARK_RESULT")
+               "COMMA_ACTIONS", "LEVEL_TEXT", "SAFETY_TEXT", "SAFETY_NAMES", "MARK_POINTS", "HOW_TEXT", "HOW_LONG", "MOMENT_TEXT", "MARK_RESULT",
+               "EVENT_UI", "STAGE_TEXT", "EV_BUTTONS", "EV_BY", "REASON_GROUPS")
 FIELD = re.compile(r"\{[^{}]*\}")
 PT = re.compile(r"[a-zà-ú]", re.I)
 
@@ -71,7 +72,7 @@ def option_texts() -> set[str]:
     out |= {o.title, o.description, *o.choices}
     if o.blocked:
       out.add(o.blocked)
-  out |= {label for _, label in marks.DEFAULT_REASONS + marks.AUTO_REASONS}
+  out |= {label for _, label in marks.DEFAULT_REASONS + marks.AUTO_REASONS + marks.ROAD_REASONS + (marks.NOTE_REASON,)}
   out |= comma_ctl_texts()
   out |= set(live.EVENT_TEXT.values())
   out |= mission_texts()
