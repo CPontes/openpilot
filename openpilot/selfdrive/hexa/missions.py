@@ -15,7 +15,9 @@ Keys never change once in use: the phone's answers point to them.
 
 Nothing here runs with the car on: the catalog is static, the state is one small param, and the phone does the counting.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+
+from openpilot.selfdrive.hexa import edition
 
 MISSIONS_PARAM = "HexaMissions"
 # as many as the owner picks for a drive (owner, 03/11), the route too: the copilot still brings one at a time, the one that fits
@@ -220,6 +222,12 @@ CATALOG: tuple[Mission, ...] = (
   Mission("rota-publica", "versao", "Rota pública para a comma", 1, "decisao", note="privacidade: você escolhe"),
   Mission("checklist-comma", "versao", "Checklist da comma", 52, "cto", done=2, proof="UP-01"),
 )
+# The generic edition (edition.py) offers only what any car can test, from zero: the rest is the Haval's own test plan,
+# and its proofs and tries are the owner's drives.
+GENERIC_TRAILS = ("avisos", "celular")
+if edition.EDITION == "generic":
+  CATALOG = tuple(replace(m, done=0, proof="", note="") for m in CATALOG if m.trail in GENERIC_TRAILS and not m.route)
+
 BY_KEY = {m.key: m for m in CATALOG}
 
 # What was checked in the log, per mission, oldest first. Checking a mission is adding a Try here (and raising `done`)
@@ -274,12 +282,14 @@ ROUTE: dict = {
 
 def public() -> dict:
   """What the phone needs, texts in Portuguese: the phone translates them."""
-  return {"trails": [{"key": k, "title": t} for k, t in TRAILS], "levels": [list(lv) for lv in LEVELS], "max_active": MAX_ACTIVE,
+  trails = [(k, t) for k, t in TRAILS if any(m.trail == k for m in CATALOG)]
+  tries = {} if edition.EDITION == "generic" else TRIES  # the owner's drives
+  return {"trails": [{"key": k, "title": t} for k, t in trails], "levels": [list(lv) for lv in LEVELS], "max_active": MAX_ACTIVE,
           "route": dict({k: list(x) if isinstance(x, tuple) else x for k, x in ROUTE.items()}, key=ROUTE_KEY),
           "missions": [{"key": m.key, "trail": m.trail, "title": m.title, "total": m.total, "how": m.how, "note": m.note, "why": m.why,
                         "steps": list(m.steps), "option": m.option, "lock": m.lock, "drive": m.drive, "detect": m.detect, "arg": m.arg,
                         "done": m.done, "proof": m.proof, "version": m.version, "route": m.route, "when": m.when, "goal": m.goal,
-                        "tries": [vars(t) for t in TRIES.get(m.key, ())]} for m in CATALOG],
+                        "tries": [vars(t) for t in tries.get(m.key, ())]} for m in CATALOG],
           "try_results": TRY_RESULTS}
 
 

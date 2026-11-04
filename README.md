@@ -1,3 +1,7 @@
+> **LizPilot** — openpilot com o app LizPilot no celular e os recursos do projeto GWM Haval H6 GT, para qualquer carro que o openpilot suporta. Veja [docs/LIZPILOT.md](docs/LIZPILOT.md). Em revisão: ainda não há versão para instalar.
+>
+> *LizPilot: openpilot with the LizPilot phone app, for every car openpilot supports. Based on [commaai/openpilot](https://github.com/commaai/openpilot) (MIT). In review, not released.*
+
 <div align="center" style="text-align: center;">
 
 <h1>openpilot</h1>

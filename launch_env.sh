@@ -19,8 +19,14 @@ if [ -z "$AGNOS_VERSION" ]; then
   export AGNOS_VERSION="20.1"
 fi
 
-# GWM Haval H6 GT PHEV: force the fingerprint until this car's FW versions are added.
-# The FW query still runs (needs comma power on the OBD port) so carFw/VIN get logged.
-export FINGERPRINT=GWM_HAVAL_H6
+# LizPilot (generic edition): openpilot recognizes the car by itself, as in stock openpilot.
+# A car it can't fingerprint yet (the GWM Haval H6 GT, whose FW versions aren't in opendbc) is named in
+# /data/lizpilot/fingerprint, e.g. GWM_HAVAL_H6. Only letters, digits and "_" are kept.
+if [ -f /data/lizpilot/fingerprint ]; then
+  LIZPILOT_FINGERPRINT="$(head -c 64 /data/lizpilot/fingerprint | tr -cd 'A-Z0-9_')"
+  if [ -n "$LIZPILOT_FINGERPRINT" ]; then
+    export FINGERPRINT="$LIZPILOT_FINGERPRINT"
+  fi
+fi
 
 export STAGING_ROOT="/data/safe_staging"
