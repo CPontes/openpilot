@@ -66,3 +66,9 @@ def test_language_from_the_comma():
   assert i18n.comma_lang(Params("de")) == "en"
   assert i18n.comma_lang(Params("pt-BR")) == "pt"
   assert i18n.comma_lang(Params("es")) == "es"
+
+
+def test_the_language_menu_of_the_comma_3x_counts():
+  # the comma 3X has a language menu: "pt-BR" today, "main_pt-BR" in older versions (system/ui/lib/multilang.py)
+  for code, lang in (("pt-BR", "pt"), ("main_pt-BR", "pt"), ("es", "es"), ("main_es", "es"), ("de", "en"), ("main_de", "en")):
+    assert i18n.lang_of(code) == lang, code

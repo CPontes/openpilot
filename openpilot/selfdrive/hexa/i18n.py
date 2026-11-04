@@ -20,7 +20,7 @@ _FIELD = re.compile(r"\{(\w+)\}")
 
 def lang_of(code: str | None) -> str:
   """openpilot's LanguageSetting (en, pt-BR, es, de, ...) to one of ours. Other languages get English."""
-  code = (code or "").lower()
+  code = (code or "").lower().removeprefix("main_")  # older comma versions stored "main_pt-BR" (multilang.py)
   if code.startswith("pt"):
     return "pt"
   if code.startswith("es"):
