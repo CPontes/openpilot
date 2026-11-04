@@ -86,7 +86,7 @@ OPTIONS: tuple[HexaOption, ...] = (
     key="LaneOffsetEnabled",
     group="direcao",
     title="posição na faixa pelo volante",
-    description="Segure o volante 1,5 s para deslocar o carro na faixa; solte e ele mantém.\n" +
+    description="Segure o volante 1,5 s para deslocar o carro na faixa; solte e ele mantém a partir de 35 km/h, mesmo se ensinou mais devagar.\n" +
                 "Segure de volta ao centro para voltar. Zera ao desengatar.",
   ),
   HexaOption(

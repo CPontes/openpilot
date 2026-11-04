@@ -33,8 +33,17 @@ MAX_OFFSET = 0.50           # m, max offset from lane center
 MIN_LINE_MARGIN = 1.15      # m, min distance from car center to the lane line on the offset side (~half car width + 0.2 m)
 MIN_LANE_PROB = 0.5         # both lane lines must be visible to learn or apply an offset
 MIN_SPEED = 3.0             # m/s, no learning or correction below this speed
+# The correction fades in from CORRECTION_MIN_SPEED and is all there from CORRECTION_FULL_SPEED; the learned position stays.
+# Slow, the lines flicker and the pure pursuit looks only 10 m ahead: 20 cm of reading noise was 12 degrees of wheel, and at
+# 17 to 20 km/h the correction sat at its limit, 29 degrees of wheel, pushing the car onto the one beside it (route 34, 14.70
+# to 22.88 min). The owner chose this over keeping a weaker correction in slow traffic (04/11)
+CORRECTION_MIN_SPEED = 25. / 3.6  # m/s
+CORRECTION_FULL_SPEED = 35. / 3.6  # m/s
 
-TARGET_RATE = 0.15          # m/s, how fast the applied target moves towards the learned one
+# m/s, how fast the applied target moves towards the learned one. Coming back to it from where the model left the car, this
+# loop goes past it: by 6 cm typically and up to 27 to 32 cm in 27 returns of routes 31 and 34 (route 34, 57.9 to 58.1 min),
+# and 15 to 22 cm on the road of the tests at 40 km/h at 0.15 m/s. At this pace, with the integral starting over, 7 cm there
+TARGET_RATE = 0.03
 LOOKAHEAD_TIME = 2.5        # s, pure pursuit lookahead
 MIN_LOOKAHEAD = 10.0        # m
 FEEDFORWARD = 0.5           # fraction of the model's pull back to center that is cancelled up front (conservative)
@@ -108,10 +117,12 @@ class LaneOffset:
       return 0.0
 
     self.valid = self._measure(model_v2) and CS.vEgo > MIN_SPEED
+    speed_dose = float(np.clip((CS.vEgo - CORRECTION_MIN_SPEED) / (CORRECTION_FULL_SPEED - CORRECTION_MIN_SPEED), 0., 1.))
     self.t += DT_CTRL
     if self.learned != 0.0 and self.t - self.log_t >= LOG_PERIOD:
       self.log_t = self.t
-      cloudlog.event("lane_offset", learned_cm=self.offset_cm, position_cm=round(self.position * 100, 1), correction=round(self.correction, 5))
+      cloudlog.event("lane_offset", learned_cm=self.offset_cm, position_cm=round(self.position * 100, 1), correction=round(self.correction, 5),
+                     speed_dose=round(speed_dose, 2))
     self.lost_time = 0.0 if self.valid else self.lost_time + DT_CTRL
     if self.lost_time > LINES_LOST_TIME:
       self.lines_time = 0.0
@@ -158,22 +169,31 @@ class LaneOffset:
       return 0.0
 
     self.target += float(np.clip(self.learned - self.target, -TARGET_RATE * DT_CTRL, TARGET_RATE * DT_CTRL))
+    if (speed_dose == 0. or self.blend == 0.) and self.valid and self.learned != 0.:
+      # slow, or with the lines gone long enough, the car goes where the model puts it: once the correction comes back it
+      # moves to the taught position from there, no jump
+      self.target = self.position
+      if speed_dose == 0.:
+        # after slow traffic the integral starts over, as it would push for the old place. Not after a gap in the lines: at
+        # speed it holds part of the position, and gaps of 0.5 s every 8 s left the car at 5 cm of it 2% of the time, not 55%
+        self.integral = 0.
 
     if not lat_active or CS.steeringPressed:
       # fade out the correction while the driver is steering
       self.blend *= 0.98
-      self.correction = self.feedback * self.blend
+      self.correction = self.feedback * self.blend * speed_dose
       return self.correction
     # no lanes, or lanes that come and go: slowly back to what the model does, not on and off
     steady = self.lines_time >= LINES_STEADY_TIME
     self.blend = float(np.clip(self.blend + (DT_CTRL if steady else -DT_CTRL) / BLEND_TIME, 0., 1.))
     if not self.valid:
-      self.correction = self.feedback * self.blend
+      self.correction = self.feedback * self.blend * speed_dose
       return self.correction
 
     target = self._limit(self.target)
     error = target - self.position  # positive: target is right of the car
-    if steady:
+    # only with all of the correction going out: integrating with it faded winds up, and pushes once back up to speed
+    if steady and speed_dose == 1.:
       self.integral = float(np.clip(self.integral + KI * error * DT_CTRL, -MAX_INTEGRAL, MAX_INTEGRAL))
     predicted_error = target - (self.position + self.rate * DAMPING_TIME)
 
@@ -190,7 +210,7 @@ class LaneOffset:
         correction = 0.0
         self.integral = 0.0
     self.feedback = float(np.clip(correction, -MAX_CURVATURE_CORRECTION, MAX_CURVATURE_CORRECTION))
-    self.correction = self.feedback * self.blend
+    self.correction = self.feedback * self.blend * speed_dose
     return self.correction
 
   @property

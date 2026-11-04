@@ -1,3 +1,4 @@
+import copy
 from types import SimpleNamespace
 
 import numpy as np
@@ -6,7 +7,7 @@ from openpilot.cereal import log
 from openpilot.common.realtime import DT_CTRL
 from openpilot.selfdrive.controls.lib.lane_offset import (
   BLEND_TIME, LINES_LOST_TIME, LINES_STEADY_TIME, LaneOffset, MAX_OFFSET, HOLD_TIME,
-  RELEASE_TIME, MAX_LEARN_LAT_ACCEL,
+  RELEASE_TIME, MAX_LEARN_LAT_ACCEL, TARGET_RATE,
 )
 
 LaneChangeState = log.LaneChangeState
@@ -216,7 +217,7 @@ class TestLaneOffset:
     hold(lo, -0.35, HOLD_TIME + 0.1)
     hold(lo, 0.05, HOLD_TIME + 0.1)
     assert lo.learned == 0.0 and lo.target != 0.0
-    for _ in range(100):
+    for _ in range(int((0.05 / TARGET_RATE + 0.5) / DT_CTRL)):
       lo.update(True, True, car_state(), model(0.05))
     assert lo.target == 0.0 and lo.update(True, True, car_state(), model(0.05)) == 0.0
 
@@ -367,6 +368,142 @@ class TestSlowSpeedStability:
       assert worst < .6
 
 
+class TestSlowTraffic:
+  # route 34: at 17 to 20 km/h the correction sat at its limit, 29 degrees of wheel, and pushed the car onto the one beside it
+  SLOW = 20. / 3.6
+  HALF = 30. / 3.6
+  FULL = 40. / 3.6
+
+  def _taught(self, position=-0.3, v_ego=60. / 3.6):
+    lo = LaneOffset()
+    road = Road(position, v_ego=v_ego)
+    hold(lo, position, LINES_STEADY_TIME + 1., v_ego=v_ego)
+    drive(lo, road, 20.)
+    return lo, road
+
+  def _slow(self, lo, road, seconds=20., **kwargs):
+    road.v_ego = self.SLOW
+    for _ in range(int(seconds / DT_CTRL)):
+      road.step(lo.update(True, True, car_state(v_ego=road.v_ego), model(road.position, **kwargs)))
+
+  def _climb(self, lo, road, to_kmh=40., lost=0., seconds=40.):
+    # up from slow traffic in 3 s, the lines gone for the first `lost` seconds
+    pos = []
+    for k in range(int(seconds / DT_CTRL)):
+      t = k * DT_CTRL
+      road.v_ego = (20. + (to_kmh - 20.) * min(t / 3., 1.)) / 3.6
+      prob = 0.1 if t < lost else 0.9
+      road.step(lo.update(True, True, car_state(v_ego=road.v_ego), model(road.position, prob=prob)))
+      pos.append(road.position)
+    return pos
+
+  def test_no_correction_under_25_kmh(self):
+    lo, _ = self._taught()
+    for position in (0., -0.1, 0.3):
+      for _ in range(50):
+        assert lo.update(True, True, car_state(v_ego=self.SLOW), model(position)) == 0.0
+
+  def test_nor_while_the_driver_steers_or_the_lines_are_gone(self):
+    for kwargs, pressed in (({}, True), ({"prob": 0.1}, False)):
+      lo, _ = self._taught()
+      for _ in range(50):
+        assert lo.update(True, True, car_state(pressed=pressed, v_ego=self.SLOW), model(0., **kwargs)) == 0.0
+
+  def test_it_fades_in_from_25_to_35_kmh(self):
+    lo, _ = self._taught()
+    out = {}
+    for kmh in (24., 27., 30., 33., 36.):
+      c = copy.deepcopy(lo)
+      out[kmh] = abs(c.update(True, True, car_state(v_ego=kmh / 3.6), model(-0.2)))
+    assert out[24.] == 0.0
+    assert 0. < out[27.] < out[30.] < out[33.] < out[36.]
+
+  def test_slow_the_target_follows_the_car_and_the_integral_starts_over(self):
+    lo, road = self._taught()
+    assert lo.integral != 0.
+    self._slow(lo, road)
+    assert abs(road.position + 0.3) > 0.15  # the model took the car back towards the center
+    assert lo.target == lo.position and lo.integral == 0.
+    assert abs(lo.learned + 0.3) < 1e-6
+
+  def test_with_lines_gone_the_target_stays(self):
+    lo, road = self._taught()
+    target = lo.target
+    self._slow(lo, road, prob=0.1)
+    assert lo.target == target
+
+  def test_nothing_taught_nothing_follows(self):
+    lo = LaneOffset()
+    road = Road(0.2, v_ego=self.SLOW)
+    self._slow(lo, road)
+    assert lo.target == 0.
+    self._climb(lo, road)
+    assert lo.correction == 0. and lo.target == 0.
+
+  def test_taught_back_to_center_the_target_still_goes_to_the_center(self):
+    lo = LaneOffset()
+    hold(lo, -0.35, HOLD_TIME + 0.1)
+    hold(lo, 0.05, HOLD_TIME + 0.1)
+    assert lo.learned == 0. and lo.target != 0.
+    for _ in range(int(5 / DT_CTRL)):
+      lo.update(True, True, car_state(v_ego=self.SLOW), model(0.2))
+    assert lo.target == 0.
+
+  def test_the_integral_waits_while_the_correction_fades(self):
+    lo, road = self._taught()
+    self._slow(lo, road)
+    road.v_ego = self.HALF  # dose 0.5: the target walks, the car is away from it, and still no integral
+    for _ in range(int(5 / DT_CTRL)):
+      road.step(lo.update(True, True, car_state(v_ego=road.v_ego), model(road.position)))
+    assert lo.target != lo.position and lo.integral == 0.
+
+  def test_the_position_is_kept_through_slow_traffic_and_stops(self):
+    lo, road = self._taught()
+    for v in (6., 3., 0., 0., 4., 6.):
+      for _ in range(int(5 / DT_CTRL)):
+        lo.update(True, True, car_state(v_ego=v), model(0.))
+    assert abs(lo.learned + 0.3) < 1e-6
+    road = Road(0., v_ego=self.FULL)
+    road.position = lo.position
+    drive(lo, road, 40.)
+    assert abs(road.position + 0.3) < 0.03
+
+  def test_out_of_slow_traffic_it_does_not_go_past_the_taught_position(self):
+    # at 0.15 m/s and with the integral kept it went to -0.45 at 40 km/h, and -0.52 with the lines gone for 4 s
+    for to_kmh in (40., 60., 90.):
+      for lost in (0., 1., 4.):
+        lo, road = self._taught()
+        self._slow(lo, road)
+        pos = self._climb(lo, road, to_kmh, lost)
+        assert min(pos) > -0.38, (to_kmh, lost)
+        assert abs(pos[-1] + 0.3) < 0.03, (to_kmh, lost)
+
+  def test_back_from_lost_lines_at_speed_it_does_not_go_past(self):
+    lo, road = self._taught()
+    pos = []
+    for k in range(int(40 / DT_CTRL)):
+      prob = 0.1 if k * DT_CTRL < 4. else 0.9
+      road.step(lo.update(True, True, car_state(v_ego=road.v_ego), model(road.position, prob=prob)))
+      pos.append(road.position)
+    assert min(pos) > -0.36 and abs(pos[-1] + 0.3) < 0.03  # it went to -0.387 before the target followed the car
+
+  def test_at_speed_gaps_in_the_lines_do_not_lose_the_position(self):
+    # starting the integral over at every gap left the car at 5 cm of the position 2% of the time, against 55%
+    lo, road = self._taught(v_ego=90. / 3.6)
+    pos = []
+    for k in range(int(120 / DT_CTRL)):
+      prob = 0.1 if (k * DT_CTRL) % 8. < 0.5 else 0.9
+      road.step(lo.update(True, True, car_state(v_ego=road.v_ego), model(road.position, prob=prob)))
+      pos.append(road.position)
+    pos = np.array(pos)
+    assert np.mean(np.abs(pos + 0.3) < 0.05) > 0.45 and abs(pos.mean() + 0.3) < 0.08
+
+  def test_it_still_learns_in_slow_traffic(self):
+    lo = LaneOffset()
+    hold(lo, -0.35, HOLD_TIME + 0.1, v_ego=self.SLOW)
+    assert abs(lo.learned + 0.35) < 1e-6
+
+
 class TestItGoesToTheLog:
   # a curve the driver marked couldn't be told apart: the model cutting it, or the taught position. Nothing logged either
   def events(self, monkeypatch):
@@ -384,6 +521,7 @@ class TestItGoesToTheLog:
       lo.update(True, True, car_state(), model(-0.3))
     assert [n for n, _ in seen] == ["lane_offset"] * 5
     assert seen[0][1]["learned_cm"] == -30 and seen[0][1]["position_cm"] == -30 and "correction" in seen[0][1]
+    assert seen[0][1]["speed_dose"] == 1.
 
   def test_nothing_with_no_position_taught(self, monkeypatch):
     seen = self.events(monkeypatch)

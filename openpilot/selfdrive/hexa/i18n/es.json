@@ -354,7 +354,6 @@
  "Saúde do comma": "Salud del comma",
  "Se o comma mudar de rede, este endereço muda: leia o QR de novo no comma, em Configurações → LizPilot → parear celular.": "Si el comma cambia de red, esta dirección cambia: lea el QR de nuevo en el comma, en Configuración → LizPilot → emparejar celular.",
  "Segurança do Haval": "Seguridad del Haval",
- "Segure o volante 1,5 s para deslocar o carro na faixa; solte e ele mantém.\nSegure de volta ao centro para voltar. Zera ao desengatar.": "Sostenga el volante 1,5 s para desplazar el auto en el carril; suelte y se mantiene.\nSostenga de vuelta al centro para volver. Se reinicia al desactivar.",
  "Sem GPS agora.": "Sin GPS ahora.",
  "Sem GPS agora: não dá para saber onde é.": "Sin GPS ahora: no se puede saber dónde es.",
  "Sem GPS nesta viagem: caminho aproximado, feito pelas rodas e pelo volante.": "Sin GPS en este viaje: camino aproximado, hecho con las ruedas y el volante.",
@@ -1415,7 +1414,11 @@
  "Primeiro o que tem missão aberta e o LizPilot soltando sem pedal seu; o resto em «Mostrar mais»": "Primero lo que tiene una misión abierta y LizPilot soltando sin pedal tuyo; el resto en «Mostrar más»",
  "Cada resposta vira marca na hora do momento, dentro da viagem": "Cada respuesta se vuelve una marca a la hora del momento, dentro del viaje",
  "«Fiz agora» abre a observação antes de salvar e marca a hora do toque": "«Lo hice ahora» abre la nota antes de guardar y marca la hora del toque",
- "O carro não anda para trás parado na subida": "El auto no retrocede detenido en una subida",
  "No fim da parada o comma termina no freio, como a Haval faz, e segura o carro parado": "Al final de la parada el comma termina con el freno, como lo hace la Haval, y mantiene el auto detenido",
- "Se mesmo assim o carro andar para trás em D, o comma freia na hora": "Si aun así el auto retrocede en D, el comma frena en el acto"
+ "Se mesmo assim o carro andar para trás em D, o comma freia na hora": "Si aun así el auto retrocede en D, el comma frena en el acto",
+ "Parada sem recuo na subida e posição na faixa sem empurrão no trânsito lento": "Paradas sin retroceso en subida y posición en el carril sin empujones en tráfico lento",
+ "A posição na faixa que você ensina não corrige abaixo de 25 km/h e volta inteira a partir de 35 km/h": "La posición en el carril que usted enseña no corrige por debajo de 25 km/h y vuelve entera desde 35 km/h",
+ "No trânsito lento ela empurrava o carro para cima do vizinho; a posição continua guardada nas paradas": "En tráfico lento empujaba el auto hacia el vecino; la posición sigue guardada en las paradas",
+ "Segure o volante 1,5 s para deslocar o carro na faixa; solte e ele mantém a partir de 35 km/h, mesmo se ensinou mais devagar.\nSegure de volta ao centro para voltar. Zera ao desengatar.": "Sostenga el volante 1,5 s para desplazar el auto en el carril; suelte y se mantiene desde 35 km/h, aunque lo haya enseñado más despacio.\nSostenga de vuelta al centro para volver. Se reinicia al desactivar.",
+ "Voltando à posição ensinada, o carro desliza devagar, em vez de passar do ponto": "Al volver a la posición enseñada, el auto se desliza despacio en lugar de pasarse"
 }

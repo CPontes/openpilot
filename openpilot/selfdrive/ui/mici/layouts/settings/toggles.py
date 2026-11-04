@@ -27,7 +27,7 @@ class TogglesLayoutMici(NavScroller):
                                              "Only above 31 mph (50 km/h), with no turn signal.")
     lane_offset_toggle = BigParamControl("lane position by steering", "LaneOffsetEnabled",
                                          description="Hold the wheel to move the car left or right in the lane.\n" +
-                                                     "After 1.5 s, let go and openpilot keeps that position.\n" +
+                                                     "After 1.5 s, let go and openpilot keeps that position from 22 mph (35 km/h).\n" +
                                                      "Hold it back to the center to return. Resets on disengage.")
     always_on_dm_toggle = BigParamControl("always-on driver monitor", "AlwaysOnDM", description="Monitor the driver even when openpilot is not engaged.")
     record_front = BigParamControl("record & upload cabin camera", "RecordFront",

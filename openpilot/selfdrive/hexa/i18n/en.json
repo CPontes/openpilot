@@ -354,7 +354,6 @@
  "Saúde do comma": "Comma health",
  "Se o comma mudar de rede, este endereço muda: leia o QR de novo no comma, em Configurações → LizPilot → parear celular.": "If the comma changes network, this address changes: scan the QR again on the comma, in Settings → LizPilot → pair phone.",
  "Segurança do Haval": "The Haval's safety",
- "Segure o volante 1,5 s para deslocar o carro na faixa; solte e ele mantém.\nSegure de volta ao centro para voltar. Zera ao desengatar.": "Hold the wheel 1.5 s to shift the car in the lane; let go and it stays there.\nHold it back to the center to return. Resets when disengaged.",
  "Sem GPS agora.": "No GPS right now.",
  "Sem GPS agora: não dá para saber onde é.": "No GPS right now: can't tell where it is.",
  "Sem GPS nesta viagem: caminho aproximado, feito pelas rodas e pelo volante.": "No GPS on this trip: approximate route, from the wheels and the steering.",
@@ -1415,7 +1414,11 @@
  "Primeiro o que tem missão aberta e o LizPilot soltando sem pedal seu; o resto em «Mostrar mais»": "First what has an open mission and LizPilot letting go with no pedal of yours; the rest under «Show more»",
  "Cada resposta vira marca na hora do momento, dentro da viagem": "Each answer becomes a mark at the moment's time, inside the drive",
  "«Fiz agora» abre a observação antes de salvar e marca a hora do toque": "«Did it now» opens the note before saving and marks the time of the tap",
- "O carro não anda para trás parado na subida": "The car doesn't roll back when stopped on a climb",
  "No fim da parada o comma termina no freio, como a Haval faz, e segura o carro parado": "At the end of a stop the comma finishes on the brake, as the Haval does, and holds the car still",
- "Se mesmo assim o carro andar para trás em D, o comma freia na hora": "If the car still rolls back in D, the comma brakes at once"
+ "Se mesmo assim o carro andar para trás em D, o comma freia na hora": "If the car still rolls back in D, the comma brakes at once",
+ "Parada sem recuo na subida e posição na faixa sem empurrão no trânsito lento": "Stops without rolling back on a climb, and the lane position without pushes in slow traffic",
+ "A posição na faixa que você ensina não corrige abaixo de 25 km/h e volta inteira a partir de 35 km/h": "The lane position you teach doesn't correct below 25 km/h and is fully back from 35 km/h",
+ "No trânsito lento ela empurrava o carro para cima do vizinho; a posição continua guardada nas paradas": "In slow traffic it pushed the car onto the one beside it; the position is still kept through stops",
+ "Segure o volante 1,5 s para deslocar o carro na faixa; solte e ele mantém a partir de 35 km/h, mesmo se ensinou mais devagar.\nSegure de volta ao centro para voltar. Zera ao desengatar.": "Hold the wheel 1.5 s to shift the car in the lane; let go and it stays there from 35 km/h, even if taught slower.\nHold it back to the center to return. Resets when disengaged.",
+ "Voltando à posição ensinada, o carro desliza devagar, em vez de passar do ponto": "Going back to the taught position, the car slides there slowly instead of going past it"
 }
