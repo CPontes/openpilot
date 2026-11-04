@@ -1107,7 +1107,6 @@
  "Ainda não liberado para teste": "Not cleared for testing yet",
  "Fica completa quando a medição no log confirmar.": "It completes when the measurement in the log confirms it.",
  "Já deu certo 1 vez. Com 5, sai o «sem prova».": "It already worked once. With 5, the «unproven» goes away.",
- "Marcado: a hora e o lugar ficam guardados para conferir no log.": "Marked: the time and place are saved to check in the log.",
  "Marcado: fica para conferir no log.": "Marked: it will be checked in the log.",
  "O que falta depende da conferência dos logs": "What is left depends on checking the logs",
  "Quando terminar, envie os logs das viagens: é neles que tudo é conferido.": "When you finish, upload the drives' logs: everything is checked in them.",
@@ -1398,5 +1397,17 @@
  "Avisos que pedem reinício ficam travados com o openpilot engatado, na tela do comma": "Alerts that need a restart are locked while openpilot is engaged, on the comma's screen",
  "Copiloto: o que acabou de acontecer, com a hora, e nada salva sem Salvar": "Copilot: what just happened, with its time, and nothing saved without Save",
  "LizPilot na tela do comma 3X: opções, pareamento e marca pelo celular": "LizPilot on the comma 3X screen: options, pairing and the phone's mark",
- "Missões da rota 32 no histórico; versões no meio com pouca estrada à parte em «A atualização valeu?»": "Route 32's missions in the history; versions in between with little road apart in «Was the update worth it?»"
+ "Missões da rota 32 no histórico; versões no meio com pouca estrada à parte em «A atualização valeu?»": "Route 32's missions in the history; versions in between with little road apart in «Was the update worth it?»",
+ "A conferir": "To review",
+ "A conferir: 1 momento da viagem": "To review: 1 moment of the drive",
+ "A conferir: {n} momentos da viagem": "To review: {n} moments of the drive",
+ "Cada resposta vira uma marca para conferir no log; nada muda no carro.": "Each answer becomes a mark to check in the log; nothing changes in the car.",
+ "Do log da viagem, perto das {hora}": "From the drive's log, around {hora}",
+ "Mostrar mais 1, sem missão aberta": "Show 1 more, with no open mission",
+ "Mostrar mais {n}, sem missão aberta": "Show {n} more, with no open mission",
+ "Nada mais para conferir desta viagem.": "Nothing else to review from this drive.",
+ "Nada para conferir": "Nothing to review",
+ "O que a viagem registrou. Responda só o que você lembrar; o resto pode ficar.": "What the drive recorded. Answer only what you remember; the rest can stay.",
+ "O que aconteceu e ninguém respondeu. Só o que você lembrar.": "What happened and nobody answered. Only what you remember.",
+ "Tudo respondido": "All answered"
 }

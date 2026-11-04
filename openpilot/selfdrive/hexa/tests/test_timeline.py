@@ -269,7 +269,7 @@ def test_trip_summary_keeps_a_light_path_with_who_drove():
   real = t2.trip_segment, t2.read_rlog
   try:
     t2.read_rlog = lambda f: f
-    t2.trip_segment = lambda seg: {"summary": {}, "points": segs[seg], "events": [], "version": None}
+    t2.trip_segment = lambda seg, *_: {"summary": {}, "points": segs[seg], "events": [], "version": None}
     s = t2.trip_summary({0: 0, 1: 1})
   finally:
     t2.trip_segment, t2.read_rlog = real
@@ -309,7 +309,7 @@ def test_the_map_keeps_the_driver_over_the_whole_group():
   orig_read, orig_seg = tl.read_rlog, tl.trip_segment
   try:
     tl.read_rlog = lambda f: []
-    tl.trip_segment = lambda events: seg
+    tl.trip_segment = lambda events, *_: seg
     path = tl.trip_summary({3: "x"})["path"]
   finally:
     tl.read_rlog, tl.trip_segment = orig_read, orig_seg
@@ -371,3 +371,19 @@ def test_slow_traffic_counts_only_with_openpilot_steering_below_30(tmp_path):
   fast = tl.trip_summary({3: str(write_rlog(d / "b.zst", seconds=8., lat_from=0.))})
   mine = tl.trip_summary({3: str(write_rlog(d / "c.zst", seconds=8., lat_from=99., speed=5.))})
   assert slow["slow_s"] > 7 and fast["slow_s"] == 0 and mine["slow_s"] == 0
+
+
+def test_the_drive_summary_has_the_copilots_events(tmp_path):
+  # the copilot's events read from the log (copilot_events.py), across minutes, for "A conferir" on the phone (owner, 03/11)
+  d = tmp_path / "00000001--abc--0"
+  d.mkdir()
+  files = {0: str(write_rlog(d / "a.zst", seconds=8., oscillate=(0., 0.), lat_from=0., stop=(2., 5.), lat_off=(6.5, 9.)))}
+  cop = tl.trip_summary(files)["cop"]
+  assert [e["kind"] for e in cop] == ["stop_lead", "disengage"]  # stopped behind the car at 25 m; openpilot let go of the wheel at 36 km/h
+  assert abs(cop[0]["s"] - 2) <= 1 and cop[0]["data"] == {"d": 25} and abs(cop[1]["s"] - 7) <= 1 and cop[1]["data"] == {"by": None}
+  # a minute later the time counts from the drive's start
+  d1 = tmp_path / "00000001--abc--1"
+  d1.mkdir()
+  files[1] = str(write_rlog(d1 / "a.zst", seconds=8., oscillate=(0., 0.), lat_from=0., stop=(2., 5.)))
+  cop = tl.trip_summary(files)["cop"]
+  assert [e["kind"] for e in cop] == ["stop_lead", "disengage", "stop_lead"] and abs(cop[2]["s"] - 62) <= 1

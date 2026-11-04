@@ -1212,6 +1212,27 @@ def test_each_drive_keeps_its_path_for_the_map(panel, tmp_path):
   assert panel.json("/api/trip/path?route=0000000f--8784034901", token=token)[0] == 409
 
 
+def test_the_copilots_events_stay_in_the_newest_drives_only(panel, tmp_path):
+  # "A conferir" is about the last drives: older summaries drop "cop", so the param stays small
+  logs = tmp_path / "realdata"
+  logs.mkdir()
+  trip_logs(panel, logs)
+  jobs = []
+  panel.backend._spawn = jobs.append
+  cop = [{"s": 63.1, "kind": "pull_away", "v": 0, "data": {"d": 7, "go_s": 4.0}}]
+  panel.backend._summarize = lambda files, stop: {"segments": len(files), "cop": cop}
+  old = {f"0000000{i}--0000000000": {"segments": 1, "sv": hexaweb.SUMMARY_VERSION, "cop": cop} for i in range(hexaweb.COP_KEEP)}
+  panel.store.put(hexaweb.SUMMARY_PARAM, old)
+  token = panel.pair()
+  panel.json("/api/trips", token=token)
+  jobs.pop()()
+  kept = panel.store.get(hexaweb.SUMMARY_PARAM)
+  with_cop = sorted(k for k, v in kept.items() if "cop" in v)
+  assert len(with_cop) == hexaweb.COP_KEEP and "0000000f--8784034901" in with_cop and "00000000--0000000000" not in with_cop
+  trip = next(t for t in panel.json("/api/trips", token=token)[1]["trips"] if t["id"] == "0000000f--8784034901")
+  assert trip["summary"]["cop"] == cop  # the phone gets them with the drive
+
+
 def test_a_drive_can_be_hidden_from_the_lists_and_shown_again(panel, tmp_path):
   trip_logs(panel, tmp_path)
   token = panel.pair()

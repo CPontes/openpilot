@@ -68,14 +68,15 @@ TRIP_INDEX_S = 30.  # the page asks once per minute of the trip: don't walk the 
 SUMMARY_PARAM = "HexaTripSummaries"  # {route: who had the wheel, for how long and how far}
 SUMMARY_NEWEST = 300  # drives summarized in the background, newest first, with the car off: the whole history on the comma
 SUMMARY_KEEP = 300
+COP_KEEP = 10  # the copilot's events stay in the newest drives only: "A conferir" is about the last drives, and the param stays small
 TRIPS_LISTED = 300
 PATH_DIR = "hexa_trips"  # next to the log folder: each drive's path, for the map on the phone. Never leaves the comma
 PATH_PRUNE_S = 600.  # paths of drives the comma already deleted go too, looked at this often, car off
 HIDDEN_PARAM = "HexaTripsHidden"  # drives the owner hid from the phone's lists: the logs stay on the comma
 HIDDEN_KEEP = 600
 PRESERVE_ATTR = "user.preserve"  # system/loggerd/deleter.py: what keeps a flagged minute from being deleted
-SUMMARY_VERSION = 5  # 2: version, alerts. 3: the path. 4: the KPIs (wobble, lane seen, where it let go).
-# 5: time in slow traffic (the missions).
+SUMMARY_VERSION = 6  # 2: version, alerts. 3: the path. 4: the KPIs (wobble, lane seen, where it let go).
+# 5: time in slow traffic (the missions). 6: the copilot's events (cop), for "A conferir".
 # An older summary is read again, the newest SUMMARY_NEWEST only
 ERRORS_EVERY_S = 30.
 CLIP_BEFORE_S = 10.  # the clip of a mark starts this long before it
@@ -886,6 +887,9 @@ class PanelBackend:
           kept[trip["id"]] = summary
           for old in sorted(kept)[:-SUMMARY_KEEP]:  # route names grow with each drive
             del kept[old]
+          for old in sorted(kept)[:-COP_KEEP]:
+            if isinstance(kept[old], dict):
+              kept[old].pop("cop", None)
           self._put(SUMMARY_PARAM, kept)
     finally:
       self._summary_busy = False

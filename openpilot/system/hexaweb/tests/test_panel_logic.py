@@ -923,3 +923,23 @@ def test_every_event_kind_has_its_texts_and_the_card_keeps_one_height():
   # an answer only opens the note: Salvar is what saves
   tap = html[html.index("function evTap("):html.index("function openEv(")]
   assert "api(" not in tap
+
+
+def test_events_from_the_drives_log_join_the_phones_once():
+  # timeline.py "cop": seconds from the drive's start, the start being its end minus how long it ran (owner, 03/11)
+  trip = {"id": "0000000f--8784034901", "mtime": 10_000, "minutes": 12, "hidden": False,
+          "summary": {"s": 700, "cop": [{"s": 63.1, "kind": "pull_away", "v": 0, "data": {"d": 7, "go_s": 4.0}},
+                                        {"s": 200.0, "kind": "stop_lead", "v": 0, "data": {"d": 2}}]}}
+  phone = [{"id": "p1", "kind": "stop_lead", "t": (10_000 - 700 + 210) * 1000, "answer": {"r": "ok"}}]  # the phone saw it, 10 s off
+  out = run("logEvents", [trip], phone, 0)
+  assert [(e["kind"], e["src"], e["t"]) for e in out] == [("pull_away", "log", round((10_000 - 700 + 63.1) * 1000))]
+  assert out[0]["id"] == "0000000f--8784034901-63.1-pull_away" and out[0]["data"] == {"d": 7, "go_s": 4.0}
+  assert run("logEvents", [trip], phone + out, 0) == []  # once
+  assert run("logEvents", [{**trip, "hidden": True}], [], 0) == [] and run("logEvents", [trip], [], 10_000_000) == []  # hidden, older
+
+
+def test_the_review_asks_about_letting_go_only_without_your_pedal():
+  html = (LOGIC.parent / "index.html").read_text()
+  rel = html[html.index("function evRelevant(e)"):]
+  rel = rel[:rel.index("\n}\n")]
+  assert '["freio", "acelerador"].includes' in rel and "evMission(e)" in rel

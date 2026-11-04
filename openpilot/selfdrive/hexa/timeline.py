@@ -22,6 +22,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from openpilot.selfdrive.hexa import sensors as hexa_sensors
+from openpilot.selfdrive.hexa.copilot_events import SAMPLE_S as COP_SAMPLE_S, CopilotEvents, Lead, Reading
 from openpilot.selfdrive.hexa.shadow import KEYS as SHADOW_KEYS, ShadowCounter
 
 FPS = 10
@@ -319,10 +320,12 @@ def _op_long(messages: list) -> bool:
   return False
 
 
-def trip_segment(events: Iterable) -> dict:
+def trip_segment(events: Iterable, cop: CopilotEvents | None = None, offset: float = 0.) -> dict:
   """One minute of a drive for the trip page, from a qlog: much lighter than the replay.
 
   Each path point has the GPS fix and also the step from the wheels and the steering, because the GPS can be missing.
+  cop: the copilot's events (copilot_events.py), fed one reading a second at offset + t; the drive's summary passes one
+  across its minutes.
   """
   points: list[dict] = []
   out: list[dict] = []
@@ -355,6 +358,9 @@ def trip_segment(events: Iterable) -> dict:
   kpi = dict.fromkeys(KPI_KEYS, 0.)
   angles: list[tuple[float, float]] = []  # the last STRAIGHT_S of steering angle, for the wobble
   en_seen = False  # the minute's first carState can come before its first selfdriveState: not a break
+  cop_lead: Lead | None = None
+  cop_radar = cop_lat = False  # the minute starts with no state: the copilot reads only once it has the steering's and the radar's
+  next_cop = 0.
 
   messages = sorted(events, key=lambda m: m.logMonoTime)
   shadow.on_op_long(_op_long(messages))
@@ -375,6 +381,8 @@ def trip_segment(events: Iterable) -> dict:
     elif w == "radarState":
       lead = m.radarState.leadOne
       shadow.on_lead(lead.present, lead.dRel)
+      cop_lead = Lead(round(lead.dRel), round(lead.vLead * 3.6), round(float(lead.aLeadK), 1)) if lead.present else None  # as /api/live
+      cop_radar = True
     elif w == "userBookmark":
       out.append({"t": _r(t), "kind": "mark", "text": "bandeira", "mono_ns": m.logMonoTime})
       total["marks"] += 1
@@ -398,6 +406,7 @@ def trip_segment(events: Iterable) -> dict:
       en_seen = True
     elif w == "carControl":
       lat = m.carControl.latActive
+      cop_lat = True
       o = getattr(m.carControl, "orientationNED", ())
       if len(o) == 3:
         car.on_pose(t, o[0], o[1])
@@ -445,6 +454,10 @@ def trip_segment(events: Iterable) -> dict:
               out.append({"t": _r(t), "kind": pedal, "text": text})
               total[pedal] += 1
             pedal_at[pedal] = t
+      if cop is not None and cop_lat and cop_radar and t >= next_cop:  # one reading a second, like the phone's /api/live
+        cop.step(offset + t, Reading(round(cs.vEgo * 3.6), bool(lat), cop_lead, bool(cs.leftBlinker or cs.rightBlinker),
+                                     bool(cs.brakePressed), bool(cs.gasPressed), bool(cs.steeringPressed)))
+        next_cop = t + COP_SAMPLE_S
       brake, gas = cs.brakePressed, cs.gasPressed
       total["s"] += dt
       total["km"] += cs.vEgo * dt / 1e3
@@ -507,13 +520,17 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
   end_s = 0.
   unread = 0
   run_best, run_cur, prev, v_max = [0., 0.], [0., 0.], None, 0.
+  cop = CopilotEvents()  # the copilot's events, for "A conferir" on the phone (owner, 03/11)
   for seg in sorted(files):
     if stop():
       return None
+    if prev is not None and seg != prev + 1:
+      cop.reset()  # a gap: nothing pending carries over it
     try:
-      seg_data = trip_segment(read_rlog(files[seg]))
+      seg_data = trip_segment(read_rlog(files[seg]), cop, seg * 60.)
     except Exception:
       unread += 1
+      cop.reset()
       continue
     part = seg_data["summary"]
     version = version or seg_data.get("version") or {}
@@ -544,5 +561,5 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
     out["se_hard_brakes"] = int(out["se_hard_brakes"])
   out.update({"v_max": round(v_max), "run_km": _r(run_best[0], 2), "run_s": round(run_best[1])})
   return {**out, "segments": len(files), "unread": unread, "version": version.get("version", ""), "commit": version.get("commit", ""),
-          "auto_marks": auto[:AUTO_MARKS_MAX], "path": path,
+          "auto_marks": auto[:AUTO_MARKS_MAX], "path": path, "cop": cop.events,
           "off_at": [x for x in off_at if x < end_s - PIN_END_S][:OFF_AT_MAX]}

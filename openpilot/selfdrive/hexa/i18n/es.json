@@ -1107,7 +1107,6 @@
  "Ainda não liberado para teste": "Todavía no habilitada para prueba",
  "Fica completa quando a medição no log confirmar.": "Se completa cuando la medición en el log lo confirme.",
  "Já deu certo 1 vez. Com 5, sai o «sem prova».": "Ya funcionó 1 vez. Con 5, se quita el «sin prueba».",
- "Marcado: a hora e o lugar ficam guardados para conferir no log.": "Marcado: la hora y el lugar quedan guardados para revisar en el log.",
  "Marcado: fica para conferir no log.": "Marcado: queda para revisar en el log.",
  "O que falta depende da conferência dos logs": "Lo que falta depende de revisar los logs",
  "Quando terminar, envie os logs das viagens: é neles que tudo é conferido.": "Cuando termines, envía los logs de los viajes: todo se revisa en ellos.",
@@ -1398,5 +1397,17 @@
  "Avisos que pedem reinício ficam travados com o openpilot engatado, na tela do comma": "Los avisos que piden reinicio quedan bloqueados con openpilot activado, en la pantalla del comma",
  "Copiloto: o que acabou de acontecer, com a hora, e nada salva sem Salvar": "Copiloto: lo que acaba de pasar, con la hora, y nada se guarda sin Guardar",
  "LizPilot na tela do comma 3X: opções, pareamento e marca pelo celular": "LizPilot en la pantalla del comma 3X: opciones, emparejamiento y marca desde el celular",
- "Missões da rota 32 no histórico; versões no meio com pouca estrada à parte em «A atualização valeu?»": "Misiones de la ruta 32 en el historial; versiones en medio con poca ruta aparte en «¿Valió la actualización?»"
+ "Missões da rota 32 no histórico; versões no meio com pouca estrada à parte em «A atualização valeu?»": "Misiones de la ruta 32 en el historial; versiones en medio con poca ruta aparte en «¿Valió la actualización?»",
+ "A conferir": "Por revisar",
+ "A conferir: 1 momento da viagem": "Por revisar: 1 momento del viaje",
+ "A conferir: {n} momentos da viagem": "Por revisar: {n} momentos del viaje",
+ "Cada resposta vira uma marca para conferir no log; nada muda no carro.": "Cada respuesta se vuelve una marca para revisar en el log; nada cambia en el auto.",
+ "Do log da viagem, perto das {hora}": "Del log del viaje, cerca de las {hora}",
+ "Mostrar mais 1, sem missão aberta": "Mostrar 1 más, sin misión abierta",
+ "Mostrar mais {n}, sem missão aberta": "Mostrar {n} más, sin misión abierta",
+ "Nada mais para conferir desta viagem.": "Nada más por revisar de este viaje.",
+ "Nada para conferir": "Nada por revisar",
+ "O que a viagem registrou. Responda só o que você lembrar; o resto pode ficar.": "Lo que el viaje registró. Responde solo lo que recuerdes; el resto puede quedar.",
+ "O que aconteceu e ninguém respondeu. Só o que você lembrar.": "Lo que pasó y nadie respondió. Solo lo que recuerdes.",
+ "Tudo respondido": "Todo respondido"
 }
