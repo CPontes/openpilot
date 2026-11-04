@@ -10,6 +10,8 @@ comma doesn't say everything. Keys are the same Params the comma screen writes, 
 """
 from dataclasses import dataclass, field
 
+from openpilot.selfdrive.hexa import edition
+
 LEVELS = ("cel", "so", "trav")
 GROUPS: tuple[tuple[str, str], ...] = (
   ("prefs", "Preferências do comma"),
@@ -32,6 +34,15 @@ class CommaItem:
   blocked: str = ""  # for "trav": why
 
 
+# What the logs show between the comma and the Haval's ACC, for the owner to choose (CTO, 03/11, routes 23 to 31).
+# Measured on the Haval: the generic edition (edition.py) keeps only the warnings true for any car.
+HAVAL_LONG_WARNINGS = (
+  "Freio mais forte: o comma vai até −3,5 m/s². O ACC da Haval já chegou a −4,8 m/s² nos seus logs.",
+  "Frenagem de emergência da Haval: não provada com o comma no controle. O mais provável é que ela não atue com esta opção ligada.",
+  "Distância do carro da frente: o radar da Haval mede. O comma estima pela câmera e pode errar com moto ou carro parado.",
+)
+AEB_STEP = {"h6gt": "Frenagem de emergência do Haval provada com o openpilot", "generic": "Frenagem de emergência do carro provada com o openpilot"}
+
 ITEMS: tuple[CommaItem, ...] = (
   # *** Preferências: selfdrive/ui/mici/layouts/settings/toggles.py ***
   CommaItem("IsMetric", "prefs", "usar unidades métricas", "Velocidades em km/h na tela do comma.", "cel"),
@@ -50,19 +61,16 @@ ITEMS: tuple[CommaItem, ...] = (
             "so", dev_only=True),
   CommaItem("AlphaLongitudinalEnabled", "dev", "longitudinal do openpilot (alfa)",
             "Usar o controle de acelerador e freio do openpilot no lugar do ACC original.", "trav", dev_only=True,
-            warnings=("AVISO: o longitudinal alfa pode desligar a frenagem automática de emergência (AEB).",
-                      # what the logs show between the two, for the owner to choose (CTO, 03/11, routes 23 to 31)
-                      "Freio mais forte: o comma vai até −3,5 m/s². O ACC da Haval já chegou a −4,8 m/s² nos seus logs.",
-                      "Frenagem de emergência da Haval: não provada com o comma no controle. O mais provável é que ela não atue com esta opção ligada.",
-                      "Distância do carro da frente: o radar da Haval mede. O comma estima pela câmera e pode errar com moto ou carro parado.",
-                      "O aviso de colisão do comma só toca o som: não freia além do plano."),
+            warnings=("AVISO: o longitudinal alfa pode desligar a frenagem automática de emergência (AEB).",) +
+                     (() if edition.EDITION == "generic" else HAVAL_LONG_WARNINGS) +
+                     ("O aviso de colisão do comma só toca o som: não freia além do plano.",),
             blocked="O celular não muda isso. Só na tela do comma."),
 )
 
 # What the Velocidade screen lists as missing before the longitudinal can be trusted (LONG-02 and the CTO's order).
 LONG_STEPS: tuple[tuple[str, str], ...] = (
   ("sombra", "Modo sombra nas suas viagens"),
-  ("aeb", "Frenagem de emergência do Haval provada com o openpilot"),
+  ("aeb", AEB_STEP[edition.EDITION]),
   ("calibrado", "Acelerador e freio calibrados"),
   ("testes", "Testes de segurança do longitudinal"),
   ("pista", "Seu teste em pista livre"),

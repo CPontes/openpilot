@@ -23,6 +23,7 @@ from openpilot.selfdrive.controls.lib.longcontrol import LongControl
 from openpilot.selfdrive.controls.lib.low_speed_filter import LowSpeedCurvatureFilter
 from openpilot.selfdrive.modeld.modeld import LAT_SMOOTH_SECONDS
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
+from openpilot.selfdrive.hexa import edition
 
 State = log.SelfdriveState.OpenpilotState
 LaneChangeState = log.LaneChangeState
@@ -51,7 +52,9 @@ class Controls:
     self.low_speed_filter = LowSpeedCurvatureFilter() if self.CP.brand == "gwm" and self.params.get_bool("LowSpeedFilter") else None
 
     self.lane_offset = LaneOffset()
-    self.lane_offset_enabled = self.params.get_bool("LaneOffsetEnabled")
+    # tuned on the Haval only: in the generic edition (edition.py) it stays off in any other car, whatever the param says
+    self.lane_offset_allowed = self.CP.brand in edition.GWM_ONLY or edition.EDITION != "generic"
+    self.lane_offset_enabled = self.lane_offset_allowed and self.params.get_bool("LaneOffsetEnabled")
     self.frame = 0
 
     self.pose_calibrator = PoseCalibrator()
@@ -72,7 +75,7 @@ class Controls:
   def update(self):
     self.sm.update(15)
     if self.frame % 100 == 0:
-      self.lane_offset_enabled = self.params.get_bool("LaneOffsetEnabled")
+      self.lane_offset_enabled = self.lane_offset_allowed and self.params.get_bool("LaneOffsetEnabled")
     if self.sm.updated["extrinsicsCalibration"]:
       self.pose_calibrator.feed_extrinsics_calibration(self.sm['extrinsicsCalibration'])
     if self.sm.updated["deviceMotion"]:

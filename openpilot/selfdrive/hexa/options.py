@@ -6,6 +6,8 @@ fixes the car needs, which stay switchable so they can be turned off without an 
 """
 from dataclasses import dataclass, field
 
+from openpilot.selfdrive.hexa import edition
+
 # (key, title) in display order
 GROUPS: tuple[tuple[str, str], ...] = (
   ("direcao", "Direção"),
@@ -39,6 +41,8 @@ class HexaOption:
   blocked: str = ""
   # Still being proven in the car: the comma and the phone show an "em teste" tag next to it.
   testing: bool = False
+  # Only offered in these car brands (edition.py): what was measured and tuned on the Haval alone stays off elsewhere.
+  brands: tuple[str, ...] = ()
 
   def coerce(self, value):
     """Validate a value coming from outside (the phone). Returns the value to store or raises ValueError."""
@@ -56,6 +60,7 @@ class HexaOption:
 OPTIONS: tuple[HexaOption, ...] = (
   HexaOption(
     key="LowSpeedFilter",
+    brands=edition.GWM_ONLY,
     group="direcao",
     title="volante calmo em baixa velocidade",
     description="Abaixo de 30 km/h, o volante ignora as tremidas pequenas do modelo e fica reto.\n" +
@@ -65,6 +70,7 @@ OPTIONS: tuple[HexaOption, ...] = (
   ),
   HexaOption(
     key="SoftHandoff",
+    brands=edition.GWM_ONLY,
     group="direcao",
     title="devolver o volante aos poucos",
     description="Quando você força o volante de leve contra o openpilot, ele solta a força aos poucos, em menos de 1 s, e volta de onde parou " +
@@ -75,6 +81,7 @@ OPTIONS: tuple[HexaOption, ...] = (
   ),
   HexaOption(
     key="AlwaysOnLateral",
+    brands=edition.GWM_ONLY,
     group="direcao",
     title="direção sempre ativa",
     description="O freio pausa só o acelerador e o freio do ACC; a direção continua.\n" +
@@ -84,6 +91,7 @@ OPTIONS: tuple[HexaOption, ...] = (
   ),
   HexaOption(
     key="LaneOffsetEnabled",
+    brands=edition.GWM_ONLY,
     group="direcao",
     title="posição na faixa pelo volante",
     description="Segure o volante 1,5 s para deslocar o carro na faixa; solte e ele mantém.\n" +
@@ -91,6 +99,7 @@ OPTIONS: tuple[HexaOption, ...] = (
   ),
   HexaOption(
     key="AutoLaneChange",
+    brands=edition.GWM_ONLY,
     group="direcao",
     title="troca de faixa pela seta",
     description="A partir de 60 km/h, a seta ligada troca de faixa sem empurrar o volante.\n" +
@@ -99,6 +108,7 @@ OPTIONS: tuple[HexaOption, ...] = (
   ),
   HexaOption(
     key="AutoLaneChangeDelay",
+    brands=edition.GWM_ONLY,
     group="direcao",
     title="tempo da seta até trocar",
     description="Quanto tempo a seta fica ligada antes de a troca começar.",
@@ -126,6 +136,7 @@ OPTIONS: tuple[HexaOption, ...] = (
   ),
   HexaOption(
     key="AutoResume",
+    brands=edition.GWM_ONLY,
     group="velocidade",
     title="sair sozinho da parada",
     description="Parado atrás de um carro, o ACC sai quando ele anda. Só com openpilot ligado, você olhando para a frente, sem pedal e até 3 min parado.\n" +
@@ -135,6 +146,7 @@ OPTIONS: tuple[HexaOption, ...] = (
   ),
   HexaOption(
     key="LeadClosing",
+    brands=edition.GWM_ONLY,
     group="velocidade",
     title="frear antes com a distância da haval",
     description="Quando a distância medida pela Haval mostra o carro da frente parando antes do modelo perceber, " +
@@ -145,6 +157,7 @@ OPTIONS: tuple[HexaOption, ...] = (
   ),
   HexaOption(
     key="StopFinish",
+    brands=edition.GWM_ONLY,
     group="velocidade",
     title="parar de vez sem carro à frente",
     description="Sem carro à frente, quando o modelo freia até quase parar, o comma termina a parada e fica parado até você tocar no acelerador. " +
@@ -155,6 +168,7 @@ OPTIONS: tuple[HexaOption, ...] = (
   ),
   HexaOption(
     key="StopCloser",
+    brands=edition.GWM_ONLY,
     group="velocidade",
     title="parar mais perto do carro da frente",
     description="No trânsito lento, o comma para até 1 m mais perto do carro da frente, mais perto dos 3 m do ACC da Haval. " +
@@ -166,6 +180,7 @@ OPTIONS: tuple[HexaOption, ...] = (
   ),
   HexaOption(
     key="BumpSlowdown",
+    brands=edition.GWM_ONLY,
     group="velocidade",
     title="reduzir na lombada",
     description="Antes de uma lombada marcada, o comma toca o − do ACC até a velocidade que você escolheu, de 30 km/h para cima. Abaixo disso, só avisa.\n" +
@@ -184,6 +199,7 @@ OPTIONS: tuple[HexaOption, ...] = (
   ),
   HexaOption(
     key="AccLostAlert",
+    brands=edition.GWM_ONLY,
     group="avisos",
     title="aviso de acc saiu sozinho",
     description="Com o openpilot na direção, um som avisa quando o ACC da Haval sai sem freio, acelerador ou alavanca.\n" +
@@ -231,6 +247,8 @@ def supported(opt: HexaOption, params) -> bool:
   """Shown only when this build has the option's param: a base without the feature has no key, and
   reading an unknown key raises. Stores without check_key (tests) know every key."""
   if opt.blocked:
+    return False
+  if not edition.allows(opt.brands, params):  # only tested on another brand's cars
     return False
   check = getattr(params, "check_key", None)
   if check is None:
