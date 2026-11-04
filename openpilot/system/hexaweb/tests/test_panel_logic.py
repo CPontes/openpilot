@@ -1038,3 +1038,34 @@ def test_the_review_answers_and_fiz_agora_keep_their_moment():
   assert html.count("openEv(null, \"done\", EV_BUTTONS.done, m.key, at)") == 2
   cop = html[html.index("function renderCop()"):]
   assert '$("copTitle").textContent = t(copReview ? "A conferir" : "Copiloto")' in cop[:cop.index("\n}\n")]
+
+
+def test_a_kind_turned_off_and_a_confirmed_point_stay_out_of_the_big_card_but_are_kept():
+  # owner, 04/11: "registra, identifica, mas só deixa de aparecer no quadrado grande"
+  evs = [{"id": "a", "kind": "stop_lead", "t": 100_000}, {"id": "b", "kind": "radar", "t": 101_000, "data": {"confirmed": True}},
+         {"id": "c", "kind": "radar", "t": 102_000, "data": {"confirmed": False}}, {"id": "d", "kind": "pull_away", "t": 103_000}]
+  v = run("copilotView", evs, 105_000, None, 0, ["pull_away", "stop_lead"])
+  assert v["main"]["id"] == "c"  # the newest that isn't quiet: the point still to confirm
+  assert [e["id"] for e in v["quiet"]] == ["d", "b", "a"] and v["pending"] == []
+  assert run("copilotView", evs, 105_000, "d", 104_000, ["pull_away"])["main"]["id"] == "d"  # picked from the list: shown
+  assert run("copilotView", evs, 105_000, None, 0, [])["main"]["id"] == "d"  # nothing turned off: as before
+  assert run("mutedKinds", ["stop_lead", "nope", "stop_lead", "radar"]) == ["stop_lead", "radar"]
+
+
+def test_no_function_is_declared_twice_in_the_page():
+  # a merge that brings two "function evTitle" keeps only the last one, silently (05/11: the channel's evTitle(ev) and app-13's evTitle(kind))
+  import collections
+  import re
+  names = re.findall(r"^\s*(?:async\s+)?function\s+(\w+)\s*\(", (LOGIC.parent / "index.html").read_text(), re.M)
+  assert [n for n, c in collections.Counter(names).items() if c > 1] == []
+
+
+def test_skip_and_turning_a_kind_off_never_mark_and_turning_off_asks_first():
+  html = (LOGIC.parent / "index.html").read_text()
+  skip = html[html.index("function evSkip(ev)"):html.index("function openMute(")]
+  assert "api(" not in skip and 'evDone(ev.id, "skip")' in skip and "Desfazer" not in skip  # the button text lives in the HTML
+  ask = html[html.index("function openMute("):html.index("function closeMute(")]
+  assert "evMuted =" not in ask and "mutedSave" not in ask  # the box only
+  save = html[html.index("function saveMute()"):html.index("function copRadarStrip(")]
+  assert "mutedSave()" in save
+  assert '"lpCopMuted"' not in (LOGIC.read_text())  # a preference: "Apagar dados" leaves it
