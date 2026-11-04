@@ -14,7 +14,7 @@ from openpilot.selfdrive.hexa import comma_ctl, i18n, live, marks, missions, opt
 HEXA = Path(__file__).parent
 ROOT = HEXA.parents[1]  # openpilot/openpilot
 PY_SOURCES = [ROOT / "system/hexaweb/hexaweb.py", HEXA / "phone.py", HEXA / "updates.py", HEXA / "marks.py", HEXA / "comma_ctl.py", HEXA / "missions.py",
-              ROOT / "selfdrive/ui/mici/layouts/settings/hexa.py"]
+              ROOT / "selfdrive/ui/mici/layouts/settings/hexa.py", ROOT / "selfdrive/ui/layouts/settings/hexa.py"]
 PAGES = [ROOT / "system/hexaweb/static" / n for n in ("index.html", "viagens.html", "replay.html", "lp-logic.js")]
 # objects in the pages whose values are passed through t() by name
 PAGE_TABLES = ("UPDATE_ACTIONS", "EVENTS", "RADAR_ACTIONS", "RESUME", "SIDES", "SIDE_CHIPS", "POINT", "KINDS",
