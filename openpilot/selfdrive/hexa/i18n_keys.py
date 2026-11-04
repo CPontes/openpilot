@@ -94,6 +94,7 @@ def mission_texts() -> set[str]:
 def comma_ctl_texts() -> set[str]:
   """The comma's own settings as the phone shows them (comma_ctl.py)."""
   out = {title for _, title in comma_ctl.GROUPS} | {label for _, label in comma_ctl.LONG_STEPS}
+  out |= set(comma_ctl.AEB_STEP.values()) | set(comma_ctl.HAVAL_LONG_WARNINGS)  # both editions (edition.py)
   for it in comma_ctl.ITEMS:
     out |= {it.title, it.description, *it.warnings, comma_ctl.effect(it)}
     if it.blocked:

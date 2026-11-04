@@ -1,6 +1,7 @@
 from openpilot.cereal import log
 from openpilot.common.constants import CV
 from openpilot.common.realtime import DT_MDL
+from openpilot.selfdrive.hexa import edition
 
 LaneChangeState = log.LaneChangeState
 LaneChangeDirection = log.LaneChangeDirection
@@ -32,6 +33,8 @@ RELEASE_FRAMES = round(RELEASE_TIME / DT_MDL)  # counted in frames: adding up DT
 
 def auto_lane_change_delay(params) -> float | None:
   if not params.get_bool("AutoLaneChange"):
+    return None
+  if not edition.allows(edition.GWM_ONLY, params):  # RELEASE_TORQUE is in the Haval's units: off in other cars (edition.py)
     return None
   choice = params.get("AutoLaneChangeDelay")
   # modeld reads this at startup: a bad value must not stop it from running

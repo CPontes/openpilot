@@ -167,6 +167,7 @@
  "Filtrar viagens": "Filtrar viajes",
  "Frenagem automática de emergência": "Frenado automático de emergencia",
  "Frenagem de emergência do Haval provada com o openpilot": "Frenado de emergencia del Haval probado con openpilot",
+ "Frenagem de emergência do carro provada com o openpilot": "Frenado de emergencia del auto probado con openpilot",
  "Funciona mesmo se o comma mudar de rede. Lá você pareia uma vez com o código do comma e adiciona à tela de início de novo.": "Funciona aunque el comma cambie de red. Allí empareja una vez con el código del comma y lo agrega de nuevo a la pantalla de inicio.",
  "Gera um arquivo com os erros e a versão, para você mandar. Nada sai do comma sozinho.": "Genera un archivo con los errores y la versión para que usted lo envíe. Nada sale del comma solo.",
  "Gere um código no comma: Configurações → LizPilot → parear celular.": "Genere un código en el comma: Configuración → LizPilot → emparejar celular.",

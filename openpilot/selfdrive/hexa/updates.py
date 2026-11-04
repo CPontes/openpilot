@@ -6,11 +6,14 @@ version is done by the canal, see docs/STATUS.md.
 """
 import subprocess
 
+from openpilot.selfdrive.hexa import edition
 from openpilot.selfdrive.hexa.phone import VehicleState
 
 UPDATER_PROC = "openpilot.system.updated.updated"
 SIGNALS = {"check": "SIGUSR1", "download": "SIGHUP"}  # the same the Software page sends
-OFFERED_BRANCHES = ("h6gt",)  # the car uses one branch. A comma on another one still lists it, to leave it
+# the car uses one branch: the canal for the Haval build, "lizpilot" for the generic edition (CPontes/lizpilot).
+# A comma on another one still lists it, to leave it.
+OFFERED_BRANCHES = ("lizpilot",) if edition.EDITION == "generic" else ("h6gt",)
 
 
 def signal_updater(sig: str) -> None:
