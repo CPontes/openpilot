@@ -20,7 +20,10 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "04/11", "2060c4e", "«A conferir»: o que a viagem registrou",
+  Release("", "04/11", "8066720", "O carro não anda para trás parado na subida",
+          ("No fim da parada o comma termina no freio, como a Haval faz, e segura o carro parado",
+           "Se mesmo assim o carro andar para trás em D, o comma freia na hora")),
+  Release("5e5181b", "04/11", "2060c4e", "«A conferir»: o que a viagem registrou",
           ("No Início, parado ou com o carro desligado: os momentos da última viagem, também os que o comma tirou do log",
            "Primeiro o que tem missão aberta e o LizPilot soltando sem pedal seu; o resto em «Mostrar mais»",
            "Cada resposta vira marca na hora do momento, dentro da viagem",

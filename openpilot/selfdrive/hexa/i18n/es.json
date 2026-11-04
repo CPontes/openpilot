@@ -1414,5 +1414,8 @@
  "No Início, parado ou com o carro desligado: os momentos da última viagem, também os que o comma tirou do log": "En Inicio, estacionado o con el auto apagado: los momentos del último viaje, también los que el comma sacó del log",
  "Primeiro o que tem missão aberta e o LizPilot soltando sem pedal seu; o resto em «Mostrar mais»": "Primero lo que tiene una misión abierta y LizPilot soltando sin pedal tuyo; el resto en «Mostrar más»",
  "Cada resposta vira marca na hora do momento, dentro da viagem": "Cada respuesta se vuelve una marca a la hora del momento, dentro del viaje",
- "«Fiz agora» abre a observação antes de salvar e marca a hora do toque": "«Lo hice ahora» abre la nota antes de guardar y marca la hora del toque"
+ "«Fiz agora» abre a observação antes de salvar e marca a hora do toque": "«Lo hice ahora» abre la nota antes de guardar y marca la hora del toque",
+ "O carro não anda para trás parado na subida": "El auto no retrocede detenido en una subida",
+ "No fim da parada o comma termina no freio, como a Haval faz, e segura o carro parado": "Al final de la parada el comma termina con el freno, como lo hace la Haval, y mantiene el auto detenido",
+ "Se mesmo assim o carro andar para trás em D, o comma freia na hora": "Si aun así el auto retrocede en D, el comma frena en el acto"
 }

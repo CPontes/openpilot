@@ -1414,5 +1414,8 @@
  "No Início, parado ou com o carro desligado: os momentos da última viagem, também os que o comma tirou do log": "On Home, parked or with the car off: the moments of the last drive, including the ones the comma took from the log",
  "Primeiro o que tem missão aberta e o LizPilot soltando sem pedal seu; o resto em «Mostrar mais»": "First what has an open mission and LizPilot letting go with no pedal of yours; the rest under «Show more»",
  "Cada resposta vira marca na hora do momento, dentro da viagem": "Each answer becomes a mark at the moment's time, inside the drive",
- "«Fiz agora» abre a observação antes de salvar e marca a hora do toque": "«Did it now» opens the note before saving and marks the time of the tap"
+ "«Fiz agora» abre a observação antes de salvar e marca a hora do toque": "«Did it now» opens the note before saving and marks the time of the tap",
+ "O carro não anda para trás parado na subida": "The car doesn't roll back when stopped on a climb",
+ "No fim da parada o comma termina no freio, como a Haval faz, e segura o carro parado": "At the end of a stop the comma finishes on the brake, as the Haval does, and holds the car still",
+ "Se mesmo assim o carro andar para trás em D, o comma freia na hora": "If the car still rolls back in D, the comma brakes at once"
 }
