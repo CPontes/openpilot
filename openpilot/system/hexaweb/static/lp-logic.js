@@ -365,8 +365,10 @@
     return out;
   }
   // The version now against the last one tested (owner, 03/11: several updates went out untested). Tested: drives on it with
-  // KPI_MIN_KM of road; if none has that much, the last with any drive. The channel versions in between, with no drive of
-  // their own, come along in the comparison: `between` lists them from the release notes. Under 200 km a side: no verdict
+  // KPI_MIN_KM of road; if none has that much, the last with any drive. The channel versions in between come along in the
+  // comparison, from the release notes: `between` those with no drive at all, `short` those with too little road to be the
+  // one tested, `earlier` those tested but driven before it (a rollback). Their km are on neither side. Under 200 km a side:
+  // no verdict
   const VERSION_MIN_KM = 200;
   function versionCompare(trips, releases) {
     const ts = (trips || []).filter((t) => t.summary && !t.hidden && !idle(t) && versionOf(t)).sort((a, b) => b.mtime - a.mtime);
@@ -380,8 +382,12 @@
     const rows = ["opPct", "wobble", "alerts100"].map((k) => ({ key: k, now: a[k], before: b[k], delta: few ? null : kpiDelta(k, a[k], b[k]) }));
     const judged = rows.filter((r) => r.delta);
     const rel = (releases || []).map((r) => r.commit), i = rel.indexOf(now), j = rel.indexOf(before);
-    const between = i >= 0 && j > i ? rel.slice(i + 1, j) : null;  // null: the notes don't know one of the two
-    return { now, before, a, b, rows, better: few ? null : judged.filter((r) => r.delta.trend > 0).length, judged: few ? null : judged.length, few, between };
+    const mid = i >= 0 && j > i ? rel.slice(i + 1, j) : null;  // null: the notes don't know one of the two
+    const km = (x) => kpiOf(mine(x)).km;
+    const between = mid && mid.filter((x) => !mine(x).length), short = mid && mid.filter((x) => mine(x).length && km(x) < KPI_MIN_KM);
+    const earlier = mid && mid.filter((x) => km(x) >= KPI_MIN_KM);
+    return { now, before, a, b, rows, better: few ? null : judged.filter((r) => r.delta.trend > 0).length, judged: few ? null : judged.length, few,
+             between, short, earlier };
   }
   // Week by week of one KPI, oldest first, for a sparkline (null weeks stay null: a gap reads as a gap)
   function kpiWeeks(trips, nowS, key, n) {

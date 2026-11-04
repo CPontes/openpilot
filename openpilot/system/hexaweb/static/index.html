@@ -1709,7 +1709,7 @@ let releases = null, vScreen = { s: "lista" };
 async function refreshVersions() {
   if (releases) return;
   const r = await api("/api/versions");
-  if (r.status === 200) { releases = r.data.releases; if (view === "versoes") renderVersions(); if (view === "viagens") renderTrips(); }
+  if (r.status === 200) { releases = r.data.releases || []; if (view === "versoes") renderVersions(); if (view === "viagens") renderTrips(); }
 }
 function openVersions(scr) { vScreen = scr || { s: "lista" }; showView("versoes"); }
 function renderVersions() {
@@ -2583,6 +2583,14 @@ function versionVerdict(list) {
   if (vc.between && vc.between.length) {  // updates that went out with no drive: this comparison takes them all together
     c.append(el("div", "small", tf(vc.between.length === 1 ? "Inclui 1 versão sem viagem no meio: {v}" : "Inclui {n} versões sem viagem no meio: {v}",
                                    { n: vc.between.length, v: vc.between.join(", ") })));
+  }
+  if (vc.short && vc.short.length) {  // drives too short to judge them: their km count on neither side
+    c.append(el("div", "small", tf(vc.short.length === 1 ? "E 1 com menos de {km} km, fora da conta: {v}" : "E {n} com menos de {km} km, fora da conta: {v}",
+                                   { n: vc.short.length, km: LPL.KPI_MIN_KM, v: vc.short.join(", ") })));
+  }
+  if (vc.earlier && vc.earlier.length) {  // tested, but driven before the one compared: you went back to an older version
+    c.append(el("div", "small", tf(vc.earlier.length === 1 ? "E 1 testada antes, fora da conta: {v}" : "E {n} testadas antes, fora da conta: {v}",
+                                   { n: vc.earlier.length, v: vc.earlier.join(", ") })));
   }
   if (vc.few) {  // under the minimum: the numbers, no verdict (CTO review of 05)
     const w = el("div", "card att desc", tf("Pouca estrada para dizer: com menos de {km} km de cada lado, trânsito e caminho mudam mais que a versão. Os números ficam abaixo, sem veredito.", { km: LPL.VERSION_MIN_KM }));

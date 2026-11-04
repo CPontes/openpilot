@@ -20,10 +20,12 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "04/11", "2060c4e", "A troca de faixa não volta sozinha",
-          ("Logo depois de uma troca, a seta do outro lado só vale se ficar ligada 3 s",)),
+  Release("", "03/11", "2060c4e", "A troca de faixa não volta sozinha",
+          ("Logo depois de uma troca, um toque na alavanca para o outro lado não traz o carro de volta",
+           "Para voltar de propósito: seta ligada 4,5 s e um empurrão novo no volante; a troca automática nunca volta",
+           "Versões no meio com pouca estrada aparecem à parte em «A atualização valeu?»")),
   Release("5c47e8f", "03/11", "2060c4e", "Comparar com a última versão testada",
-          ("«A atualização valeu?» compara com a última versão que você dirigiu, e lista as versões sem viagem no meio",),
+          ("«A atualização valeu?» compara com a última versão que você testou (30 km ou mais), e lista as versões sem viagem no meio",),
           driving=False),
   Release("9aca7d3", "03/11", "2060c4e", "Histórico das missões e versões",
           ("«Feitas e histórico» nas Missões: cada vez que uma missão foi conferida no log, com o número medido",

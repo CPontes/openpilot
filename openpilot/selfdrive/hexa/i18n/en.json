@@ -1308,7 +1308,13 @@
  "Inclui 1 versão sem viagem no meio: {v}": "Includes 1 version in between with no drive: {v}",
  "Inclui {n} versões sem viagem no meio: {v}": "Includes {n} versions in between with no drive: {v}",
  "Comparar com a última versão testada": "Compare with the last version tested",
- "«A atualização valeu?» compara com a última versão que você dirigiu, e lista as versões sem viagem no meio": "«Was the update worth it?» compares with the last version you drove, and lists the versions in between with no drive",
  "A troca de faixa não volta sozinha": "The lane change doesn't undo itself",
- "Logo depois de uma troca, a seta do outro lado só vale se ficar ligada 3 s": "Right after a change, the signal to the other side only counts if it stays on 3 s"
+ "E 1 com menos de {km} km, fora da conta: {v}": "And 1 with under {km} km, left out: {v}",
+ "E {n} com menos de {km} km, fora da conta: {v}": "And {n} with under {km} km, left out: {v}",
+ "Logo depois de uma troca, um toque na alavanca para o outro lado não traz o carro de volta": "Right after a change, a tap of the stalk to the other side doesn't bring the car back",
+ "Para voltar de propósito: seta ligada 4,5 s e um empurrão novo no volante; a troca automática nunca volta": "To go back on purpose: signal on for 4.5 s and a new push on the wheel; the automatic change never goes back",
+ "Versões no meio com pouca estrada aparecem à parte em «A atualização valeu?»": "Versions in between with little road show apart in «Was the update worth it?»",
+ "«A atualização valeu?» compara com a última versão que você testou (30 km ou mais), e lista as versões sem viagem no meio": "«Was the update worth it?» compares with the last version you tested (30 km or more), and lists the versions in between with no drive",
+ "E 1 testada antes, fora da conta: {v}": "And 1 tested before, left out: {v}",
+ "E {n} testadas antes, fora da conta: {v}": "And {n} tested before, left out: {v}"
 }

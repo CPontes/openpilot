@@ -463,10 +463,13 @@ def test_version_compare_is_against_the_last_tested():  # owner, 03/11: several 
            kdrive(SAT - 2 * 86400, commit="a1", km=300.)]
   v = run("versionCompare", trips, rel)
   assert (v["now"], v["before"]) == ("e5", "b2")  # d4 had a 5 km drive: not tested
-  assert v["between"] == ["d4", "c3"] and v["b"]["km"] == 40
+  assert v["between"] == ["c3"] and v["short"] == ["d4"] and v["b"]["km"] == 40  # d4's 5 km: on neither side, and said so
   only_short = [kdrive(SAT, commit="e5"), kdrive(SAT - 3600, commit="d4", km=5.)]
   assert run("versionCompare", only_short, rel)["before"] == "d4"  # nothing tested: the last with any drive
   assert run("versionCompare", trips, None)["between"] is None  # no notes yet: nothing to name
+  back = [kdrive(SAT, commit="e5"), kdrive(SAT - 86400, commit="b2", km=40.), kdrive(SAT - 7 * 86400, commit="d4", km=300.)]
+  v = run("versionCompare", back, rel)  # went back to b2 yesterday after d4 last week
+  assert v["before"] == "b2" and v["between"] == ["c3"] and v["short"] == [] and v["earlier"] == ["d4"]
   assert run("versionCompare", trips + [kdrive(SAT + 60, commit="zz")], rel)["between"] is None  # a version the notes don't know
 
 

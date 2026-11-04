@@ -1308,7 +1308,13 @@
  "Inclui 1 versão sem viagem no meio: {v}": "Incluye 1 versión en medio sin viaje: {v}",
  "Inclui {n} versões sem viagem no meio: {v}": "Incluye {n} versiones en medio sin viaje: {v}",
  "Comparar com a última versão testada": "Comparar con la última versión probada",
- "«A atualização valeu?» compara com a última versão que você dirigiu, e lista as versões sem viagem no meio": "«¿Valió la actualización?» compara con la última versión que manejaste, y lista las versiones en medio sin viaje",
  "A troca de faixa não volta sozinha": "El cambio de carril no se deshace solo",
- "Logo depois de uma troca, a seta do outro lado só vale se ficar ligada 3 s": "Justo después de un cambio, la direccional del otro lado solo cuenta si queda encendida 3 s"
+ "E 1 com menos de {km} km, fora da conta: {v}": "Y 1 con menos de {km} km, fuera de la cuenta: {v}",
+ "E {n} com menos de {km} km, fora da conta: {v}": "Y {n} con menos de {km} km, fuera de la cuenta: {v}",
+ "Logo depois de uma troca, um toque na alavanca para o outro lado não traz o carro de volta": "Justo después de un cambio, un toque de la palanca hacia el otro lado no devuelve el auto",
+ "Para voltar de propósito: seta ligada 4,5 s e um empurrão novo no volante; a troca automática nunca volta": "Para volver a propósito: direccional encendida 4,5 s y un nuevo empujón al volante; el cambio automático nunca vuelve",
+ "Versões no meio com pouca estrada aparecem à parte em «A atualização valeu?»": "Las versiones en medio con poca ruta aparecen aparte en «¿Valió la actualización?»",
+ "«A atualização valeu?» compara com a última versão que você testou (30 km ou mais), e lista as versões sem viagem no meio": "«¿Valió la actualización?» compara con la última versión que probaste (30 km o más), y lista las versiones en medio sin viaje",
+ "E 1 testada antes, fora da conta: {v}": "Y 1 probada antes, fuera de la cuenta: {v}",
+ "E {n} testadas antes, fora da conta: {v}": "Y {n} probadas antes, fuera de la cuenta: {v}"
 }
