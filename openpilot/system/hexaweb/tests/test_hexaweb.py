@@ -838,6 +838,21 @@ def test_phones_show_no_secret_and_mark_this_one(panel):
   assert "hash" not in json.dumps(d) and other not in json.dumps(d)
 
 
+def test_the_phone_list_keeps_the_ones_in_use_and_says_who_left(panel):
+  # owner, 04/11: with 5 paired the phone in use fell off the list. 10, the last use (at most once an hour), and the one
+  # unused the longest leaves, named in the pairing's answer
+  mine = panel.pair("meu")
+  others = [panel.pair(f"outro {i}") for i in range(phone.MAX_TOKENS - 1)]
+  panel.now += 2 * phone.SEEN_EVERY_S
+  assert panel.json("/api/state", token=mine)[0] == 200  # in use now
+  d = panel.json("/api/phones", token=mine)[1]
+  assert d["max"] == phone.MAX_TOKENS and next(p for p in d["phones"] if p["you"])["seen"] is not None
+  status, body = panel.json("/api/pair", {"pin": panel.show_pin(), "name": "novo"})
+  assert status == 200 and body["removed"] == ["outro 0"]
+  assert panel.json("/api/state", token=mine)[0] == 200 and panel.json("/api/state", token=others[0])[0] == 401
+  assert panel.store.get(phone.AUDIT_PARAM)[-1] == {**panel.store.get(phone.AUDIT_PARAM)[-1], "event": "paired", "new": "outro 0"}
+
+
 def test_disconnect_another_phone(panel):
   mine, other = panel.pair("meu"), panel.pair("outro")
   phones = panel.json("/api/phones", token=mine)[1]["phones"]

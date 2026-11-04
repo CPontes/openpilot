@@ -203,7 +203,12 @@ class PanelBackend:
 
   def authenticate(self, token: str | None) -> dict | None:
     with self.lock:
-      who = phone.find_token(self._tokens(), token)
+      tokens = self._tokens()
+      who = phone.find_token(tokens, token)
+      if who is not None:  # its last use, at most once an hour: the list keeps the phones in use, and shows when each was
+        touched = phone.touch_token(tokens, who.get("id", ""), self.clock())
+        if touched is not None:
+          self.store.put(phone.TOKENS_PARAM, touched)
     return who
 
   def pair(self, pin: str, name: str) -> tuple[int, dict]:
@@ -221,10 +226,12 @@ class PanelBackend:
         return 403, {"error": "Código errado."}
       self.pin_failures = 0
       self.store.remove(phone.PIN_PARAM)  # single use
-      token, tokens = phone.issue_token(self._tokens(), name, self.clock())
+      before = self._tokens()
+      token, tokens = phone.issue_token(before, name, self.clock())
       self.store.put(phone.TOKENS_PARAM, tokens)
-      self._audit({"event": "paired", "who": tokens[-1]["name"]})
-      return 200, {"token": token, "name": tokens[-1]["name"]}
+      gone = phone.dropped(before, tokens)
+      self._audit({"event": "paired", "who": tokens[-1]["name"], **({"new": ", ".join(t.get("name", "") for t in gone)} if gone else {})})
+      return 200, {"token": token, "name": tokens[-1]["name"], "removed": [t.get("name", "") for t in gone]}
 
   def state(self, who: dict) -> dict:
     vs = self.vehicle_state()
@@ -1174,8 +1181,9 @@ class PanelBackend:
 
   def phones(self, who: dict) -> dict:
     with self.lock:
-      return {"phones": [{"id": t.get("id", ""), "name": t.get("name", ""), "created": t.get("created"), "you": t.get("id") == who.get("id")}
-                         for t in self._tokens()]}
+      return {"max": phone.MAX_TOKENS,
+              "phones": [{"id": t.get("id", ""), "name": t.get("name", ""), "created": t.get("created"), "seen": t.get("seen"),
+                          "you": t.get("id") == who.get("id")} for t in self._tokens()]}
 
   def revoke_phone(self, who: dict, token_id: str) -> tuple[int, dict]:
     if token_id == who.get("id"):

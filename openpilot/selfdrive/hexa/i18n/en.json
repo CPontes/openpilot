@@ -1453,5 +1453,13 @@
  "esconder": "hide",
  "silenciado": "muted",
  "ver": "see",
- "{n} registrados sem aparecer · {acao}": "{n} kept without showing · {acao}"
+ "{n} registrados sem aparecer · {acao}": "{n} kept without showing · {acao}",
+ "Abrir por lizpilot.local": "Open by lizpilot.local",
+ "Agora não": "Not now",
+ "Ele está salvo pelo número {num}. Quando o comma troca de rede, esse número muda e o atalho para de abrir. Abra por lizpilot.local, pareie uma vez e salve o atalho de novo de lá: funciona em casa, no carro e no escritório.": "It is saved by the number {num}. When the comma changes network, that number changes and the shortcut stops opening. Open by lizpilot.local, pair once and save the shortcut again from there: it works at home, in the car and at the office.",
+ "Este atalho usa um número que muda": "This shortcut uses a number that changes",
+ "Lista cheia: o próximo pareamento tira {nome}, o que está há mais tempo sem uso.": "List full: the next pairing removes {nome}, the one unused the longest.",
+ "Lista cheia: saiu {nome}, sem uso há mais tempo.": "List full: {nome} left, unused the longest.",
+ "em uso agora": "in use now",
+ "último uso {quando}": "last used {quando}"
 }

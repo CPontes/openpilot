@@ -1453,5 +1453,13 @@
  "esconder": "ocultar",
  "silenciado": "silenciado",
  "ver": "ver",
- "{n} registrados sem aparecer · {acao}": "{n} registrados sin aparecer · {acao}"
+ "{n} registrados sem aparecer · {acao}": "{n} registrados sin aparecer · {acao}",
+ "Abrir por lizpilot.local": "Abrir por lizpilot.local",
+ "Agora não": "Ahora no",
+ "Ele está salvo pelo número {num}. Quando o comma troca de rede, esse número muda e o atalho para de abrir. Abra por lizpilot.local, pareie uma vez e salve o atalho de novo de lá: funciona em casa, no carro e no escritório.": "Está guardado por el número {num}. Cuando el comma cambia de red, ese número cambia y el acceso deja de abrir. Abre por lizpilot.local, empareja una vez y guarda el acceso de nuevo desde ahí: funciona en casa, en el auto y en la oficina.",
+ "Este atalho usa um número que muda": "Este acceso usa un número que cambia",
+ "Lista cheia: o próximo pareamento tira {nome}, o que está há mais tempo sem uso.": "Lista llena: el próximo emparejamiento quita {nome}, el que lleva más tiempo sin uso.",
+ "Lista cheia: saiu {nome}, sem uso há mais tempo.": "Lista llena: salió {nome}, sin uso hace más tiempo.",
+ "em uso agora": "en uso ahora",
+ "último uso {quando}": "último uso {quando}"
 }

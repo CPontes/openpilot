@@ -379,6 +379,12 @@
     <!-- Início -->
     <div data-view="inicio">
       <div id="garage">
+        <section class="card att stack hidden" id="addrCard" style="gap:8px">
+          <div class="title" data-t>Este atalho usa um número que muda</div>
+          <div class="desc" id="addrWhat"></div>
+          <a class="btn" id="addrGo" href="#" data-t>Abrir por lizpilot.local</a>
+          <button class="link" id="addrLater" type="button" data-t>Agora não</button>
+        </section>
         <div class="card hidden" id="installCard">
           <div class="row"><div class="grow"><div class="title" data-t>Adicione à tela de início</div><div class="desc" id="installHow"></div></div>
             <button class="link" id="installDismiss" type="button" data-t>Ok</button></div>
@@ -639,7 +645,8 @@
       <div data-subview="celulares" class="hidden">
         <div class="label" data-t>Idioma deste celular</div>
         <div class="seg lang" role="radiogroup" data-t-aria="Idioma" aria-label="Idioma"></div>
-        <div class="label" data-t>Celulares pareados</div>
+        <div class="row" style="align-items:baseline"><div class="label grow" data-t>Celulares pareados</div><span class="small num" id="phoneCount"></span></div>
+        <div class="desc hidden" id="phoneFull" style="color:var(--warn);margin:0 4px 8px"></div>
         <div class="card list" id="phoneList"></div>
         <div class="label" data-t>Este celular</div>
         <section class="card ok stack hidden" id="fixedCard" style="gap:8px">
@@ -3429,9 +3436,16 @@ async function refreshHealth() {
 async function refreshPhones() {
   const r = await api("/api/phones");
   if (r.status !== 200) return;
+  const max = r.data.max || r.data.phones.length, n = r.data.phones.length;
+  $("phoneCount").textContent = tf("{n} de {max}", { n, max });
+  // full: the next pairing takes off the one unused the longest, so say which one before it happens
+  const oldest = n >= max ? r.data.phones.filter((p) => !p.you).sort((a, b) => (a.seen || a.created || 0) - (b.seen || b.created || 0))[0] : null;
+  $("phoneFull").textContent = oldest ? tf("Lista cheia: o próximo pareamento tira {nome}, o que está há mais tempo sem uso.", { nome: oldest.name }) : "";
+  $("phoneFull").classList.toggle("hidden", !oldest);
   $("phoneList").replaceChildren(...r.data.phones.map((p) => {
     const row = el("div", "line");
-    row.append(el("span", "desc", `${p.name}${p.you ? " " + t("(este)") : ""}${p.created ? " · " + tf("desde {data}", { data: new Date(p.created * 1000).toLocaleDateString(L()) }) : ""}`));
+    const used = p.you ? t("em uso agora") : p.seen ? tf("último uso {quando}", { quando: when(p.seen) }) : p.created ? tf("desde {data}", { data: new Date(p.created * 1000).toLocaleDateString(L()) }) : "";
+    row.append(el("span", "desc", `${p.name}${p.you ? " " + t("(este)") : ""}${used ? " · " + used : ""}`));
     if (!p.you) {
       const b = el("button", "link", t("desconectar")); b.type = "button";
       b.addEventListener("click", async () => {
@@ -3526,6 +3540,18 @@ async function commaSet(it, value, sw) {
   refreshCommaCtl();
 }
 
+// Opened by the comma's number while lizpilot.local answers here (owner, 04/11: a shortcut saved by the number stopped
+// opening when the comma got another one). Said on Início, with the way out; "Agora não" for a week.
+const ADDR_LATER = "lpAddrLater";
+async function renderAddrCard() {
+  const later = Number(load(ADDR_LATER) || 0);
+  if (!token || Date.now() - later < 7 * 86400e3) { $("addrCard").classList.add("hidden"); return; }
+  const plan = LPL.addressPlan(location.hostname, await fixedSame(), true);
+  $("addrCard").classList.toggle("hidden", plan !== "offer");
+  if (plan !== "offer") return;
+  $("addrWhat").textContent = tf("Ele está salvo pelo número {num}. Quando o comma troca de rede, esse número muda e o atalho para de abrir. Abra por lizpilot.local, pareie uma vez e salve o atalho de novo de lá: funciona em casa, no carro e no escritório.", { num: location.hostname });
+  $("addrGo").href = fixedUrl("#parear");
+}
 // ----- the fixed address: lizpilot.local, answered by the comma on the local network -----
 let fixedProbe = null;
 function fixedUrl(hash) { return `http://${LPL.FIXED_HOST}:${location.port || "80"}/${hash || ""}`; }
@@ -3581,10 +3607,11 @@ LP.ready.then(() => {
   if (!token) fixedSame().then((ok) => {
     if (!token && !$("pin").value && LPL.addressPlan(location.hostname, ok, false) === "move") location.replace(fixedUrl(location.hash === "#parear" ? "#parear" : ""));
   });
-  if (token) baseLoad().then((had) => { if (had && $("app").classList.contains("hidden")) show("app"); refresh(); });
+  if (token) { baseLoad().then((had) => { if (had && $("app").classList.contains("hidden")) show("app"); refresh(); }); renderAddrCard(); }
   else refresh();
 });
 
+$("addrLater").addEventListener("click", () => { store(ADDR_LATER, String(Date.now())); $("addrCard").classList.add("hidden"); });
 $("pin").addEventListener("input", () => {
   const v = $("pin").value.replace(/\D/g, "").slice(0, 6);
   $("pin").value = v;
@@ -3593,7 +3620,11 @@ $("pin").addEventListener("input", () => {
 $("pairBtn").addEventListener("click", async () => {
   $("pairErr").textContent = "";
   const r = await api("/api/pair", { pin: $("pin").value, name: $("name").value || defaultName() });
-  if (r.status === 200) { saveToken(r.data.token); $("pin").value = ""; history.replaceState(null, "", "/"); view = "inicio"; refresh(); }
+  if (r.status === 200) {
+    saveToken(r.data.token); $("pin").value = ""; history.replaceState(null, "", "/"); view = "inicio"; refresh();
+    const gone = r.data.removed || [];  // the list was full: the one unused the longest left it (owner, 04/11)
+    if (gone.length) toast(tf("Lista cheia: saiu {nome}, sem uso há mais tempo.", { nome: gone.join(", ") }));
+  }
   else $("pairErr").textContent = r.data.error || t("Não foi possível parear.");
 });
 document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => { showView(b.dataset.go); document.body.classList.toggle("driving", driving && b.dataset.go === "inicio"); }));

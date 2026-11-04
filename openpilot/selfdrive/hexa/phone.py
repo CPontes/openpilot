@@ -17,7 +17,8 @@ from dataclasses import dataclass
 from openpilot.selfdrive.hexa.options import HexaOption
 
 PIN_TTL = 120.  # s
-MAX_TOKENS = 5
+MAX_TOKENS = 10  # phones, tablets, computers (owner, 04/11: with 5 the one in use fell off the list)
+SEEN_EVERY_S = 3600.  # a phone's last use is written at most once an hour: params live on flash
 MAX_AUDIT = 100
 MAX_PIN_FAILURES = 5
 PORT = 8088
@@ -92,13 +93,37 @@ def hash_token(token: str) -> str:
   return hashlib.sha256(token.encode()).hexdigest()
 
 
+def last_use(entry: dict) -> float:
+  return float(entry.get("seen") or entry.get("created") or 0)
+
+
 def issue_token(tokens: list[dict] | None, name: str, now: float | None = None) -> tuple[str, list[dict]]:
-  """Returns (token for the phone, new token list to store). Keeps at most MAX_TOKENS, dropping the oldest."""
+  """Returns (token for the phone, new token list to store). Keeps at most MAX_TOKENS: when full, the one unused the
+  longest goes, never one in use just because it was paired first (dropped() tells which)."""
   now = wall_time() if now is None else now
   token = secrets.token_urlsafe(32)
   entry = {"id": secrets.token_hex(4), "hash": hash_token(token), "name": (name or "").strip()[:40] or "celular", "created": int(now)}
-  tokens = list(tokens or [])[-(MAX_TOKENS - 1):] + [entry]
-  return token, tokens
+  tokens = list(tokens or [])
+  while len(tokens) >= MAX_TOKENS:
+    tokens.remove(min(tokens, key=last_use))
+  return token, tokens + [entry]
+
+
+def dropped(before: list[dict] | None, after: list[dict] | None) -> list[dict]:
+  """The phones a pairing took off the list."""
+  ids = {t.get("id") for t in after or []}
+  return [t for t in before or [] if t.get("id") not in ids]
+
+
+def touch_token(tokens: list[dict] | None, token_id: str, now: float | None = None) -> list[dict] | None:
+  """The phone's last use, or None when it was written less than SEEN_EVERY_S ago (nothing to store)."""
+  now = wall_time() if now is None else now
+  for t in tokens or []:
+    if t.get("id") == token_id:
+      if now - float(t.get("seen") or 0) < SEEN_EVERY_S:
+        return None
+      return [{**x, "seen": int(now)} if x.get("id") == token_id else x for x in tokens]
+  return None
 
 
 def find_token(tokens: list[dict] | None, token: str | None) -> dict | None:

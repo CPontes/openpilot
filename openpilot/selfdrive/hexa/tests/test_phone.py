@@ -64,6 +64,23 @@ def test_tokens():
   assert phone.find_token(tokens, issued[-1]) is None
 
 
+def test_a_full_list_drops_the_phone_unused_the_longest_not_the_first_paired():
+  # owner, 04/11: with 5 the phone in use fell off the list. Now 10, and the one used last stays
+  tokens: list[dict] = []
+  issued = []
+  for i in range(phone.MAX_TOKENS):
+    token, tokens = phone.issue_token(tokens, f"phone {i}", now=float(i))
+    issued.append(token)
+  first = phone.find_token(tokens, issued[0])
+  tokens = phone.touch_token(tokens, first["id"], now=1e5)  # the first one paired is the one in use
+  assert phone.touch_token(tokens, first["id"], now=1e5 + 60) is None  # written at most once an hour
+  before = tokens
+  _, tokens = phone.issue_token(tokens, "new", now=2e5)
+  assert len(tokens) == phone.MAX_TOKENS and phone.find_token(tokens, issued[0]) is not None
+  assert phone.find_token(tokens, issued[1]) is None and [t["name"] for t in phone.dropped(before, tokens)] == ["phone 1"]
+  assert phone.touch_token(tokens, "nope", now=3e5) is None
+
+
 def test_token_name_is_bounded():
   _, tokens = phone.issue_token([], "x" * 200)
   assert len(tokens[0]["name"]) == 40
