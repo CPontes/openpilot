@@ -1571,3 +1571,64 @@ def test_the_home_screen_icon_is_where_phones_look(panel):
   for page in ("index.html", "viagens.html", "replay.html"):
     html = (hexaweb.STATIC_DIR / page).read_text()
     assert 'rel="apple-touch-icon" href="/icon-180.png"' in html and 'name="apple-mobile-web-app-title" content="LizPilot"' in html, page
+
+
+def _drive_ended_at(tmp_path, end):  # trip_logs' two minutes, the second closing at end
+  import os
+  for n in (0, 1):
+    f = tmp_path / f"0000000f--8784034901--{n}" / "qlog.zst"
+    os.utime(f, (end - 60 * (1 - n), end - 60 * (1 - n)))
+
+
+def test_a_review_answer_with_the_car_off_goes_to_when_it_happened(panel, tmp_path):
+  # CTO review of app-12: "A conferir" answers after the drive. The mark sits in the drive, at the event, with no bookmark:
+  # with the car off no log is being written, and a bookmark asked now would only flag nothing
+  trip_logs(panel, tmp_path)
+  _drive_ended_at(tmp_path, panel.now - 600)
+  token = panel.pair()
+  at = panel.now - 600 - 90.5
+  mark = panel.json("/api/mark", {"reason": "soltou", "note": "x", "at": at}, token=token)[1]["mark"]
+  assert mark["t"] == int(at) and mark["delay_s"] == round(panel.now - at, 1) and mark["mono_ns"] is None
+  assert not panel.store.get_bool(marks.BOOKMARK_REQUEST_PARAM)
+  assert "_req_mono_ns" not in panel.store.get(marks.MARKS_PARAM)[-1]
+  # outside every drive, in the future, not a number, or driving: now, with its bookmark, as before
+  for vs, bad in ((VehicleState(onroad=False), panel.now - 4000), (VehicleState(onroad=False), panel.now + 50),
+                  (VehicleState(onroad=False), "123"), (VehicleState(onroad=True), at)):
+    panel.vs, panel.now = vs, panel.now + 3
+    panel.store.remove(marks.BOOKMARK_REQUEST_PARAM)
+    mark = panel.json("/api/mark", {"reason": "soltou", "at": bad}, token=token)[1]["mark"]
+    assert mark["t"] == int(panel.now) and mark["delay_s"] == 0. and panel.store.get_bool(marks.BOOKMARK_REQUEST_PARAM)
+
+
+def test_a_mission_answered_in_the_review_is_dated_at_the_event(panel, tmp_path):
+  trip_logs(panel, tmp_path)
+  _drive_ended_at(tmp_path, panel.now - 600)
+  tok = panel.pair()
+  at = panel.now - 600 - 30
+  status, body = panel.json("/api/missions", {"action": "mark", "key": "fila", "result": "ok", "at": at}, token=tok)
+  assert status == 200 and body["state"]["pending"][-1]["t"] == int(at)
+
+
+def test_a_version_5_summary_still_holds_outside_the_newest_drives(panel):
+  # CTO review of app-12: 6 only added the copilot's events, kept in the newest COP_KEEP; reading 300 drives again meant
+  # hours with no numbers on the phone and the param rewritten 300 times
+  trips = [{"id": f"000000{i:02x}--0000000000", "files": {0: "x"}} for i in range(30, 0, -1)]  # newest first
+  newest = [t["id"] for t in trips]
+  kept = {t["id"]: {"segments": 1, "sv": 5} for t in trips}
+  assert [panel.backend._summary_of(t, kept, newest) is not None for t in trips] == [False] * hexaweb.COP_KEEP + [True] * (30 - hexaweb.COP_KEEP)
+  kept = {t["id"]: {"segments": 1, "sv": 4} for t in trips}
+  assert not any(panel.backend._summary_of(t, kept, newest) for t in trips)
+  kept = {t["id"]: {"segments": 1, "sv": hexaweb.SUMMARY_VERSION} for t in trips}
+  assert all(panel.backend._summary_of(t, kept, newest) for t in trips)
+
+
+def test_each_drive_keeps_its_clock_from_its_last_read_minute(panel, tmp_path):
+  trip_logs(panel, tmp_path)
+  _drive_ended_at(tmp_path, 900.)
+  jobs = []
+  panel.backend._spawn = jobs.append
+  panel.backend._summarize = lambda files, stop: {"segments": len(files), "cop": [], "end_s": 70.0, "end_seg": 0}  # the last minute unread
+  token = panel.pair()
+  panel.json("/api/trips", token=token)
+  jobs.pop()()
+  assert panel.store.get(hexaweb.SUMMARY_PARAM)["0000000f--8784034901"]["t0"] == 840. - 70.

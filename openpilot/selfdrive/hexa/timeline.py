@@ -517,7 +517,7 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
   auto: list[dict] = []
   path: list[list] = []
   off_at: list[int] = []  # seconds from minute 0 where openpilot let go moving: the map's red pins
-  end_s = 0.
+  end_s, end_seg = 0., None  # where the last read minute ended, and that minute (its file's time is the drive's clock)
   unread = 0
   run_best, run_cur, prev, v_max = [0., 0.], [0., 0.], None, 0.
   cop = CopilotEvents()  # the copilot's events, for "A conferir" on the phone (owner, 03/11)
@@ -537,7 +537,8 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
     # told from the end of the minute: a drive's last minute is short
     auto += [{"seg": seg, "left": _r(part["s"] - e["t"]), "kind": e["kind"]} for e in seg_data["events"] if e["kind"] in AUTO_TEXT]
     off_at += [round(seg * 60 + e["t"]) for e in seg_data["events"] if e["kind"] == "off" and e.get("v", 0.) >= PIN_MIN_SPEED]
-    end_s = max(end_s, seg * 60 + part.get("s", 0.))
+    if seg * 60 + part.get("s", 0.) >= end_s:
+      end_s, end_seg = seg * 60 + part.get("s", 0.), seg
     pts = seg_data["points"]
     for i in range(0, len(pts), PATH_EVERY):  # who drove: the most of the driver in the group (you > a pedal > the hand > openpilot)
       group = pts[i:i + PATH_EVERY]
@@ -561,5 +562,5 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
     out["se_hard_brakes"] = int(out["se_hard_brakes"])
   out.update({"v_max": round(v_max), "run_km": _r(run_best[0], 2), "run_s": round(run_best[1])})
   return {**out, "segments": len(files), "unread": unread, "version": version.get("version", ""), "commit": version.get("commit", ""),
-          "auto_marks": auto[:AUTO_MARKS_MAX], "path": path, "cop": cop.events, "end_s": _r(end_s),
+          "auto_marks": auto[:AUTO_MARKS_MAX], "path": path, "cop": cop.events, "end_s": _r(end_s), "end_seg": end_seg,
           "off_at": [x for x in off_at if x < end_s - PIN_END_S][:OFF_AT_MAX]}

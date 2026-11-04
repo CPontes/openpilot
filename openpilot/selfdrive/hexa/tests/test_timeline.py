@@ -387,3 +387,13 @@ def test_the_drive_summary_has_the_copilots_events(tmp_path):
   files[1] = str(write_rlog(d1 / "a.zst", seconds=8., oscillate=(0., 0.), lat_from=0., stop=(2., 5.)))
   cop = tl.trip_summary(files)["cop"]
   assert [e["kind"] for e in cop] == ["stop_lead", "disengage", "stop_lead"] and abs(cop[2]["s"] - 62) <= 1
+
+
+def test_the_drive_summary_knows_its_last_read_minute(tmp_path):
+  # CTO review of app-12: the phone dates the log's events from the last minute the comma could read
+  d = tmp_path / "00000001--abc--0"
+  d.mkdir()
+  files = {0: str(write_rlog(d / "a.zst", seconds=8.)), 1: str(tmp_path / "cut.zst")}
+  (tmp_path / "cut.zst").write_bytes(b"not a log")
+  s = tl.trip_summary(files)
+  assert s["unread"] == 1 and s["end_seg"] == 0 and 7 <= s["end_s"] <= 8

@@ -76,8 +76,12 @@ HIDDEN_PARAM = "HexaTripsHidden"  # drives the owner hid from the phone's lists:
 HIDDEN_KEEP = 600
 PRESERVE_ATTR = "user.preserve"  # system/loggerd/deleter.py: what keeps a flagged minute from being deleted
 SUMMARY_VERSION = 6  # 2: version, alerts. 3: the path. 4: the KPIs (wobble, lane seen, where it let go).
-# 5: time in slow traffic (the missions). 6: the copilot's events (cop), for "A conferir".
+# 5: time in slow traffic (the missions). 6: the copilot's events (cop), for "A conferir", and the drive's clock (t0).
 # An older summary is read again, the newest SUMMARY_NEWEST only
+# ...unless what came after it only matters to the newest drives: version -> how many newest drives still need the read.
+# 6 only added the copilot's events, kept in the newest COP_KEEP (CTO review of app-12: reading 300 drives again meant hours
+# with no numbers on the phone, and the param rewritten 300 times). Take an entry out when a version adds more than that
+SUMMARY_STILL_GOOD = {5: COP_KEEP}
 ERRORS_EVERY_S = 30.
 CLIP_BEFORE_S = 10.  # the clip of a mark starts this long before it
 CLIP_TICKET_S = 600.  # a clip link works this long, for that clip only
@@ -599,8 +603,25 @@ class PanelBackend:
     with self.lock:
       return {"exported_at": int(self.clock()), "marks": [hexa_marks.public(m) for m in self._marks()]}
 
-  def mark(self, who: dict, reason: str, note: str = "", delay=0., label: str | None = None) -> tuple[int, dict]:
-    """Phone mark: always allowed (it doesn't change how the car drives), at most one per MIN_MARK_INTERVAL."""
+  def _drive_time(self, at) -> float | None:
+    """A time inside one of the newest drives, with the car off: "A conferir" answers about the drive after it, and the
+    mark goes to when it happened, so it sits in the drive (CTO review of app-12). None otherwise: the mark is now."""
+    if isinstance(at, bool) or not isinstance(at, int | float) or not math.isfinite(at) or at > self.clock():
+      return None
+    if self.vehicle_state().onroad:
+      return None  # driving, a mark is this drive's, and its bookmark goes in this drive's log
+    with self._replay_lock:
+      trips = self._trips()[:COP_KEEP]
+    for t in trips:
+      end = float(t["mtime"])
+      if end - len(t["files"]) * 60 - 60 <= at <= end + 60:  # the phone's tripMarks window
+        return float(at)
+    return None
+
+  def mark(self, who: dict, reason: str, note: str = "", delay=0., label: str | None = None, at=None) -> tuple[int, dict]:
+    """Phone mark: always allowed (it doesn't change how the car drives), at most one per MIN_MARK_INTERVAL.
+    at: with the car off, when the drive's event happened (seconds); no bookmark then, there is no log being written."""
+    when = self._drive_time(at) if at is not None else None
     now_mono = self.mono()
     with self.lock:
       label = label or hexa_marks.reason_label(self._custom_reasons(), reason)
@@ -610,13 +631,15 @@ class PanelBackend:
       if last is not None and now_mono - last < hexa_marks.MIN_MARK_INTERVAL:
         return 429, {"error": "Espere um instante entre marcas."}
       self._last_mark[who.get("id", "")] = now_mono
-      delay = hexa_marks.clean_delay(delay)
+      delay = hexa_marks.clean_delay(delay) if when is None else round(self.clock() - when, 1)
       mark = hexa_marks.new_mark("celular", who=who.get("name", ""), reason=reason, label=label,
-                                 note=hexa_marks.clean_note(note), now=self.clock() - delay)
+                                 note=hexa_marks.clean_note(note), now=self.clock() - delay if when is None else when)
       mark["delay_s"] = delay
-      mark["_req_mono_ns"] = int(now_mono * 1e9)
+      if when is None:
+        mark["_req_mono_ns"] = int(now_mono * 1e9)
       self._put(hexa_marks.MARKS_PARAM, hexa_marks.append(self._marks(), mark))
-      self.store.put_bool(hexa_marks.BOOKMARK_REQUEST_PARAM, True)  # the comma raises its own bookmark
+      if when is None:
+        self.store.put_bool(hexa_marks.BOOKMARK_REQUEST_PARAM, True)  # the comma raises its own bookmark
     self.log_event(hexa_marks.log_fields(mark))
     return 200, {"ok": True, "mark": hexa_marks.public(mark)}
 
@@ -702,7 +725,7 @@ class PanelBackend:
       # the copilot's answer to an event: the passenger's note after the title, and the mark goes back to when it happened
       extra = hexa_marks.clean_note(body.get("note", ""))
       code, data = self.mark(who, "missao", note=f"{m.title} — {extra}" if extra else m.title, label=hexa_missions.RESULTS[result],
-                             delay=body.get("delay_s", 0.))
+                             delay=body.get("delay_s", 0.), at=body.get("at"))
       if code != 200:
         return code, data
     with self.lock:
@@ -776,7 +799,7 @@ class PanelBackend:
       return 200, {"same": True, "v": since}  # the old cursor stays: nothing happened since it
     self._prune_paths({t["id"] for t in every})
     kept = self.store.get(SUMMARY_PARAM) or {}  # read once: the whole history is in it
-    newest = {t["id"] for t in trips[:SUMMARY_NEWEST]}
+    newest = [t["id"] for t in trips[:SUMMARY_NEWEST]]
     summaries = {t["id"]: self._summary_of(t, kept, newest) for t in trips}
     todo = [t for t in trips[:SUMMARY_NEWEST] if summaries[t["id"]] is None]
     self._todo_left = bool(todo)
@@ -810,13 +833,16 @@ class PanelBackend:
       self._audit({"event": "trip_hidden" if hidden else "trip_shown", "who": who.get("name", ""), "key": route})
     return 200, {"ok": True, "hidden": hidden}
 
-  def _summary_of(self, trip: dict, kept: dict | None = None, newest: set | None = None) -> dict | None:
+  def _summary_of(self, trip: dict, kept: dict | None = None, newest: list | None = None) -> dict | None:
     s = (kept if kept is not None else self.store.get(SUMMARY_PARAM) or {}).get(trip["id"])
     if not isinstance(s, dict) or s.get("segments", 0) < len(trip["files"]):  # a drive that grew is redone, one the deleter trimmed is not
       return None
     if newest is None:
-      newest = {t["id"] for t in self._trips()[:SUMMARY_NEWEST]}
-    return s if s.get("sv") == SUMMARY_VERSION or trip["id"] not in newest else None  # old drives keep what they have
+      newest = [t["id"] for t in self._trips()[:SUMMARY_NEWEST]]
+    if s.get("sv") == SUMMARY_VERSION or trip["id"] not in newest:
+      return s  # old drives keep what they have
+    still = SUMMARY_STILL_GOOD.get(s.get("sv"))
+    return s if still is not None and trip["id"] not in newest[:still] else None
 
   def _path_file(self, route: str) -> Path | None:
     return Path(self.log_root).parent / PATH_DIR / f"{route}.json" if self.log_root and re.fullmatch(r"[0-9a-f]{8}--[0-9a-f]{10}", route) else None
@@ -880,6 +906,12 @@ class PanelBackend:
         if summary is None:
           return
         summary = {**summary, "sv": SUMMARY_VERSION}
+        try:  # the drive's clock: its last read minute's file closed when that minute ended (a cut last minute isn't read)
+          f = trip["files"].get(summary.get("end_seg"))
+          if f is not None:
+            summary["t0"] = round(Path(f).stat().st_mtime - float(summary.get("end_s", 0.)), 1)
+        except OSError:
+          pass
         self._keep_path(trip["id"], summary.pop("path", None))
         self._auto_marks(trip, summary)
         with self.lock:
@@ -1351,7 +1383,7 @@ def make_handler(backend: PanelBackend):
         return
       routes = {
         "/api/option": lambda who, b: backend.set_option(who, str(b.get("key", "")), b.get("value")),
-        "/api/mark": lambda who, b: backend.mark(who, str(b.get("reason", "")), b.get("note", ""), b.get("delay_s", 0.)),
+        "/api/mark": lambda who, b: backend.mark(who, str(b.get("reason", "")), b.get("note", ""), b.get("delay_s", 0.), at=b.get("at")),
         "/api/mark/classify": lambda who, b: backend.classify(who, str(b.get("id", "")), str(b.get("reason", "")), b.get("note", ""),
                                                              b.get("replace_note") is True),
         "/api/reasons": lambda who, b: backend.add_reason(who, str(b.get("label", ""))),

@@ -1078,6 +1078,9 @@ function render(s, copy, ep) {
   // off, and this runs on every refresh (CTO review of app-12: the card jumped back to the newest in seconds)
   if (!carOn) { stopSince = null; evSt = null; passSt = null; if (!copReview) evPick = null; }
   if (copOpen && (copReview ? carNow().moving && !passengerOk : LPL.copilotGate({ ok: passengerOk }, carNow()).close)) closeCop();  // off, or moving with nobody confirmed (the review: parked or off is fine)
+  // an answer's note opened parked (the review, "Fiz agora" at a light: nobody was asked) never stays open moving with nobody
+  // confirmed (CTO review of app-12)
+  if (evAns && carNow().moving && !passengerOk) closeEv();
   const was = driving;
   driving = v.onroad && !parked;
   document.body.classList.toggle("driving", driving && view === "inicio");
@@ -1912,7 +1915,7 @@ function evFeed(events, updates) {
 // (CTO review of app-11: an event never goes to another drive's log)
 function evSince() {
   if (carOn || !trips) return driveAt;
-  const starts = LPL.listed(trips).filter((tr) => tr.summary).map((tr) => (tr.mtime - (tr.summary.end_s || tr.summary.s || tr.minutes * 60)) * 1000 - 60e3);  // a minute of slack
+  const starts = LPL.listed(trips).filter((tr) => tr.summary).map((tr) => LPL.driveStart(tr) * 1000 - 60e3);  // a minute of slack
   return Math.max(driveAt, ...starts, 0);
 }
 // The phone's events and the drives' own (read from the log after the drive), for the last 2 days: listed together, never
@@ -1980,8 +1983,8 @@ function evTap(ev, which, b) {  // which: 0 ok, 1 bad, 2 third
   };
   if (!askPassenger(go)) go();
 }
-function openEv(ev, r, label, mission) {
-  evAns = { ev, r, label, mission: mission || null };
+function openEv(ev, r, label, mission, tapped) {
+  evAns = { ev, r, label, mission: mission || null, tapped: tapped || Date.now() };
   $("evTitle").textContent = ev ? t((EVENT_UI[ev.kind] || {}).title || ev.kind) : t(mOf(mission).title);
   const age = ev ? LPL.eventClock(ev, Date.now()) : null;  // the time it happened and how long ago, once each
   $("evWhen").textContent = ev ? `${hhmmss(ev.t / 1000)} · ` + (age.short && age.m < 2 ? tf("há {m}:{s}", { m: age.m, s: String(age.s).padStart(2, "0") })
@@ -1998,7 +2001,9 @@ async function saveEv() {
   const note = $("evText").value.trim();
   $("evSave").disabled = true;
   if (!a.ev) {  // a mission with no detector ("Fiz agora") or the route's "Parar o teste": now, with the note
-    const r = await api("/api/missions", { action: "mark", key: a.mission, result: a.r, note });
+    // the mark goes back to the tap, like Marcar: the passenger question and the note take time (CTO review of app-12)
+    const back = (Date.now() - a.tapped) / 1000;
+    const r = await api("/api/missions", { action: "mark", key: a.mission, result: a.r, note, ...(back <= EV_DELAY_MAX ? { delay_s: Math.round(back * 10) / 10 } : {}) });
     $("evSave").disabled = false;
     if (r.status !== 200) { toast(r.data.error || t("Não foi possível salvar.")); return; }
     missions.state = r.data.state; closeEv(); renderCop(); $("driveMissionList").dataset.sig = ""; renderDriveMissions();
@@ -2008,7 +2013,8 @@ async function saveEv() {
   const head = `${t((EVENT_UI[ev.kind] || {}).title || ev.kind)}: ${t(a.label)} (${evSource(ev)}${age > EV_DELAY_MAX ? "; " + t("respondido depois") : ""})`;
   // the mark goes back to the event's time while the comma can still place it (marks.py MAX_MARK_DELAY); later, it's marked
   // now and its note says so. An event from before this drive never goes to this drive's log: it stays on the phone
-  const body = { note: note ? `${head} — ${note}` : head, ...(age <= EV_DELAY_MAX ? { delay_s: Math.round(age * 10) / 10 } : {}) };
+  // with the car off (the review), at: the comma puts it at the event's time inside the drive, with no bookmark (CTO review of app-12)
+  const body = { note: note ? `${head} — ${note}` : head, ...(age <= EV_DELAY_MAX ? { delay_s: Math.round(age * 10) / 10 } : !carOn ? { at: Math.round(ev.t / 100) / 10 } : {}) };
   const since = evSince(), key = a.r === "nao" || ev.t < since ? null : evMission(ev);
   let r = { status: 200, data: {} };
   if (ev.t < since) r = { status: 200, data: {} };
@@ -2098,6 +2104,7 @@ function waitCard(now) {  // nothing recent: what the copilot is watching for, n
 function renderCop() {
   if (!copOpen || !missions) return;
   const gate = LPL.copilotGate({ ok: passengerOk }, carNow());
+  $("copTitle").textContent = t(copReview ? "A conferir" : "Copiloto");  // data-t would put "Copiloto" back on a language switch
   if (copReview ? carNow().moving && !passengerOk : gate.close) { closeCop(); return; }  // the review: parked or off; moving, the passenger's
   const now = Date.now(), body = $("copBody");
   const st = LPL.copilotNow(live, { online, age: now - liveAt }, stopSince == null ? 0 : (now - stopSince) / 1000);
@@ -2149,7 +2156,7 @@ function renderCop() {
     const list = el("div", "card list"); list.style.padding = "4px 16px";
     for (const m of manual) {
       const row = el("div", "line"), b = el("button", "link", t("Fiz agora")); b.type = "button";
-      b.addEventListener("click", () => { const go = () => openEv(null, "done", EV_BUTTONS.done, m.key); if (!askPassenger(go)) go(); });
+      b.addEventListener("click", () => { const at = Date.now(), go = () => openEv(null, "done", EV_BUTTONS.done, m.key, at); if (!askPassenger(go)) go(); });
       row.append(el("span", "", t(m.title)), b); list.append(row);
     }
     out.push(list);
@@ -2191,7 +2198,7 @@ function renderDriveMissions() {
     mid.append(el("span", "small", marked ? tf("marcado às {hora}", { hora: hhmm(marked.t) }) : t("o comma está olhando")));
     const b = el("button", "mfiz" + (bad ? " bad" : ""), marked ? (bad ? t("Não deu") : t("Marcado")) : t("Fiz agora")); b.type = "button";
     // the note and Salvar first, as in the copilot: one tap never saves (owner, 03/11)
-    b.addEventListener("click", () => { const go = () => openEv(null, "done", EV_BUTTONS.done, m.key); if (!askPassenger(go)) go(); });
+    b.addEventListener("click", () => { const at = Date.now(), go = () => openEv(null, "done", EV_BUTTONS.done, m.key, at); if (!askPassenger(go)) go(); });
     row.append(mid, b); list.append(row);
   }
 }

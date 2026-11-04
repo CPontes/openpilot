@@ -1008,3 +1008,33 @@ def test_the_review_keeps_the_event_you_picked_with_the_car_off():
   render = html[html.index("function render(s, copy, ep)"):]
   render = render[:render.index("\n}\n")]
   assert "if (!copReview) evPick = null;" in render and "passSt = null; evPick = null;" not in render
+
+
+def test_two_close_events_of_the_log_stay_two_and_a_phone_event_takes_one():
+  # CTO review of app-12: the log's events went into the comparison list as they were added, so two cut-ins 12 s apart (the
+  # detector's cooldown is 10 s) became one; a phone event stands for one of the log's, the nearest
+  trip = {"id": "r", "mtime": 10_000, "minutes": 5, "hidden": False,
+          "summary": {"t0": 9_700, "cop": [{"s": 100.0, "kind": "cut_in", "v": 40, "data": {"d": 9}},
+                                           {"s": 112.0, "kind": "cut_in", "v": 40, "data": {"d": 11}}]}}
+  assert [e["t"] for e in run("logEvents", [trip], [], 0)] == [9_800_000, 9_812_000]
+  phone = [{"id": "p", "kind": "cut_in", "t": 9_813_000}]
+  assert [e["t"] for e in run("logEvents", [trip], phone, 0)] == [9_800_000]
+
+
+def test_the_drives_start_is_the_commas_clock_first():
+  assert run("driveStart", {"mtime": 10_000, "minutes": 5, "summary": {"t0": 9_650.5, "end_s": 300, "s": 290}}) == 9_650.5
+  assert run("driveStart", {"mtime": 10_000, "minutes": 5, "summary": {"end_s": 300, "s": 290}}) == 9_700
+  assert run("driveStart", {"mtime": 10_000, "minutes": 5, "summary": {}}) == 9_700
+
+
+def test_the_review_answers_and_fiz_agora_keep_their_moment():
+  html = (LOGIC.parent / "index.html").read_text()
+  render = html[html.index("function render(s, copy, ep)"):]
+  render = render[:render.index("\n}\n")]
+  assert "if (evAns && carNow().moving && !passengerOk) closeEv();" in render  # a note never rides along unconfirmed
+  save = html[html.index("async function saveEv()"):]
+  save = save[:save.index("\n}\n")]
+  assert "Date.now() - a.tapped" in save and "!carOn ? { at: Math.round(ev.t / 100) / 10 }" in save
+  assert html.count("openEv(null, \"done\", EV_BUTTONS.done, m.key, at)") == 2
+  cop = html[html.index("function renderCop()"):]
+  assert '$("copTitle").textContent = t(copReview ? "A conferir" : "Copiloto")' in cop[:cop.index("\n}\n")]
