@@ -1316,5 +1316,13 @@
  "Versões no meio com pouca estrada aparecem à parte em «A atualização valeu?»": "Versions in between with little road show apart in «Was the update worth it?»",
  "«A atualização valeu?» compara com a última versão que você testou (30 km ou mais), e lista as versões sem viagem no meio": "«Was the update worth it?» compares with the last version you tested (30 km or more), and lists the versions in between with no drive",
  "E 1 testada antes, fora da conta: {v}": "And 1 tested before, left out: {v}",
- "E {n} testadas antes, fora da conta: {v}": "And {n} tested before, left out: {v}"
+ "E {n} testadas antes, fora da conta: {v}": "And {n} tested before, left out: {v}",
+ "0 falhas em 862 vezes com a mão no volante": "0 faults in 862 times with the hand on the wheel",
+ "rota 32 · 0 falhas em 862 vezes com a mão no volante": "route 32 · 0 faults in 862 times with the hand on the wheel",
+ "mediana de 3,7 m em 36 paradas": "median of 3.7 m over 36 stops",
+ "rota 32 · mediana de 3,7 m em 36 paradas": "route 32 · median of 3.7 m over 36 stops",
+ "saiu junto, sem pedal": "pulled away with it, no pedal",
+ "rota 32 · saiu junto, sem pedal": "route 32 · pulled away with it, no pedal",
+ "parou a 3 m, sem pedal; a parte da Haval não medida": "stopped at 3 m, no pedal; the Haval's share not measured",
+ "rota 32 · parou a 3 m, sem pedal": "route 32 · stopped at 3 m, no pedal"
 }

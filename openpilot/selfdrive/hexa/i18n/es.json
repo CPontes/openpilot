@@ -1316,5 +1316,13 @@
  "Versões no meio com pouca estrada aparecem à parte em «A atualização valeu?»": "Las versiones en medio con poca ruta aparecen aparte en «¿Valió la actualización?»",
  "«A atualização valeu?» compara com a última versão que você testou (30 km ou mais), e lista as versões sem viagem no meio": "«¿Valió la actualización?» compara con la última versión que probaste (30 km o más), y lista las versiones en medio sin viaje",
  "E 1 testada antes, fora da conta: {v}": "Y 1 probada antes, fuera de la cuenta: {v}",
- "E {n} testadas antes, fora da conta: {v}": "Y {n} probadas antes, fuera de la cuenta: {v}"
+ "E {n} testadas antes, fora da conta: {v}": "Y {n} probadas antes, fuera de la cuenta: {v}",
+ "0 falhas em 862 vezes com a mão no volante": "0 fallas en 862 veces con la mano en el volante",
+ "rota 32 · 0 falhas em 862 vezes com a mão no volante": "ruta 32 · 0 fallas en 862 veces con la mano en el volante",
+ "mediana de 3,7 m em 36 paradas": "mediana de 3,7 m en 36 paradas",
+ "rota 32 · mediana de 3,7 m em 36 paradas": "ruta 32 · mediana de 3,7 m en 36 paradas",
+ "saiu junto, sem pedal": "salió junto, sin pedal",
+ "rota 32 · saiu junto, sem pedal": "ruta 32 · salió junto, sin pedal",
+ "parou a 3 m, sem pedal; a parte da Haval não medida": "paró a 3 m, sin pedal; la parte de la Haval sin medir",
+ "rota 32 · parou a 3 m, sem pedal": "ruta 32 · paró a 3 m, sin pedal"
 }

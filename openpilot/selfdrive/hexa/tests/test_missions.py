@@ -24,15 +24,15 @@ def test_the_catalog_holds_together():
 
 
 def test_one_route_new_tests_first_then_what_an_older_version_left_open():  # owner, 03/11
-  assert M.route_keys({}) == ["devolver-volante", "parar-perto", "parar-de-vez", "freio-alavanca", "sinal-abrindo", "fila", "lombada-faixa",
-                              "frear-antes", "parada-longa", "ruas-casa"]
+  # devolver-volante, parar-perto and fila proved on route 32: out of the route
+  assert M.route_keys({}) == ["parar-de-vez", "freio-alavanca", "sinal-abrindo", "lombada-faixa", "frear-antes", "parada-longa", "ruas-casa"]
   routes = [m.route for m in M.CATALOG if m.route]
   assert len(routes) == len(set(routes)) and len(routes) <= M.MAX_PACK
   assert {m.option for m in M.CATALOG if m.version == M.CURRENT} == {"SoftHandoff", "StopCloser"}
   texts = [M.ROUTE[k] for k in ("intro", "during", "back", "after")] + list(M.ROUTE["before"]) + list(M.ROUTE["stop_if"])
   assert "0d09b50 + bf02b93" in M.ROUTE["back"] and not any("b3ac6fe" in x or "CTO" in x for x in texts)
   # proved goes out of the route; one answered parked too
-  assert "fila" not in M.route_keys({"fila": 1}) and "parar-de-vez" in M.route_keys({"parar-de-vez": 2})
+  assert "lombada-faixa" not in M.route_keys({"lombada-faixa": 1}) and "parar-de-vez" in M.route_keys({"parar-de-vez": 2})
 
 
 def test_take_drop_and_the_limit():
@@ -64,8 +64,8 @@ def test_the_route_goes_after_what_was_picked():
 
 
 def test_what_was_proved_since_it_was_taken_leaves_the_trip():  # CTO review: it held one of the 12 places with no way out
-  st = M.clean({"active": ["fila", "portas", "estrada", "noite", "sempre-ativa"], "answers": {"sempre-ativa": 4}})
-  assert st["active"] == ["fila", "noite"]  # parked, proved by the catalog, answered in full: out
+  st = M.clean({"active": ["lombada-faixa", "portas", "estrada", "fila", "noite", "sempre-ativa"], "answers": {"sempre-ativa": 4}})
+  assert st["active"] == ["lombada-faixa", "noite"]  # parked, proved by the catalog (fila too, on route 32), answered in full: out
 
 
 def test_answers_only_for_parked_missions_and_never_past_the_total():
