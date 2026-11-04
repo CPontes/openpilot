@@ -271,17 +271,17 @@ def test_comma_flag_is_classified_later(panel):
 
 def test_custom_reasons(panel):
   token = panel.pair()
-  status, body = panel.json("/api/reasons", {"label": "Buraco"}, token=token)
-  assert status == 200 and body["reason"]["key"] == "c-buraco"
-  assert panel.json("/api/reasons", {"label": "buraco"}, token=token)[0] == 400  # duplicate
+  status, body = panel.json("/api/reasons", {"label": "Ponte"}, token=token)
+  assert status == 200 and body["reason"]["key"] == "c-ponte"
+  assert panel.json("/api/reasons", {"label": "ponte"}, token=token)[0] == 400  # duplicate
   _, s = panel.json("/api/marks", token=token)
-  assert s["reasons"][-1] == {"key": "c-buraco", "label": "Buraco", "custom": True}
-  assert panel.json("/api/mark", {"reason": "c-buraco"}, token=token)[0] == 200
+  assert s["reasons"][-1] == {"key": "c-ponte", "label": "Ponte", "custom": True}
+  assert panel.json("/api/mark", {"reason": "c-ponte"}, token=token)[0] == 200
   assert panel.json("/api/reasons/remove", {"key": "balancou"}, token=token)[0] == 404  # defaults stay
-  assert panel.json("/api/reasons/remove", {"key": "c-buraco"}, token=token)[0] == 200
+  assert panel.json("/api/reasons/remove", {"key": "c-ponte"}, token=token)[0] == 200
   _, s = panel.json("/api/marks", token=token)
-  assert all(r["key"] != "c-buraco" for r in s["reasons"])
-  assert s["marks"][0]["label"] == "Buraco"  # old marks keep their label
+  assert all(r["key"] != "c-ponte" for r in s["reasons"])
+  assert s["marks"][0]["label"] == "Ponte"  # old marks keep their label
 
 
 def test_export_marks(panel):
@@ -1513,6 +1513,21 @@ def test_the_copilot_answer_is_a_mark_with_the_result(panel):
   assert panel.json("/api/missions", {"action": "mark", "key": "aviso-acc", "result": "ok"}, token=tok)[0] == 200  # asked after a drive, answered driving
   panel.now += 3
   assert panel.json("/api/missions", {"action": "mark", "key": "fila", "result": "voar"}, token=tok)[0] == 400
+
+
+def test_the_copilot_event_answer_carries_the_note_and_goes_back_to_when_it_happened(panel):
+  tok = panel.pair()
+  panel.vs = VehicleState(onroad=True, parked=False, standstill=True, engaged=True)
+  body = {"action": "mark", "key": "sair-sozinho", "result": "bad", "note": "O carro da frente saiu: Não saiu (Lido às 19:02:10) — buzinaram", "delay_s": 42}
+  status, res = panel.json("/api/missions", body, token=tok)
+  assert status == 200
+  mk = [m for m in panel.store.get(marks.MARKS_PARAM) if m["id"] == res["state"]["pending"][-1]["mark"]][0]
+  assert mk["note"].startswith("Sair sozinho quando o da frente anda — O carro da frente saiu: Não saiu") and mk["note"].endswith("buzinaram")
+  assert mk["delay_s"] == 42 and abs(mk["t"] - (panel.now - 42)) < 1  # the mark at the event, not at Salvar
+  panel.now += 3
+  status, res = panel.json("/api/missions", {"action": "mark", "key": "fila", "result": "ok", "delay_s": 900}, token=tok)
+  mk = [m for m in panel.store.get(marks.MARKS_PARAM) if m["id"] == res["state"]["pending"][-1]["mark"]][0]
+  assert status == 200 and mk["delay_s"] == 0 and mk["note"] == "Fila atrás de carro"  # past the 5 min the mark can go back: now, as before
 
 
 def test_versions_need_pairing_and_come_newest_first(panel):

@@ -393,7 +393,7 @@ def test_unpairing_leaves_no_list_of_drives_on_the_phone():
   assert "LPL.DATA_KEYS" in wipe and "trips = null" in wipe and "paths.clear()" in wipe
   keys = subprocess.run([NODE, "-e", f"process.stdout.write(JSON.stringify(require({json.dumps(str(LOGIC))}).DATA_KEYS))"],
                         capture_output=True, text=True, timeout=30, check=True).stdout
-  assert set(json.loads(keys)) == {"lpTrips", "lpMissionSnap"}  # data only: the language and the view stay
+  assert set(json.loads(keys)) == {"lpTrips", "lpMissionSnap", "lpCopEvents"}  # data only: the language and the view stay
 
 
 def test_no_path_yet_is_not_no_gps():
@@ -747,3 +747,139 @@ def test_version_list_has_the_notes_and_your_drives():
   assert [r["commit"] for r in out] == ["b2", "a1", "zz9"]  # the channel's order, then what only the drives know
   assert out[0]["trips"] == 2 and out[0]["km"] == 40 and out[0]["before"] == "a1"
   assert out[1]["trips"] == 0 and out[1]["before"] is None and out[2]["title"] is None
+
+
+# ----- the copilot's events (owner, 03/11): what just happened, with the time it was read
+
+def run_drive(samples, st=None, t0=0):
+  """samples: (seconds, live) in order; returns every event fired and the updates, by running eventStep like the page does."""
+  script = f"""const L = require({json.dumps(str(LOGIC))}); let st = null; const evs = [], ups = [];
+  for (const [s, l] of {json.dumps(samples)}) {{ const r = L.eventStep(st, l, {t0} + s * 1000); st = r.st; evs.push(...r.events); ups.push(...r.updates); }}
+  process.stdout.write(JSON.stringify({{ evs, ups }}));"""
+  out = subprocess.run([NODE, "-e", script], capture_output=True, text=True, timeout=30, check=True).stdout
+  return json.loads(out)
+
+
+def car(v, lead=None, **kw):
+  return {"driving": True, "v": v, "engaged": True, "lead": lead, "blinker": "", **kw}
+
+
+def test_the_car_ahead_pulling_away_is_an_event_and_you_leaving_completes_it():
+  stop = [(i, car(0, {"d": 6, "v": 0})) for i in range(5)]
+  r = run_drive([(-20, car(40)), (-10, car(20)), *stop, (5, car(0, {"d": 7, "v": 8})), (6, car(0, {"d": 10, "v": 12})), (8, car(5, {"d": 14, "v": 15}))])
+  kinds = [e["kind"] for e in r["evs"]]
+  assert kinds == ["stop_lead", "pull_away"]  # the stop behind it, then the car ahead leaving: once
+  pull = r["evs"][1]
+  assert pull["t"] == 5000 and pull["data"]["d"] == 6
+  assert r["ups"] == [{"id": pull["id"], "data": {"go_s": 3.0}}]  # you left 3 s after it
+
+
+def test_a_lead_that_does_not_move_is_no_event_and_a_short_stop_does_not_arm():
+  r = run_drive([(-10, car(30)), *[(i, car(0, {"d": 6, "v": 0})) for i in range(30)]])
+  assert [e["kind"] for e in r["evs"]] == ["stop_lead"]
+  r = run_drive([(0, car(0, {"d": 6, "v": 0})), (1, car(0, {"d": 9, "v": 6}))])  # 1 s behind it: not armed yet
+  assert r["evs"] == []
+
+
+def test_the_car_ahead_braking_needs_a_real_drop_and_you_following():
+  follow = [(i, car(50, {"d": 30, "v": 50})) for i in range(3)]
+  r = run_drive([*follow, (3, car(50, {"d": 28, "v": 44})), (4, car(48, {"d": 25, "v": 38}))])
+  assert [e["kind"] for e in r["evs"]] == ["lead_brake"]
+  assert r["evs"][0]["data"]["from"] == 50 and r["evs"][0]["data"]["to"] == 38
+  slow = run_drive([(i, car(50, {"d": 30, "v": 50 - 2 * i})) for i in range(10)])  # 2 km/h a second: not braking hard
+  assert slow["evs"] == []
+  crawl = run_drive([(0, car(15, {"d": 10, "v": 30})), (1, car(15, {"d": 9, "v": 10}))])  # you below 20 km/h: not this event
+  assert crawl["evs"] == []
+
+
+def test_a_cut_in_and_not_your_own_lane_change():
+  r = run_drive([(0, car(60)), (1, car(60)), (2, car(60, {"d": 18, "v": 55}))])
+  assert [e["kind"] for e in r["evs"]] == ["cut_in"]
+  closer = run_drive([(0, car(60, {"d": 45, "v": 60})), (1, car(60, {"d": 20, "v": 55}))])
+  assert [e["kind"] for e in closer["evs"]] == ["cut_in"]
+  mine = run_drive([(0, car(60, blinker="esquerda")), (2, car(60)), (3, car(60, {"d": 18, "v": 55}))])  # you changed lanes
+  assert mine["evs"] == []
+  far = run_drive([(0, car(60)), (1, car(60, {"d": 60, "v": 50}))])  # catching up with a far car
+  assert far["evs"] == []
+  blink = run_drive([(0, car(60, {"d": 20, "v": 58})), (1, car(60)), (2, car(60, {"d": 19, "v": 58}))])  # the same car, lost for a reading
+  assert blink["evs"] == []
+  first = run_drive([(0, car(60, {"d": 18, "v": 55}))])  # the first reading of the page: nothing before it to compare
+  assert first["evs"] == []
+
+
+def test_stops_long_stops_and_disengaging():
+  r = run_drive([(0, car(40)), (5, car(0)), *[(5 + i, car(0)) for i in range(1, 62)], (70, car(5))])
+  assert [e["kind"] for e in r["evs"]] == ["stop_free", "stop_long", "go_free"]
+  r = run_drive([(0, car(50)), (1, car(50, engaged=False, brake=True))])
+  assert [(e["kind"], e["data"]["by"]) for e in r["evs"]] == [("disengage", "freio")]
+  assert run_drive([(0, car(3)), (1, car(3, engaged=False))])["evs"] == []  # parking speed: not this
+  # the car off resets everything: a stop after it is not an arrival
+  assert run_drive([(0, car(40)), (1, {"driving": False}), (2, car(0))])["evs"] == []
+
+
+def test_a_stale_reading_is_not_fed():
+  html = (LOGIC.parent / "index.html").read_text()
+  feed = html[html.index("function renderDrive()"):]
+  feed = feed[:feed.index("renderCop();")]
+  assert "if (!b.stale) { const r = LPL.eventStep(" in feed  # old data neither fires nor resets an event
+
+
+def test_a_point_seen_close_ahead_then_behind_was_passed():
+  p = {"key": "k1", "kind": "radar", "limit": 60, "ahead": True, "distance": 120, "confirmed": False, "mine": False}
+  script = f"""const L = require({json.dumps(str(LOGIC))});
+  let a = L.pointPassed(null, [{json.dumps(p)}], 0); const b = L.pointPassed(a.st, [{{ ...{json.dumps(p)}, ahead: false, distance: 40 }}], 9000);
+  const far = L.pointPassed(null, [{{ ...{json.dumps(p)}, distance: 2000 }}], 0);
+  const c = L.pointPassed(far.st, [{{ ...{json.dumps(p)}, ahead: false }}], 9000);
+  process.stdout.write(JSON.stringify([a.events, b.events, c.events]));"""
+  a, b, c = json.loads(subprocess.run([NODE, "-e", script], capture_output=True, text=True, timeout=30, check=True).stdout)
+  assert a == [] and c == []  # seen only far away: nothing to ask
+  assert len(b) == 1 and b[0]["kind"] == "radar"
+  assert b[0]["data"] == {"key": "k1", "kind": "radar", "limit": 60, "side": None, "confirmed": False, "mine": False}
+
+
+def test_the_big_card_is_the_newest_recent_event_and_ages_go_by_stage():
+  evs = [{"id": "a", "kind": "stop_lead", "t": 0}, {"id": "b", "kind": "lead_brake", "t": 100_000},
+         {"id": "c", "kind": "cut_in", "t": 110_000, "answer": {"r": "ok"}}]
+  v = run("copilotView", evs, 120_000, None, 0)
+  assert v["main"]["id"] == "b" and v["stage"] == "live" and not v["review"]  # c is answered: never back on screen
+  assert [(e["id"], e["stage"]) for e in v["pending"]] == [("a", "past")]  # 2 min old: grey, in the list
+  later = run("copilotView", evs, 300_000, None, 0)
+  assert later["main"] is None and [e["stage"] for e in later["pending"]] == ["past", "past"]  # waiting: nothing to skip
+  picked = run("copilotView", evs, 300_000, "a", 290_000)
+  assert picked["main"]["id"] == "a" and picked["stage"] == "past" and picked["review"]
+  newer = run("copilotView", evs + [{"id": "d", "kind": "pull_away", "t": 295_000}], 300_000, "a", 290_000)
+  assert newer["main"]["id"] == "d"  # a newer event takes the card back from the review
+  assert run("eventClock", {"t": 0}, 64_000) == {"short": True, "m": 1, "s": 4}
+
+
+def test_an_event_answers_an_open_mission_first_on_the_drive():
+  cat = {"missions": [{"key": "sair-sozinho"}, {"key": "fila"}, {"key": "frear-antes", "lock": "x"}]}
+  ev = {"kind": "pull_away"}
+  assert run("eventMission", ev, cat, ["fila"], {}) == "fila"
+  assert run("eventMission", ev, cat, [], {}) == "sair-sozinho"
+  assert run("eventMission", ev, cat, [], {"sair-sozinho": {"full": True}, "fila": {"full": True}}) is None
+  assert run("eventMission", {"kind": "lead_brake"}, cat, [], {}) is None  # locked: not this one
+  assert run("eventMission", {"kind": "cut_in"}, cat, [], {}) is None
+
+
+def test_the_log_keeps_the_newest_and_merges_updates():
+  evs = [{"id": str(i), "kind": "cut_in", "t": i, **({"answer": {"r": "ok"}} if i % 2 else {})} for i in range(40)]
+  out = run("eventsMerge", evs, [{"id": "new", "kind": "stop_long", "t": 99}], [{"id": "0", "data": {"go_s": 2}}])
+  assert len(out) == 40 and out[-1]["id"] == "new" and out[0]["data"]["go_s"] == 2
+  assert "1" not in [e["id"] for e in out]  # the oldest answered one went first
+
+
+def test_every_event_kind_has_its_texts_and_the_card_keeps_one_height():
+  html = (LOGIC.parent / "index.html").read_text()
+  kinds = ["lead_brake", "pull_away", "stop_lead", "stop_free", "go_free", "stop_long", "cut_in", "disengage", "bump", "radar"]
+  table = html[html.index("const EVENT_UI = {"):html.index("const STAGE_TEXT")]
+  assert all(f"  {k}: {{ title:" in table for k in kinds)
+  css = html[html.index(".evcard {"):]
+  assert css.index("height: 392px") < css.index("}")  # fixed: the answers stay where the finger is, whatever happened
+  assert "evbtns" in html and "evthird" in html
+  # the clock ticks in place: the card is built again only when what it says changes (a tap is never lost to a rebuild)
+  render = html[html.index("function renderCop()"):html.index("function renderDriveMissions(")]
+  assert "main.dataset.sig !== msig" in render and "evClock(main.firstChild" in render
+  # an answer only opens the note: Salvar is what saves
+  tap = html[html.index("function evTap("):html.index("function openEv(")]
+  assert "api(" not in tap

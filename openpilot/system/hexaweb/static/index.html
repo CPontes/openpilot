@@ -252,13 +252,48 @@
   .mfiz { min-width: 104px; min-height: 52px; border-radius: 26px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); font-weight: 700; font-size: 15px; }
   .mfiz[disabled] { background: var(--ok-bg); border-color: var(--ok-line); color: var(--accent); opacity: 1; }
   .mfiz.bad[disabled] { background: var(--card-2); border-color: var(--line-2); color: var(--warn); }
-  #passScrim { z-index: 13; } #passSheet { z-index: 14; }  /* the passenger question goes over the copilot */
+  #passScrim { z-index: 15; } #passSheet { z-index: 16; }  /* the passenger question goes over the copilot */
   .cop { position: fixed; inset: 0; z-index: 12; overflow-y: auto; background: var(--bg); display: flex; flex-direction: column; gap: 12px;
          padding: calc(14px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
   .cop .now { font-family: var(--font-display); font-weight: 700; font-size: 28px; line-height: 1.1; }
   .cop .fit { color: var(--accent); font-weight: 700; }
   .cop .answers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .cop .answers .btn { min-height: 64px; }
+  /* The event card (owner, 03/11): always the same height, the answers always at the same place for the finger, whatever
+     happened. Colour by age: live (green), recent (amber), past (grey, review). The waiting card keeps the height too. */
+  .evcard { height: 392px; box-sizing: border-box; border-radius: 18px; padding: 14px; display: grid; gap: 8px;
+            grid-template-rows: 30px 60px 44px 20px 6px 1fr 64px 52px; background: var(--card); border: 2px solid var(--line); }
+  .evcard.live { border-color: var(--accent); background: #0F2219; box-shadow: 0 0 0 4px #2FD07F22; }
+  .evcard.recent { border-color: var(--warn); background: #221B0E; }
+  .evcard.past { border-color: var(--line-2); background: var(--card-2); }
+  .evcard.wait { border: 1.5px dashed var(--line-2); background: transparent; grid-template-rows: 30px 60px 1fr; }
+  .evcard .evhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .evcard .evbadge { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .evcard.live .evbadge { color: var(--accent); } .evcard.recent .evbadge { color: var(--warn); }
+  .evcard .evdot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); animation: evpulse 1.2s ease-in-out infinite; }
+  @keyframes evpulse { 50% { box-shadow: 0 0 0 6px #2FD07F33; } }
+  .evcard.flash { animation: evflash .5s ease-in-out 3; }
+  @keyframes evflash { 50% { box-shadow: 0 0 0 8px #2FD07F66; } }
+  .evcard .evclock { font-family: var(--font-display); font-variant-numeric: tabular-nums; font-weight: 800; font-size: 28px; color: var(--muted); white-space: nowrap; }
+  .evcard.live .evclock { color: var(--accent); } .evcard.recent .evclock { color: var(--warn); } .evcard.past .evclock { font-size: 16px; font-weight: 600; }
+  .evcard .evtitle { font-family: var(--font-display); font-weight: 700; font-size: 23px; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .evcard.past .evtitle, .evcard.wait .evtitle { color: #CFD6DC; }
+  .evcard .evsrc { font-size: 14px; line-height: 1.5; color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .evcard .evmis { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .evcard .evbar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+  .evcard .evbar i { display: block; height: 100%; background: var(--accent); transition: width 1s linear; }
+  .evcard.recent .evbar i { background: var(--warn); } .evcard.past .evbar i { width: 0 !important; }
+  .evcard .evbtns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .evcard .evbtns .btn, .evcard .evthird { min-height: 0; height: 100%; margin: 0; font-size: 17px; }
+  .evcard .evthird { width: 100%; border-radius: 14px; background: none; border: 1px solid var(--line-2); color: var(--muted); font-weight: 600; }
+  .evcard .evwait { color: var(--muted); font-size: 15px; line-height: 1.5; overflow: hidden; }
+  .evrow { display: flex; gap: 10px; align-items: center; width: 100%; min-height: 52px; padding: 8px 12px; margin: 0; border-radius: 12px; text-align: left;
+           background: var(--card-2); border: 0; border-left: 4px solid var(--line-2); color: var(--text); font: inherit; }
+  .evrow.recent { border-left-color: var(--warn); } .evrow.live { border-left-color: var(--accent); }
+  .evrow .x { flex: 1; min-width: 0; } .evrow .w { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .copbar { position: sticky; bottom: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-top: 8px; margin-top: auto; background: var(--bg); }
+  .copbar .btn { margin: 0; min-height: 56px; }
+  #markScrim, #pointScrim, #evScrim, #rcScrim { z-index: 13; } #markSheet, #pointSheet, #evSheet, #rcSheet { z-index: 14; }  /* over the copilot */
   .toast { position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 20; max-width: calc(100% - 32px);
            background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 15px; font-weight: 600; opacity: 0; transition: opacity .2s; pointer-events: none; }
   .toast.show { opacity: .96; }
@@ -419,6 +454,7 @@
           <div class="row" style="gap:18px" id="nextRow"></div>
           <div class="bar"><span id="nextBar" style="background:var(--warn);width:0"></span></div>
           <div class="small" id="nextAfter"></div>
+          <div id="nextActs"></div>
         </section>
         <div class="grid2" id="driveTiles"></div>
         <section class="card hidden" id="laneCard" style="margin-top:10px">
@@ -605,7 +641,34 @@
 <section class="cop hidden" id="copSheet" role="dialog" aria-modal="true" aria-labelledby="copTitle">
   <div class="row" style="justify-content:space-between"><span class="mlevel" id="copTitle" data-t>Copiloto</span>
     <button class="link" id="copClose" type="button" data-t>Fechar</button></div>
+  <div class="small" id="copNow"></div>
+  <div id="copMain"></div>
   <div id="copBody" class="stack" style="gap:12px"></div>
+  <div class="copbar"><button class="btn" id="copMark" type="button" data-t>Marcar</button><button class="btn dark" id="copNote" type="button" data-t>Nota</button></div>
+</section>
+
+<!-- The answer to an event: the note, then Salvar or Cancelar. Nothing is saved by the answer tap alone (owner, 03/11). -->
+<div class="scrim hidden" id="evScrim"></div>
+<section class="sheet hidden" id="evSheet" role="dialog" aria-modal="true" aria-labelledby="evTitle">
+  <span class="grab"></span>
+  <h2 id="evTitle"></h2>
+  <div class="small num" id="evWhen"></div>
+  <div class="card stack" style="gap:2px;margin-top:12px"><span class="small" data-t>Sua resposta</span><b id="evAnswer"></b></div>
+  <label class="field" for="evText" data-t>Observação (opcional)</label>
+  <textarea id="evText" rows="2" maxlength="500" data-t-ph="ex.: saiu devagar, demorou uns 3 s" placeholder="ex.: saiu devagar, demorou uns 3 s"></textarea>
+  <button class="btn" id="evSave" type="button" style="margin-top:16px" data-t>Salvar</button>
+  <button class="btn ghost" id="evCancel" type="button" data-t>Cancelar</button>
+</section>
+
+<!-- Confirmar um radar: the short way, the point as the list has it. Salvar confirms; Cancelar leaves it as it was. -->
+<div class="scrim hidden" id="rcScrim"></div>
+<section class="sheet hidden" id="rcSheet" role="dialog" aria-modal="true" aria-labelledby="rcTitle">
+  <span class="grab"></span>
+  <h2 id="rcTitle"></h2>
+  <p class="desc" id="rcWhat"></p>
+  <button class="btn" id="rcSave" type="button" style="margin-top:12px" data-t>Salvar</button>
+  <button class="btn ghost" id="rcCancel" type="button" data-t>Cancelar</button>
+  <button class="link" id="rcEdit" type="button" style="margin-top:4px" data-t>Mudar velocidade ou sentido</button>
 </section>
 
 <!-- Marcar: the same box from any area. Nothing exists until Salvar. -->
@@ -704,7 +767,7 @@ const POINT_SVG = {
 let tripVersion = null;  // Viagens filtered by the installed version (its commit), null = all
 let trips = null, tripsAt = 0, update = null, health = null, near = null, live = null, liveAt = 0, latSince = null;
 let passengerOk = false, passNext = null;  // the passenger question: page memory only, never stored
-let copOpen = false, stopSince = null, copSkip = [];  // the copilot: page memory, for this drive only
+let copOpen = false, stopSince = null;  // the copilot: page memory, for this drive only
 const API_TIMEOUT_MS = 8000;
 
 // ----- helpers -----
@@ -745,6 +808,10 @@ function pointIcon(p, size) {
 }
 // one icon per mark reason, to read the list at a glance; a reason the owner created gets the flag
 const REASON_ICONS = {
+  buraco: '<ellipse cx="12" cy="14" rx="8" ry="4"/><path d="M8 13.5c1.5 1 6.5 1 8 0"/>',                         // pothole
+  obra: '<path d="M9.5 4h5l4.5 16H5z"/><path d="M7.7 10h8.6M6.4 15h11.2"/>',                                       // road works cone
+  placa: '<circle cx="12" cy="12" r="8.5"/><path d="M8.5 10h2v5M13.5 10h2v5"/>',                                    // speed sign
+  nota: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',                                            // a note
   balancou: '<path d="M2 12c2.5-4 4.5-4 7 0s4.5 4 7 0 4-4 6 0"/>',                                  // wheel swinging
   estrada: '<path d="M5 21l3-18M19 21l-3-18"/><ellipse cx="12" cy="16" rx="3.2" ry="1.7"/><path d="M11.5 7.5l1 1.5-1 1.5"/>', // road with a pothole
   curva: '<path d="M4 21V11a4 4 0 0 1 8 0v2a3.5 3.5 0 0 0 7 0V4"/><path d="M16 7l3-3 3 3"/>',           // hairpin curve
@@ -864,6 +931,7 @@ async function baseLoad() {
 async function wipeBase() {  // the epoch moves first: an answer still on its way writes nothing, not even the hour
   const done = DB.clear();
   for (const k of LPL.DATA_KEYS) store(k, null);
+  evList = [];  // the copilot's events go with them
   trips = null; histMarks = null; tripsV = ""; missions = null; stateJson = ""; syncAt = {}; syncSaved = 0; paths.clear(); mapSig = ""; histSig = "";
   mQueue = []; mQueueNotes = [];
   marksState = { reasons: marksState.reasons || [], marks: [], pending: 0 };
@@ -1005,7 +1073,7 @@ function render(s, copy, ep) {
   carStopped = !v.onroad || v.standstill;
   carOn = v.onroad;
   passengerOk = LPL.passenger({ ok: passengerOk }, carNow()).ok;
-  if (!carOn) { copSkip = []; stopSince = null; }  // a new drive starts the copilot again
+  if (!carOn) { stopSince = null; evSt = null; passSt = null; evPick = null; }  // a new drive starts the detectors again; the log stays for review
   if (copOpen && LPL.copilotGate({ ok: passengerOk }, carNow()).close) closeCop();  // off, or moving with nobody confirmed
   const was = driving;
   driving = v.onroad && !parked;
@@ -1283,6 +1351,7 @@ function renderDrive() {
   const l = live, b = LPL.band(l, { online, age: Date.now() - liveAt, now: Date.now() }, latSince);
   latSince = b.latSince;
   stopSince = LPL.stopClock(stopSince, live, b.stale, Date.now());
+  if (!b.stale) { const r = LPL.eventStep(evSt, l, liveAt || Date.now()); evSt = r.st; evFeed(r.events, r.updates); }  // the copilot's events
   renderCop();
   $("band").className = "band " + b.cls;
   $("drive").classList.toggle("stale", b.stale);
@@ -1382,6 +1451,21 @@ function renderNext() {
   $("nextBar").style.width = Math.max(4, Math.min(100, 100 - p.distance / 10)) + "%";
   const nx = ahead[1];
   $("nextAfter").textContent = nx ? tf("depois: {tipo} a {m} m", { tipo: t(POINT[nx.kind] || nx.kind).toLowerCase() + (nx.limit ? " " + nx.limit : ""), m: nx.distance }) : "";
+  // confirm or correct the point right here (owner, 03/11): not confirmed yet, two buttons; confirmed, a small "editar".
+  // Every one opens a box first: nothing is saved by the tap alone.
+  const acts = $("nextActs"), q = { ...p, own: p.mine };
+  if (!p.key) { acts.replaceChildren(); return; }
+  if (p.confirmed) {
+    const row = el("div", "row"), b = el("button", "link", t("editar")); b.type = "button"; b.style.minHeight = "36px";
+    b.addEventListener("click", () => openPoint(q));
+    row.append(el("span", "small grow", "✓ " + t("confirmado por você")), b); acts.replaceChildren(row);
+  } else {
+    const g = el("div", "grid2"), ok = el("button", "btn", t("Confirmar")), no = el("button", "btn warn", t("Não existe"));
+    [ok, no].forEach((b) => { b.type = "button"; b.style.cssText = "margin:0;min-height:52px"; });
+    ok.addEventListener("click", () => { const go = () => openRc(q); if (!askPassenger(go)) go(); });
+    no.addEventListener("click", () => openPoint(q, { removed: true }));
+    g.append(ok, no); acts.replaceChildren(g);
+  }
 }
 
 // ----- marks -----
@@ -1453,19 +1537,29 @@ function openMarkNow(mark, reason, tapped) {
   if (markPin) markPin.then((r) => { if (editing && !editing.id) drawPointKinds(r); });
   drawReasons();
   $("markScrim").classList.remove("hidden"); $("markSheet").classList.remove("hidden");
-  if (carStopped) $("markNote").focus({ preventScroll: true });
+  if (carStopped || copOpen) $("markNote").focus({ preventScroll: true });  // the copilot is the passenger's: no box leaves by itself
   else markTimer = setTimeout(closeMark, EDITOR_MS);
 }
 
+// Three groups (owner, 03/11): what openpilot did, what was on the road, or only a note
+const REASON_GROUPS = [["", "Problema"], ["estrada", "Na estrada"], ["nota", "Só uma anotação"]];
 function drawReasons() {
-  $("reasons").replaceChildren(...marksState.reasons.map((r) => {
+  const btn = (r) => {
     const b = el("button", r.custom ? "mine" : ""); b.type = "button"; b.setAttribute("aria-pressed", r.key === picked ? "true" : "false");
     b.innerHTML = reasonIcon(r.custom ? null : r.key, 24); b.append(el("span", "", t(r.label)));
     b.addEventListener("click", () => { clearTimeout(markTimer); picked = picked === r.key ? null : r.key; drawReasons(); });
     return b;
-  }));
-  $("markSave").disabled = !picked;
-  $("markSave").textContent = picked ? (editing && editing.id ? t("Salvar") : t("Salvar marca")) : t("Escolha um motivo");
+  };
+  const out = [];
+  for (const [g, label] of REASON_GROUPS) {
+    const rs = marksState.reasons.filter((r) => (r.group || "") === g);
+    if (!rs.length) continue;
+    const lb = el("div", "label", t(label)); lb.style.cssText = "grid-column:1/-1;margin:6px 0 0"; out.push(lb, ...rs.map(btn));
+  }
+  $("reasons").replaceChildren(...out);
+  const noteOnly = picked === "nota" && !$("markNote").value.trim();  // a note with nothing written says nothing
+  $("markSave").disabled = !picked || noteOnly;
+  $("markSave").textContent = !picked ? t("Escolha um motivo") : noteOnly ? t("Escreva a anotação") : (editing && editing.id ? t("Salvar") : t("Salvar marca"));
 }
 
 function drawPointKinds(pinned) {
@@ -1759,72 +1853,232 @@ function renderVersions() {
 const MOMENT_TEXT = { stop_free: "parado, sem carro à frente", stop_queue: "parado atrás de um carro", stop_long: "parado há mais de 1 minuto",
                       follow_mid: "seguindo um carro a 40–60 km/h", slow_follow: "trânsito lento atrás de um carro", moving: "andando",
                       city: "andando até 60 km/h" };
-function openCop() { if (!carOn) return; copOpen = true; $("copBody").dataset.sig = ""; $("copSheet").classList.remove("hidden"); renderCop(); }
-function closeCop() { copOpen = false; $("copSheet").classList.add("hidden"); }
 function tripSince() {  // this drive's marks: since "Pronto, vou dirigir", and never older than 6 h
   const snap = snapLoad();
   return Math.max(snap ? snap.at : 0, Date.now() / 1000 - 6 * 3600);
 }
-async function copAnswer(key, result, b) {
-  if (b) b.disabled = true;
-  const r = await api("/api/missions", { action: "mark", key, result });
-  toast(r.status !== 200 ? (r.data.error || t("Não foi possível salvar.")) : result === "stop" ? t("Marcado. Quando parar o carro, desligue a opção e reinicie.")
-    : result === "bad" ? t("Marcado como não deu: fica para conferir no log.") : t("Marcado: fica para conferir no log."));
-  if (r.status === 200) { missions.state = r.data.state; if (result !== "stop") copSkip = copSkip.filter((k) => k !== key).concat([key]); $("copBody").dataset.sig = ""; renderCop(); }
-  else if (b) b.disabled = false;
+// The copilot's events (owner, 03/11): what just happened, each one with the time it was read and its age; the newest in one
+// card that keeps its height (the answers always at the same place for the finger), the rest in "A conferir". An answer opens
+// the note, and only Salvar saves. The log stays on this phone; what is saved goes to the comma as a mark, at the event's time.
+const EV_STORE = "lpCopEvents", EV_KEEP_H = 12, EV_DELAY_MAX = 300;  // marks.py MAX_MARK_DELAY
+const EVENT_UI = {
+  lead_brake: { title: "O carro da frente freou", ok: "Freou junto", bad: "Não freou" },
+  pull_away: { title: "O carro da frente saiu", ok: "Saiu junto", bad: "Não saiu" },
+  stop_lead: { title: "Parou atrás de um carro", ok: "Parou bem", bad: "Parou mal" },
+  stop_free: { title: "Parou sem carro à frente", ok: "Parou bem", bad: "Parou mal" },
+  go_free: { title: "Saiu de uma parada sem carro à frente", ok: "Saiu bem", bad: "Saiu mal" },
+  stop_long: { title: "Parado há mais de 1 minuto", ok: "Segurou bem", bad: "Teve problema" },
+  cut_in: { title: "Um carro entrou na sua frente", ok: "Reagiu bem", bad: "Reagiu mal" },
+  disengage: { title: "O LizPilot desligou andando", ok: "Fui eu", bad: "Soltou sozinho" },
+  bump: { title: "Passou por uma lombada", ok: "Reduziu bem", bad: "Não reduziu" },
+  radar: { title: "Passou por um ponto da lista", ok: "Confirmar", bad: "Não existe" },
+};
+const STAGE_TEXT = { live: "Agora", recent: "Há pouco", past: "Revisão · passado" };
+const EV_BUTTONS = { ok: "Deu certo", bad: "Não deu", nao: "Não aconteceu", forgot: "Não lembro", confirm: "Confirmar", here: "Está lá", gone: "Não existe",
+                     notseen: "Não vi", edit: "editar", done: "Fiz agora", stop: "Parar o teste" };
+const EV_BY = { freio: "freio", acelerador: "acelerador", volante: "volante" };
+let evList = [], evSt = null, passSt = null, evPick = null, evPickAt = 0, evTick = null, evAns = null, evShown = null;
+function evLoad() {
+  try { const x = JSON.parse(load(EV_STORE) || "[]"); evList = Array.isArray(x) ? x.filter((e) => e && Date.now() - e.t < EV_KEEP_H * 3600e3) : []; }
+  catch (e) { evList = []; }
 }
+function evSave() { store(EV_STORE, evList.length ? JSON.stringify(evList) : null); }
+function evFeed(events, updates) {
+  if (!(events || []).length && !(updates || []).length) return;
+  evList = LPL.eventsMerge(evList, events, updates); evSave();
+  if (copOpen) renderCop();
+}
+function evDone(id, r) {
+  evList = evList.map((e) => (e.id === id ? { ...e, answer: { r, at: Date.now() } } : e)); evSave();
+  if (evPick === id) evPick = null;
+  renderCop();
+}
+function clockText(ev, now) {
+  const c = LPL.eventClock(ev, now);
+  if (c.short && LPL.eventStage(ev, now) !== "past") return tf("há {m}:{s}", { m: c.m, s: String(c.s).padStart(2, "0") });
+  return `${hhmm(ev.t / 1000)} · ` + tf("há {n} min", { n: c.short ? c.m : c.min });
+}
+function evSource(ev) {
+  const d = ev.data || {}, at = tf("Lido às {hora}", { hora: hhmmss(ev.t / 1000) }), you = ev.v != null ? tf("você a {v} km/h", { v: ev.v }) : "";
+  const parts = [at];
+  if (ev.kind === "lead_brake") parts.push(tf("radar: de {de} para {para} km/h", { de: d.from, para: d.to }), you);
+  else if (ev.kind === "pull_away") parts.push(tf("estava a {d} m", { d: d.d }), d.go_s != null ? tf("você saiu {s} s depois", { s: num(d.go_s, 1) })
+    : (live && live.driving && (live.v || 0) < 1 && LPL.eventAge(ev, Date.now()) < LPL.EV_RECENT_S ? t("você ainda parado") : ""));
+  else if (ev.kind === "stop_lead") parts.push(tf("parou a {d} m do carro da frente", { d: d.d }));
+  else if (ev.kind === "stop_long") parts.push(tf("parado há {s} s", { s: d.s }));
+  else if (ev.kind === "cut_in") parts.push(tf("a {d} m", { d: d.d }), you);
+  else if (ev.kind === "disengage") parts.push(you, d.by ? tf("com o {o}", { o: t(EV_BY[d.by] || d.by) }) : "");
+  else if (ev.kind === "radar" || ev.kind === "bump") {
+    parts.unshift(t(POINT[d.kind] || d.kind) + (d.limit ? " " + speedText({ kind: d.kind, limit: d.limit }) : ""));
+    parts.push(d.confirmed ? t("já confirmado") : t("ainda não confirmado"));
+  }
+  return parts.filter(Boolean).join(" · ");
+}
+function evMission(ev) { return missions ? LPL.eventMission(ev, missions, mState().active, mProg()) : null; }
+function evButtons(ev, stage) {  // [ok, bad, third]: the same three places on every card
+  const ui = EVENT_UI[ev.kind] || {}, d = ev.data || {};
+  const B = EV_BUTTONS;
+  if (ev.kind === "radar") return [d.confirmed ? B.here : B.confirm, B.gone, d.confirmed ? B.edit : (stage === "past" ? B.forgot : B.notseen)];
+  return [ui.ok || B.ok, ui.bad || B.bad, stage === "past" ? B.forgot : B.nao];
+}
+function evTap(ev, which, b) {  // which: 0 ok, 1 bad, 2 third
+  const go = () => {
+    const d = ev.data || {}, p = { key: d.key, kind: d.kind, limit: d.limit, side: d.side, confirmed: d.confirmed, own: d.mine, mine: d.mine };
+    if (ev.kind === "radar" && which === 0 && !d.confirmed) { openRc(p, () => evDone(ev.id, "ok")); return; }
+    if (ev.kind === "radar" && which === 1) { openPointNow(p, { removed: true }, () => evDone(ev.id, "bad")); return; }
+    if (ev.kind === "radar" && which === 2 && d.confirmed) { openPointNow(p, null, () => evDone(ev.id, "edit")); return; }
+    openEv(ev, ["ok", "bad", "nao"][which], evButtons(ev, LPL.eventStage(ev, Date.now()))[which]);
+  };
+  if (!askPassenger(go)) go();
+}
+function openEv(ev, r, label, mission) {
+  evAns = { ev, r, label, mission: mission || null };
+  $("evTitle").textContent = ev ? t((EVENT_UI[ev.kind] || {}).title || ev.kind) : t(mOf(mission).title);
+  const age = ev ? LPL.eventClock(ev, Date.now()) : null;  // the time it happened and how long ago, once each
+  $("evWhen").textContent = ev ? `${hhmmss(ev.t / 1000)} · ` + (age.short && age.m < 2 ? tf("há {m}:{s}", { m: age.m, s: String(age.s).padStart(2, "0") })
+    : tf("há {n} min", { n: age.short ? age.m : age.min })) : t("agora");
+  $("evAnswer").textContent = t(label);
+  $("evText").value = "";
+  $("evSave").disabled = false;
+  $("evScrim").classList.remove("hidden"); $("evSheet").classList.remove("hidden");
+}
+function closeEv() { evAns = null; $("evScrim").classList.add("hidden"); $("evSheet").classList.add("hidden"); }
+async function saveEv() {
+  const a = evAns;
+  if (!a) return;
+  const note = $("evText").value.trim();
+  $("evSave").disabled = true;
+  if (!a.ev) {  // a mission with no detector ("Fiz agora") or the route's "Parar o teste": now, with the note
+    const r = await api("/api/missions", { action: "mark", key: a.mission, result: a.r, note });
+    $("evSave").disabled = false;
+    if (r.status !== 200) { toast(r.data.error || t("Não foi possível salvar.")); return; }
+    missions.state = r.data.state; closeEv(); renderCop();
+    toast(a.r === "stop" ? t("Marcado. Quando parar o carro, desligue a opção e reinicie.") : t("Marcado: fica para conferir no log.")); return;
+  }
+  const ev = a.ev, age = LPL.eventAge(ev, Date.now());
+  const head = `${t((EVENT_UI[ev.kind] || {}).title || ev.kind)}: ${t(a.label)} (${evSource(ev)}${age > EV_DELAY_MAX ? "; " + t("respondido depois") : ""})`;
+  const body = { note: note ? `${head} — ${note}` : head, delay_s: Math.min(EV_DELAY_MAX, Math.round(age * 10) / 10) };
+  const key = a.r === "nao" ? null : evMission(ev);
+  let r = { status: 200, data: {} };
+  if (key) r = await api("/api/missions", { action: "mark", key, result: a.r, ...body });
+  else if (a.r === "bad") r = await api("/api/mark", { reason: LPL.EV_REASON[ev.kind] || "outro", ...body });
+  $("evSave").disabled = false;
+  if (r.status !== 200) { toast(r.data.error || t("Não foi possível salvar.")); return; }
+  if (key) missions.state = r.data.state;
+  closeEv(); evDone(ev.id, a.r);
+  toast(a.r === "nao" ? t("Guardado neste celular: não aconteceu.") : key || a.r === "bad" ? t("Marcado: fica para conferir no log.") : t("Guardado neste celular."));
+  if (!key && a.r === "bad") refreshMarks();
+}
+
+// Confirmar a point: the short way. Salvar confirms it as the list has it; "Mudar velocidade ou sentido" opens the whole box.
+let rcPoint = null, rcAfter = null;
+function openRc(p, after) {
+  rcPoint = p; rcAfter = after || null;
+  $("rcTitle").textContent = tf("Confirmar: {ponto}", { ponto: t(POINT[p.kind] || p.kind) });
+  $("rcWhat").textContent = [p.limit ? speedText(p) : t("velocidade não informada"), t(SIDES[p.side || "?"] || SIDES["?"]),
+                             p.distance != null ? tf("a {m} m", { m: p.distance }) : ""].filter(Boolean).join(" · ") + ". " + t("Nada muda antes de você tocar em Salvar.");
+  $("rcSave").disabled = false;
+  $("rcScrim").classList.remove("hidden"); $("rcSheet").classList.remove("hidden");
+}
+function closeRc() { rcPoint = null; rcAfter = null; $("rcScrim").classList.add("hidden"); $("rcSheet").classList.add("hidden"); }
+async function saveRc() {
+  const p = rcPoint, after = rcAfter;
+  if (!p) return;
+  $("rcSave").disabled = true;
+  const r = await api("/api/radars/edit", { key: p.key, limit: p.limit ?? null, confirmed: true, removed: false });
+  $("rcSave").disabled = false;
+  toast(r.status === 200 ? t("Confirmado.") : (r.data.error || t("Não foi possível salvar.")));
+  if (r.status !== 200) return;
+  closeRc(); if (after) after(); refreshNear();
+}
+
+function openCop() {
+  if (!carOn) return;
+  copOpen = true; evShown = null; $("copBody").dataset.sig = ""; $("copMain").dataset.sig = ""; $("copSheet").classList.remove("hidden");
+  clearInterval(evTick); evTick = setInterval(renderCop, 1000);  // the clocks run: the page only, nothing more for the comma
+  renderCop();
+}
+function closeCop() { copOpen = false; clearInterval(evTick); evTick = null; $("copSheet").classList.add("hidden"); }
+
+function evCard(ev, stage, now) {
+  const c = el("section", "evcard " + stage); c.setAttribute("aria-live", "polite");
+  const head = el("div", "evhead"), badge = el("span", "evbadge");
+  if (stage === "live") badge.append(el("span", "evdot"));
+  badge.append(t(STAGE_TEXT[stage]));
+  head.append(badge, el("span", "evclock", clockText(ev, now)));
+  const bar = el("div", "evbar"); bar.append(el("i"));
+  const [okL, badL, thirdL] = evButtons(ev, stage), btns = el("div", "evbtns");
+  [[okL, "btn", 0], [badL, "btn warn", 1]].forEach(([label, cls, i]) => { const b = el("button", cls, t(label)); b.type = "button"; b.addEventListener("click", () => evTap(ev, i, b)); btns.append(b); });
+  const third = el("button", "evthird", t(thirdL)); third.type = "button"; third.addEventListener("click", () => evTap(ev, 2, third));
+  c.append(head, el("div", "evtitle", t((EVENT_UI[ev.kind] || {}).title || ev.kind)), el("div", "evsrc", evSource(ev)), el("div", "evmis"),
+           bar, el("div", ""), btns, third);
+  evClock(c, ev, stage, now);
+  return c;
+}
+// What runs every second: only the clock, the bar and the countdown, in place. The card itself is built again only when
+// what it says changes, so a tap is never lost to a card replaced under the finger.
+function evClock(c, ev, stage, now) {
+  const mk = evMission(ev), left = Math.max(0, LPL.EV_RECENT_S - LPL.eventAge(ev, now));
+  c.querySelector(".evclock").textContent = clockText(ev, now);
+  c.querySelector(".evbar i").style.width = (stage === "past" ? 0 : Math.round(100 * left / LPL.EV_RECENT_S)) + "%";
+  c.querySelector(".evmis").textContent = [ev.kind === "radar" ? t("Ponto da lista") : mk ? tf("Missão: {m}", { m: t(mOf(mk).title) }) : t("Sem missão aberta: se não deu, vira marca"),
+    stage === "recent" ? tf("sai daqui em {m}:{s}", { m: Math.floor(left / 60), s: String(Math.floor(left % 60)).padStart(2, "0") }) : ""].filter(Boolean).join(" · ");
+}
+function waitCard(now) {  // nothing recent: what the copilot is watching for, never a button to skip
+  const c = el("section", "evcard wait");
+  const head = el("div", "evhead"); head.append(el("span", "evbadge", t("Esperando · nada agora")));
+  const act = missions ? mState().active.filter((k) => mOf(k) && !mProg()[k].full) : [];
+  const watched = Object.keys(LPL.EV_MISSIONS).filter((kind) => LPL.EV_MISSIONS[kind].some((k) => act.includes(k)));
+  const w = el("div", "evwait");
+  w.append(watched.length ? tf("Aparece sozinho quando acontecer: {lista}.", { lista: watched.map((k) => t(EVENT_UI[k].title).toLowerCase()).join("; ") })
+    : t("Aparece sozinho quando o carro da frente frear ou sair, quando você parar, quando um carro entrar na frente ou o LizPilot desligar."));
+  c.append(head, el("div", "evtitle", t("Nada aconteceu agora")), w);
+  return c;
+}
+
 function renderCop() {
   if (!copOpen || !missions) return;
   if (LPL.copilotGate({ ok: passengerOk }, carNow()).close) { closeCop(); return; }
-  const body = $("copBody"), prog = mProg();
-  const now = LPL.copilotNow(live, { online, age: Date.now() - liveAt }, stopSince == null ? 0 : (Date.now() - stopSince) / 1000);
-  const answered = LPL.tripAnswers(missions.state.pending, tripSince());
-  const order = LPL.copilotOrder(missions, mState().active, prog, now.moment);
-  const rank = (x) => (copSkip.includes(x.key) ? 2 + copSkip.indexOf(x.key) : answered[x.key] ? 1 : 0);  // answered or skipped go to the end
-  order.sort((a, b) => rank(a) - rank(b));
-  const sig = JSON.stringify([order, now.state, now.moment, now.state === "stale" ? Math.floor(now.age / 5) : 0, answered, L()]);
-  if (body.dataset.sig === sig) return;
+  const now = Date.now(), body = $("copBody");
+  const st = LPL.copilotNow(live, { online, age: now - liveAt }, stopSince == null ? 0 : (now - stopSince) / 1000);
+  // what is true right now, only from fresh live data: an old tick never says "agora" (CTO review of app-08)
+  $("copNow").textContent = st.state === "live" ? tf("Agora: {m}", { m: st.moment.length ? st.moment.map((x) => t(MOMENT_TEXT[x])).join(", ") : t("andando devagar") })
+    : st.state === "stale" ? tf("O dado ao vivo do comma parou há {n} s: o momento não é de agora.", { n: st.age })
+    : st.state === "off" ? t("carro desligado") : t("Sem dado ao vivo do comma");
+  $("copNow").style.color = st.state === "stale" ? "var(--warn)" : "";
+  const v = LPL.copilotView(evList, now, evPick, evPickAt);
+  const main = $("copMain");
+  const msig = JSON.stringify(v.main ? [v.main.id, v.stage, evSource(v.main), evMission(v.main), L()] : ["wait", mState().active, L()]);
+  if (main.dataset.sig !== msig || !main.firstChild) {
+    main.dataset.sig = msig;
+    main.replaceChildren(v.main ? evCard(v.main, v.stage, now) : waitCard(now));
+    if (v.main && v.stage === "live" && evShown !== v.main.id) main.firstChild.classList.add("flash");  // a new one: it blinks, once
+  } else if (v.main) evClock(main.firstChild, v.main, v.stage, now);
+  evShown = v.main ? v.main.id : null;
+  const act = mState().active.map(mOf).filter((m) => m && !mProg()[m.key].full && !m.lock);
+  const pk = missions.route && act.some((m) => m.route && m.option) ? missions.route : null;
+  const sig = JSON.stringify([v.pending.map((e) => [e.id, e.stage]), v.answered, act.map((m) => m.key), !!pk, L()]);
+  if (body.dataset.sig === sig) { body.querySelectorAll(".evrow").forEach((r, i) => { if (v.pending[i]) r.lastChild.textContent = clockText(v.pending[i], now); }); return; }
   body.dataset.sig = sig;
   const out = [];
-  if (!order.length) {
-    out.push(el("div", "now", t("Nenhuma missão nesta viagem")), el("div", "desc", t("Escolha missões ou leve o roteiro, com o carro parado.")));
-    body.replaceChildren(...out); return;
+  if (v.pending.length) {
+    out.push(el("div", "label", tf("A conferir · {n}", { n: v.pending.length })));
+    for (const e of v.pending) {
+      const b = el("button", "evrow " + e.stage); b.type = "button";
+      b.append(el("span", "x", t((EVENT_UI[e.kind] || {}).title || e.kind)), el("span", "w", clockText(e, now)));
+      b.addEventListener("click", () => { evPick = e.id; evPickAt = Date.now(); renderCop(); window.scrollTo(0, 0); $("copSheet").scrollTo(0, 0); });
+      out.push(b);
+    }
   }
-  const cur = mOf(order[0].key), pk = cur.route && cur.option ? missions.route : null;  // "desligue a opção" only where there is one
-  // what is true now, only from fresh live data: an old tick never says "agora" (CTO review of app-08)
-  const nowText = now.state === "live" ? tf("Agora: {m}", { m: now.moment.length ? now.moment.map((x) => t(MOMENT_TEXT[x])).join(", ") : t("andando devagar") })
-    : now.state === "stale" ? tf("O dado ao vivo do comma parou há {n} s: o momento não é de agora.", { n: now.age })
-    : now.state === "off" ? t("carro desligado") : t("Sem dado ao vivo do comma");
-  const nowLine = el("div", "small", nowText); if (now.state === "stale") nowLine.style.color = "var(--warn)";
-  out.push(nowLine);
-  const head = el("div", "stack"); head.style.gap = "4px";
-  head.append(el("span", "small", tf("{d} de {n} respondidas nesta viagem", { d: order.filter((x) => answered[x.key]).length, n: order.length })), el("div", "now", t(cur.title)));
-  if (now.state === "live" && order[0].fits) head.append(el("span", "fit", t("Dá para fazer agora")));
-  out.push(head);
-  if (cur.steps.length) { const ol = el("ol", "msteps"); cur.steps.forEach((x) => ol.append(el("li", "", t(x)))); out.push(ol); }
-  else if (cur.why || cur.note) out.push(el("div", "desc", t(cur.why || cur.note)));
-  if (cur.how === "parado") out.push(el("div", "small", t("Vira marca. No fim, parado, o celular pergunta de novo: só essa resposta conta.")));
-  const answers = el("div", "answers");
-  for (const [label, result, cls] of [[t("Deu certo"), "ok", "btn"], [t("Não deu"), "bad", "btn warn"], [t("Fiz, não sei dizer"), "done", "btn dark"], [t("Pular"), null, "btn dark"]]) {
-    const b = el("button", cls, label); b.type = "button";
-    b.addEventListener("click", () => {
-      if (!result) { copSkip = copSkip.filter((k) => k !== cur.key).concat([cur.key]); body.dataset.sig = ""; renderCop(); return; }
-      const go = () => copAnswer(cur.key, result, b);
-      if (!askPassenger(go)) go();  // moving: only with the passenger confirmed
-    });
-    answers.append(b);
-  }
-  out.push(answers);
-  const rest = order.slice(1);
-  if (rest.length) {
-    out.push(el("div", "label", t("Depois")));
+  // missions the comma can't see happen: the passenger says it, and it still goes through the note and Salvar
+  const manual = act.filter((m) => m.how !== "auto" && m.how !== "cto" && !Object.values(LPL.EV_MISSIONS).some((ks) => ks.includes(m.key)));
+  if (manual.length) {
+    out.push(el("div", "label", t("Sem detector: avise quando fizer")));
     const list = el("div", "card list"); list.style.padding = "4px 16px";
-    for (const x of rest) {
-      const m = mOf(x.key), row = el("div", "line"), res = answered[x.key], bad = res === "bad" || res === "stop";
-      const tag = el("span", res ? "small" : x.fits && now.state === "live" ? "fit" : "small", res ? (bad ? t("não deu · a conferir") : t("Marcado")) : x.fits && now.state === "live" ? t("dá agora") : "");
-      if (bad) tag.style.color = "var(--warn)";
-      row.append(el("span", "", t(m.title)), tag);
-      list.append(row);
+    for (const m of manual) {
+      const row = el("div", "line"), b = el("button", "link", t("Fiz agora")); b.type = "button";
+      b.addEventListener("click", () => { const go = () => openEv(null, "done", EV_BUTTONS.done, m.key); if (!askPassenger(go)) go(); });
+      row.append(el("span", "", t(m.title)), b); list.append(row);
     }
     out.push(list);
   }
@@ -1833,10 +2087,11 @@ function renderCop() {
     c.append(el("b", "", t("Pare o teste e desligue a opção se")));
     const ul = el("ul", "msteps"); pk.stop_if.forEach((x) => ul.append(el("li", "", t(x)))); c.append(ul);
     const stop = el("button", "btn warn", t("Parar o teste")); stop.type = "button";
-    stop.addEventListener("click", () => { const go = () => copAnswer(cur.key, "stop", null); if (!askPassenger(go)) go(); });
+    const key = act.find((m) => m.route && m.option).key;
+    stop.addEventListener("click", () => { const go = () => openEv(null, "stop", EV_BUTTONS.stop, key); if (!askPassenger(go)) go(); });
     c.append(stop, el("span", "small", t(pk.back))); out.push(c);
   }
-  out.push(el("div", "small", t("Para o passageiro. Cada resposta vira uma marca com hora e lugar; nada muda no carro.")));
+  out.push(el("div", "small", t("Para o passageiro. Cada resposta vira uma marca com a hora do que aconteceu; nada muda no carro.")));
   body.replaceChildren(...out);
 }
 
@@ -2730,6 +2985,7 @@ async function refreshNear() {
   const r = await api("/api/radars/near");
   if (r.status !== 200) return;
   near = r.data;
+  if (carOn) { const pp = LPL.pointPassed(passSt, near.near, Date.now()); passSt = pp.st; evFeed(pp.events); }  // a point just passed
   const d = near;
   moving = !!d.moving;
   $("gpsDot").style.background = d.gps ? "var(--accent)" : "var(--danger)";
@@ -2783,11 +3039,12 @@ function drawPoint() {
 }
 
 // The place is kept before anything else (the pin, or the point tapped); the passenger question comes after.
-function openPoint(p) { if (!askPassenger(() => openPointNow(p))) openPointNow(p); }
+function openPoint(p, opt, after) { if (!askPassenger(() => openPointNow(p, opt, after))) openPointNow(p, opt, after); }
 
-function openPointNow(p) {
-  point = p;
-  pick = { limit: p.limit ?? LPL.keptSpeed(p.kind, p.passed), side: p.key ? (p.side === "?" ? "" : p.side) : (p.kind === "lombada" || !moving ? "dois" : "mesmo"), removed: false };
+let pointAfter = null;  // the copilot's event that this point answers, once Salvar works
+function openPointNow(p, opt, after) {
+  point = p; pointAfter = after || null;
+  pick = { limit: p.limit ?? LPL.keptSpeed(p.kind, p.passed), side: p.key ? (p.side === "?" ? "" : p.side) : (p.kind === "lombada" || !moving ? "dois" : "mesmo"), removed: !!(opt && opt.removed) };
   const kind = t(POINT[p.kind] || p.kind);
   $("pointTitle").textContent = p.key ? (p.distance == null ? tf("Editar: {ponto}", { ponto: kind }) : `${kind} · ${p.distance} m`) : tf("{ponto} neste lugar", { ponto: kind });
   $("pointHint").textContent = p.key ? t("Nada muda antes de você tocar em Salvar.")
@@ -2798,7 +3055,7 @@ function openPointNow(p) {
   $("pointScrim").classList.remove("hidden"); $("pointSheet").classList.remove("hidden");
 }
 
-function closePoint() { point = null; $("pointScrim").classList.add("hidden"); $("pointSheet").classList.add("hidden"); }
+function closePoint() { point = null; pointAfter = null; $("pointScrim").classList.add("hidden"); $("pointSheet").classList.add("hidden"); }
 
 async function savePoint() {
   if (!point) return;
@@ -2808,7 +3065,7 @@ async function savePoint() {
   else if (point.key) res = await api("/api/radars/edit", { key: point.key, limit: pick.limit, side, confirmed: !removed, removed });
   else res = await api("/api/radars/add", { kind: point.kind, limit: pick.limit, side: pick.side, pin: point.pin });
   toast(res.status === 200 ? (res.data.message || t("Salvo.")) : (res.data.error || t("Não foi possível salvar.")));
-  if (res.status === 200) closePoint();
+  if (res.status === 200) { if (pointAfter) pointAfter(); closePoint(); }
   refreshNear();
 }
 
@@ -3073,6 +3330,7 @@ $("markSave").addEventListener("click", saveMark);
 $("markCancel").addEventListener("click", closeMark);
 $("markScrim").addEventListener("click", closeMark);
 $("markNote").addEventListener("focus", () => clearTimeout(markTimer));
+$("markNote").addEventListener("input", () => { clearTimeout(markTimer); if (picked === "nota") drawReasons(); });
 $("pendingBtn").addEventListener("click", () => { const p = marksState.marks.filter((m) => !m.reason).pop(); if (p) openMark(p, null); });
 $("readyCard").addEventListener("click", () => { readyOpen = !readyOpen; renderGarage(); });
 $("readyMissions").addEventListener("click", (e) => { e.stopPropagation(); openMissions(); });
@@ -3101,6 +3359,15 @@ $("missionOpen").addEventListener("click", () => openMissions());
 $("segToMissions").addEventListener("click", () => openMissions());
 $("segToTrips").addEventListener("click", () => showView("viagens"));
 $("copClose").addEventListener("click", () => closeCop());
+$("copMark").addEventListener("click", () => openMark(null));
+$("copNote").addEventListener("click", () => openMark(null, "nota"));
+$("evSave").addEventListener("click", saveEv);
+$("evCancel").addEventListener("click", closeEv);
+$("evScrim").addEventListener("click", closeEv);
+$("rcSave").addEventListener("click", saveRc);
+$("rcCancel").addEventListener("click", closeRc);
+$("rcScrim").addEventListener("click", closeRc);
+$("rcEdit").addEventListener("click", () => { const p = rcPoint, after = rcAfter; closeRc(); if (p) openPointNow(p, null, after); });
 $("copOpen").addEventListener("click", () => {  // the passenger's: always the question first, parked too, once per drive
   if (!carOn) return;
   if (LPL.copilotGate({ ok: passengerOk }, carNow()).ask) askPassenger(openCop, true); else openCop();
@@ -3202,6 +3469,7 @@ $("logoutBtn").addEventListener("click", async () => {
   clearTimeout(pollTimer);
   saveToken(null); show("pair");
 });
+evLoad();  // the copilot's events of this drive, if the page was reloaded
 </script>
 </body>
 </html>

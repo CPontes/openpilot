@@ -590,6 +590,139 @@
     return ms.map((m, i) => ({ key: m.key, fits: fits(m), i })).sort((a, b) => (b.fits - a.fits) || (a.i - b.i)).map(({ key, fits: f }) => ({ key, fits: f }));
   }
 
+  // The copilot's events (owner, 03/11: "não sei se leu de agora ou trouxe de antes"): what just happened, read from /api/live
+  // the moment it happened, never a mission that only fits. Each one keeps the time it was read; the phone shows its age and
+  // colours it by that: live up to 30 s, recent up to 2 min, then past. Pure: the page keeps st between calls, nothing more
+  // goes to the comma.
+  const EV_LIVE_S = 30, EV_RECENT_S = 120, EV_KEEP = 40;
+  const EV_COOLDOWN_S = { lead_brake: 15, cut_in: 10, disengage: 10 };
+  const EV_MISSIONS = { lead_brake: ["frear-antes"], pull_away: ["sair-sozinho", "fila"], stop_lead: ["parar-perto", "fila"],
+                        stop_free: ["parar-de-vez", "freio-alavanca"], go_free: ["sinal-abrindo"], stop_long: ["parada-longa"],
+                        bump: ["lombada", "lombada-faixa"] };
+  // with no open mission, "não" still becomes a mark with this reason (marks.py DEFAULT_REASONS)
+  const EV_REASON = { lead_brake: "freada", pull_away: "outro", stop_lead: "freada", stop_free: "freada", go_free: "outro", stop_long: "outro",
+                      cut_in: "freada", disengage: "soltou", bump: "outro" };
+  const LEAD_BRAKE_KMH = 10, LEAD_BRAKE_S = 3, LEAD_BRAKE_MIN_KMH = 20, CUT_IN_KMH = 15, CUT_IN_M = 8, CUT_IN_NEAR_M = 30, CUT_IN_GAP_S = 2,
+        BLINKER_S = 6, PULL_NEAR_M = 20, PULL_ARMED_S = 2, PULL_MOVE_KMH = 4, PULL_GAP_M = 3, GO_KMH = 3, MOVED_KMH = 10, DISENGAGE_KMH = 8;
+  function eventAge(ev, now) { return Math.max(0, (now - ev.t) / 1000); }
+  function eventStage(ev, now) { const a = eventAge(ev, now); return a < EV_LIVE_S ? "live" : a < EV_RECENT_S ? "recent" : "past"; }
+  function eventStep(st, l, now) {
+    const s = Object.assign({ hist: [], stopAt: null, stopLead: null, longDone: false, moved: false, engaged: null, lead: null, leadAt: 0,
+                              blinkAt: -1e9, last: {}, armed: null, waitGo: null, n: 0 }, st || {});
+    const events = [], updates = [];
+    if (!l || !l.driving) {  // car off or no data: nothing is "now", every pending detection starts over
+      Object.assign(s, { hist: [], stopAt: null, armed: null, waitGo: null, engaged: null, lead: null, prev: null, moved: false });
+      return { st: s, events, updates };
+    }
+    const v = l.v || 0, lead = l.lead || null, sec = now / 1000;
+    const fire = (kind, data) => {
+      if (s.last[kind] != null && sec - s.last[kind] < (EV_COOLDOWN_S[kind] || 0)) return null;
+      s.last[kind] = sec; s.n += 1;
+      const ev = { id: `${Math.round(now)}-${s.n}`, kind, t: now, v, data: data || {} };
+      events.push(ev); return ev;
+    };
+    if (l.blinker) s.blinkAt = sec;
+    // a car cut in: a lead appears close where the last reading had none, or a much closer one replaces it, with you moving
+    // and not changing lanes yourself. A lead that blinked out for a reading and came back at the same place is the same car.
+    const prev = s.prev && sec - s.prev.t <= CUT_IN_GAP_S ? s.prev : null;
+    if (lead && prev && v >= CUT_IN_KMH && lead.d <= CUT_IN_NEAR_M && sec - s.blinkAt > BLINKER_S) {
+      const blip = !prev.lead && s.lead && sec - s.leadAt <= 3 && Math.abs(s.lead.d - lead.d) < 5;
+      if ((!prev.lead && !blip) || (prev.lead && prev.lead.d - lead.d >= CUT_IN_M)) { fire("cut_in", { d: lead.d }); s.hist = []; }
+    }
+    s.prev = { t: sec, lead: lead ? { d: lead.d } : null };
+    // the car ahead braked: its speed fell 10 km/h or more within 3 s, with you following above 20 km/h
+    s.hist = s.hist.filter((h) => now - h.t <= LEAD_BRAKE_S * 1000);
+    if (lead && v >= LEAD_BRAKE_MIN_KMH) {
+      s.hist.push({ t: now, v: lead.v });
+      const top = Math.max(...s.hist.map((h) => h.v));
+      if (top - lead.v >= LEAD_BRAKE_KMH && fire("lead_brake", { from: top, to: lead.v, d: lead.d })) s.hist = [];
+    } else s.hist = [];
+    // stops: arriving (behind a car or not), a long one, the car ahead leaving, and you leaving
+    if (v < COP_STOP_KMH) {
+      if (s.stopAt == null) {
+        s.stopAt = sec; s.stopLead = lead ? lead.d : null; s.longDone = false;
+        if (s.moved) fire(lead ? "stop_lead" : "stop_free", lead ? { d: lead.d } : {});
+        s.moved = false;
+      }
+      if (!s.longDone && sec - s.stopAt >= COP_LONG_S) { s.longDone = true; fire("stop_long", { s: Math.round(sec - s.stopAt) }); }
+      if (lead && lead.d <= PULL_NEAR_M && !s.waitGo) s.armed = s.armed ? { at: s.armed.at, d: Math.min(s.armed.d, lead.d) } : { at: sec, d: lead.d };
+      if (s.armed && sec - s.armed.at >= PULL_ARMED_S && (!lead || lead.v >= PULL_MOVE_KMH || lead.d >= s.armed.d + PULL_GAP_M)) {
+        const ev = fire("pull_away", { d: s.armed.d });
+        s.armed = null;
+        if (ev) s.waitGo = { id: ev.id, at: sec };
+      }
+    } else if (v >= GO_KMH && s.stopAt != null) {
+      if (s.waitGo) updates.push({ id: s.waitGo.id, data: { go_s: Math.round((sec - s.waitGo.at) * 10) / 10 } });  // how long you took
+      else if (!lead && s.stopLead == null) fire("go_free", {});
+      Object.assign(s, { stopAt: null, armed: null, waitGo: null });
+    }
+    if (v >= MOVED_KMH) s.moved = true;
+    // openpilot let go with the car moving
+    if (s.engaged === true && !l.engaged && v >= DISENGAGE_KMH) fire("disengage", { by: l.brake ? "freio" : l.gas ? "acelerador" : l.driver ? "volante" : null });
+    s.engaged = !!l.engaged;
+    if (lead) { s.lead = { d: lead.d, v: lead.v }; s.leadAt = sec; }
+    return { st: s, events, updates };
+  }
+  // A point of the list you just went past (Pontos, /api/radars/near): seen ahead and close, then behind or gone
+  const PASS_WATCH_M = 300, PASS_FORGET_S = 120;
+  function pointPassed(st, near, now) {
+    const s = Object.assign({ watch: {} }, st || {}), events = [], sec = now / 1000, seen = new Set();
+    for (const p of near || []) {
+      if (!p.key) continue;
+      seen.add(p.key);
+      const w = s.watch[p.key];
+      if (p.ahead && p.distance <= PASS_WATCH_M) s.watch[p.key] = { p, at: sec };
+      else if (!p.ahead && w) {
+        delete s.watch[p.key];
+        events.push({ id: `${Math.round(now)}-${p.key}`, kind: p.kind === "lombada" ? "bump" : "radar", t: now, v: null,
+                      data: { key: p.key, kind: p.kind, limit: p.limit ?? null, side: p.side || null, confirmed: !!p.confirmed, mine: !!p.mine } });
+      }
+    }
+    for (const [k, w] of Object.entries(s.watch)) {
+      if (sec - w.at > PASS_FORGET_S) delete s.watch[k];
+      else if (!seen.has(k) && w.p.distance <= 80) {  // out of the list right after being close: gone past
+        delete s.watch[k];
+        events.push({ id: `${Math.round(now)}-${k}`, kind: w.p.kind === "lombada" ? "bump" : "radar", t: now, v: null,
+                      data: { key: k, kind: w.p.kind, limit: w.p.limit ?? null, side: w.p.side || null, confirmed: !!w.p.confirmed, mine: !!w.p.mine } });
+      }
+    }
+    return { st: s, events };
+  }
+  // The drive's event log: new ones in, updates merged, never more than EV_KEEP (the oldest answered ones go first)
+  function eventsMerge(list, events, updates) {
+    let out = (list || []).slice();
+    for (const u of updates || []) out = out.map((e) => (e.id === u.id ? { ...e, data: { ...e.data, ...u.data } } : e));
+    for (const e of events || []) if (!out.some((x) => x.id === e.id)) out.push(e);
+    while (out.length > EV_KEEP) {
+      const i = out.findIndex((e) => e.answer);
+      out.splice(i < 0 ? 0 : i, 1);
+    }
+    return out;
+  }
+  // The mission an event answers: the first of its missions still open, the ones on this drive first
+  function eventMission(ev, cat, active, prog) {
+    const keys = EV_MISSIONS[ev && ev.kind] || [], act = active || [];
+    const open = keys.filter((k) => ((cat && cat.missions) || []).some((m) => m.key === k && !m.lock) && !(prog && prog[k] && prog[k].full));
+    return open.find((k) => act.includes(k)) || open[0] || null;
+  }
+  // What the copilot shows: the newest open event in the big card while it is recent; otherwise the one picked for review,
+  // or nothing (waiting). An event newer than the pick always takes the big card back. The rest, newest first, is "A conferir".
+  // An event picked from the list for review keeps the card until a newer event arrives.
+  function copilotView(list, now, pick, pickAt) {
+    const open = (list || []).filter((e) => !e.answer).sort((a, b) => b.t - a.t);
+    let main = open.find((e) => eventAge(e, now) < EV_RECENT_S) || null;
+    const picked = pick ? open.find((e) => e.id === pick) || null : null;
+    if (picked && (!main || main.t <= (pickAt || 0))) main = picked;
+    return { main, stage: main ? eventStage(main, now) : null, review: !!main && eventAge(main, now) >= EV_RECENT_S,
+             pending: open.filter((e) => e !== main).map((e) => ({ ...e, stage: eventStage(e, now) })),
+             answered: (list || []).filter((e) => e.answer).length };
+  }
+  // The age as the card shows it: "há 0:04" up to 10 min, then the clock time
+  function eventClock(ev, now) {
+    const a = Math.floor(eventAge(ev, now));
+    return a < 600 ? { short: true, m: Math.floor(a / 60), s: a % 60 } : { short: false, min: Math.floor(a / 60) };
+  }
+
   // Versions (selfdrive/hexa/versions.py, owner 03/11): every version, its release notes when there are any, and what
   // your drives on it add up to. Newest first: the channel's order, then any version only the drives know, by its last drive.
   const VERSION_CHIPS = 3;
@@ -652,9 +785,9 @@
   // Read only: without the comma, or before the first answer of a page opened from the copy. Commands wait for the comma.
   function readOnly(online, fromCopy) { return !online || !!fromCopy; }
   // what "Apagar dados deste celular" takes from localStorage besides the copy: data, never the language or the view
-  const DATA_KEYS = ["lpTrips", "lpMissionSnap"];
+  const DATA_KEYS = ["lpTrips", "lpMissionSnap", "lpCopEvents"];  // lpCopEvents: the copilot's events of the drive
 
-  root.LPL = { versionList, versionChips, VERSION_CHIPS, copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
+  root.LPL = { eventStep, pointPassed, eventsMerge, eventMission, copilotView, eventAge, eventStage, eventClock, EV_MISSIONS, EV_REASON, EV_LIVE_S, EV_RECENT_S, EV_KEEP, versionList, versionChips, VERSION_CHIPS, copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
                tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);
