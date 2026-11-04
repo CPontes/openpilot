@@ -100,7 +100,8 @@ def test_public_and_log_fields_drop_private_keys():
   m = marks.new_mark("celular", reason="outro", label="outro")
   m["_req_mono_ns"] = 5
   assert "_req_mono_ns" not in marks.public(m)
-  assert set(marks.log_fields(m)) == {"id", "t", "mono_ns", "source", "who", "reason", "label", "note", "delay_s"}
+  # win: when it happened around the tap (owner, 04/11)
+  assert set(marks.log_fields(m)) == {"id", "t", "mono_ns", "source", "who", "reason", "label", "note", "delay_s", "win"}
 
 
 def test_an_automatic_mark_the_owner_changed_stays_one():
@@ -108,3 +109,9 @@ def test_an_automatic_mark_the_owner_changed_stays_one():
   m = marks.auto_marks([], found)
   m[0].update(reason="freada", label="freada estranha")
   assert len(marks.auto_marks(m, found)) == 1
+
+
+def test_the_window_around_the_tap_is_checked():
+  assert marks.clean_window([30, 0]) == [30, 0] and marks.clean_window([0, 30]) == [0, 30]
+  assert marks.clean_window([0, 0]) is None and marks.clean_window(None) is None and marks.clean_window("ab") is None
+  assert marks.clean_window([999, -1]) == [marks.WINDOW_MAX_S, 0]

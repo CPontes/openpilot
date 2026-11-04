@@ -594,6 +594,15 @@ def test_mark_keeps_the_moment_of_the_tap(panel):
   assert panel.logged[-1]["delay_s"] == 12.3
 
 
+def test_mark_keeps_when_it_happened_around_the_tap(panel):
+  # owner, 04/11: the instant, the last seconds, or from now on; the bookmark stays at the tap
+  token = panel.pair()
+  for i, (win, want) in enumerate(((None, None), ([0, 0], None), ([30, 0], [30, 0]), ([0, 30], [0, 30]), ([999, -5], [60, 0]), ("x", None))):
+    panel.backend.mono = lambda n=panel.now + i * 10: n
+    mark = panel.json("/api/mark", {"reason": "balancou", "window": win}, token=token)[1]["mark"]
+    assert mark.get("win") == want and panel.logged[-1].get("win") == want
+
+
 def test_mark_delay_from_outside_is_checked(panel):
   token = panel.pair()
   for i, bad in enumerate((-1, 1e9, "12", True, None)):

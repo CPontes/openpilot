@@ -625,7 +625,7 @@ class PanelBackend:
         return float(at)
     return None
 
-  def mark(self, who: dict, reason: str, note: str = "", delay=0., label: str | None = None, at=None) -> tuple[int, dict]:
+  def mark(self, who: dict, reason: str, note: str = "", delay=0., label: str | None = None, at=None, window=None) -> tuple[int, dict]:
     """Phone mark: always allowed (it doesn't change how the car drives), at most one per MIN_MARK_INTERVAL.
     at: with the car off, when the drive's event happened (seconds); no bookmark then, there is no log being written."""
     when = self._drive_time(at) if at is not None else None
@@ -642,6 +642,9 @@ class PanelBackend:
       mark = hexa_marks.new_mark("celular", who=who.get("name", ""), reason=reason, label=label,
                                  note=hexa_marks.clean_note(note), now=self.clock() - delay if when is None else when)
       mark["delay_s"] = delay
+      win = hexa_marks.clean_window(window)  # [seconds before, seconds after] the mark, when it wasn't just the instant
+      if win:
+        mark["win"] = win
       if when is None:
         mark["_req_mono_ns"] = int(now_mono * 1e9)
       self._put(hexa_marks.MARKS_PARAM, hexa_marks.append(self._marks(), mark))
@@ -1391,7 +1394,8 @@ def make_handler(backend: PanelBackend):
         return
       routes = {
         "/api/option": lambda who, b: backend.set_option(who, str(b.get("key", "")), b.get("value")),
-        "/api/mark": lambda who, b: backend.mark(who, str(b.get("reason", "")), b.get("note", ""), b.get("delay_s", 0.), at=b.get("at")),
+        "/api/mark": lambda who, b: backend.mark(who, str(b.get("reason", "")), b.get("note", ""), b.get("delay_s", 0.), at=b.get("at"),
+                                                 window=b.get("window")),
         "/api/mark/classify": lambda who, b: backend.classify(who, str(b.get("id", "")), str(b.get("reason", "")), b.get("note", ""),
                                                              b.get("replace_note") is True),
         "/api/reasons": lambda who, b: backend.add_reason(who, str(b.get("label", ""))),

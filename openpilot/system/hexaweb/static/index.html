@@ -111,6 +111,27 @@
   .reasons button.mine { border-style: dashed; }
   .reasons button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
   .pick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  /* Marcar in two steps, nothing to scroll (owner, 04/11): the reasons, three across; then the chosen one, when, the text and
+     Salvar/Cancelar side by side. The second step sits at the top: the keyboard comes from below and never covers it. */
+  .reasons.three { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .reasons.three button { flex-direction: column; justify-content: center; text-align: center; gap: 4px; min-height: 60px; padding: 6px 4px;
+                          font-size: 13.5px; line-height: 1.15; overflow-wrap: anywhere; }
+  .reasons.three .label { grid-column: 1 / -1; margin: 4px 0 0; }
+  #markSheet #pointKinds button { min-height: 52px; padding: 6px 4px; font-size: 13.5px; gap: 3px; }
+  .sheet.up { top: calc(8px + env(safe-area-inset-top, 0px)); bottom: auto; border-radius: 0 0 26px 26px; border-top: 0; border-bottom: 1px solid var(--line-2);
+               max-height: calc(100% - 16px - env(safe-area-inset-top, 0px)); padding-bottom: 14px; }
+  .sheet.up .grab { display: none; }
+  .mchosen { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; margin-top: 10px; padding: 8px 12px; border-radius: 14px;
+             border: 0; background: var(--accent); color: var(--on-accent); font: inherit; font-weight: 700; font-size: 16px; text-align: left; }
+  .mchosen .grow { min-width: 0; } .mchosen .small { color: var(--on-accent); opacity: .8; font-weight: 600; }
+  .sheet .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .sheet .duo .btn { margin: 0; }
+  @media (max-height: 720px) {  /* a small phone: the same two steps, tighter, so they still fit without scrolling */
+    .reasons.three button { min-height: 50px; font-size: 12.5px; gap: 2px; } .reasons.three button svg { width: 20px; height: 20px; }
+    #markSheet #pointKinds button { min-height: 44px; } #markSheet .label { margin-top: 6px !important; } #pointKindsNote { display: none; }
+    .mchosen { min-height: 44px; margin-top: 6px; } #markStep2 label.field { margin: 8px 0 4px !important; } #markWin button { min-height: 40px; }
+    .sheet .duo .btn { min-height: 48px; }
+  }
   .pick.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .pick button { min-height: 48px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); font-weight: 600; padding: 4px; }
   .pick button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
@@ -690,15 +711,14 @@
 
 <!-- The answer to an event: the note, then Salvar or Cancelar. Nothing is saved by the answer tap alone (owner, 03/11). -->
 <div class="scrim hidden" id="evScrim"></div>
-<section class="sheet hidden" id="evSheet" role="dialog" aria-modal="true" aria-labelledby="evTitle">
+<section class="sheet up hidden" id="evSheet" role="dialog" aria-modal="true" aria-labelledby="evTitle">
   <span class="grab"></span>
   <h2 id="evTitle"></h2>
   <div class="small num" id="evWhen"></div>
   <div class="card stack" style="gap:2px;margin-top:12px"><span class="small" data-t>Sua resposta</span><b id="evAnswer"></b></div>
   <label class="field" for="evText" data-t>Observação (opcional)</label>
   <textarea id="evText" rows="2" maxlength="300" data-t-ph="ex.: saiu devagar, demorou uns 3 s" placeholder="ex.: saiu devagar, demorou uns 3 s"></textarea>
-  <button class="btn" id="evSave" type="button" style="margin-top:16px" data-t>Salvar</button>
-  <button class="btn ghost" id="evCancel" type="button" data-t>Cancelar</button>
+  <div class="duo"><button class="btn" id="evSave" type="button" data-t>Salvar</button><button class="btn ghost" id="evCancel" type="button" data-t>Cancelar</button></div>
 </section>
 
 <!-- Silenciar ou reativar um tipo de aviso do copiloto (owner, 04/11): always confirmed, Salvar or Cancelar. -->
@@ -727,20 +747,24 @@
 <div class="scrim hidden" id="markScrim"></div>
 <section class="sheet hidden" id="markSheet" role="dialog" aria-modal="true" aria-labelledby="markTitle">
   <span class="grab"></span>
-  <div class="row" style="align-items:baseline"><h2 class="grow" id="markTitle" data-t>Marcar</h2><span class="small num" id="markWhen"></span></div>
-  <div id="markPoints">
-    <div class="label" style="margin:14px 0 6px" data-t>Ponto neste lugar</div>
-    <div class="reasons" id="pointKinds"></div>
-    <div class="small" id="pointKindsNote" style="margin-top:6px"></div>
-    <div class="label" style="margin:14px 0 6px" data-t>Ou uma marca: o que aconteceu?</div>
+  <div class="row" style="align-items:baseline;gap:8px"><h2 class="grow" id="markTitle" data-t>Marcar</h2><span class="small num" id="markWhen"></span>
+    <button class="link" id="markClose" type="button" data-t>Cancelar</button></div>
+  <div id="markStep1">
+    <div id="markPoints">
+      <div class="label" style="margin:10px 0 6px" data-t>Ponto neste lugar</div>
+      <div class="reasons" id="pointKinds"></div>
+      <div class="small" id="pointKindsNote" style="margin-top:4px"></div>
+    </div>
+    <div class="reasons three" id="reasons" style="margin-top:6px"></div>
   </div>
-  <div class="reasons" id="reasons" style="margin-top:14px"></div>
-  <label class="field" for="markNote" data-t>Comentário (opcional)</label>
-  <textarea id="markNote" rows="2" maxlength="500" data-t-ph="ex.: ponte com junta, volante tremeu" placeholder="ex.: ponte com junta, volante tremeu"></textarea>
-  <div class="small" style="margin-top:6px" data-t>Dá para ditar pelo microfone do teclado.</div>
-  <button class="btn" id="markSave" type="button" style="margin-top:16px" disabled>—</button>
-  <button class="btn ghost" id="markCancel" type="button" data-t>Cancelar</button>
-  <div class="small" style="text-align:center" data-t>A marca só vale depois de Salvar e aciona a bandeira do comma.</div>
+  <div id="markStep2" class="hidden">
+    <button class="mchosen" id="markChosen" type="button"></button>
+    <div id="markWinBox"><label class="field" style="margin:12px 0 6px" data-t>Quando</label><div class="pick" id="markWin"></div></div>
+    <label class="field" for="markNote" style="margin:12px 0 6px" data-t>Comentário (opcional)</label>
+    <textarea id="markNote" rows="2" maxlength="500" data-t-ph="ex.: ponte com junta, volante tremeu" placeholder="ex.: ponte com junta, volante tremeu"></textarea>
+    <div class="duo"><button class="btn" id="markSave" type="button" disabled>—</button><button class="btn ghost" id="markCancel" type="button" data-t>Cancelar</button></div>
+    <div class="small" style="margin-top:8px" data-t>A marca só vale depois de Salvar e aciona a bandeira do comma. Dá para ditar pelo microfone do teclado.</div>
+  </div>
 </section>
 
 <!-- Ponto: radar, sinal, lombada (a blitz saved before still shows). Nothing changes before Salvar. -->
@@ -1564,7 +1588,8 @@ function renderMarks(m) {
   for (const x of done) {
     const row = el("div", "line");
     const txt = el("span", "mk desc"); txt.innerHTML = reasonIcon(x.reason, 20);
-    txt.append(el("span", "", `${hhmmss(x.t)} · ${t(x.label)}${x.note ? " — " + noteOf(x) : ""}${x.source === "comma" ? " " + t("(bandeira)") : x.source === "auto" ? " " + t("(automática)") : ""}`));
+    const win = Array.isArray(x.win) ? (x.win[0] ? tf("últimos {n} s", { n: x.win[0] }) : tf("próximos {n} s", { n: x.win[1] })) : "";
+    txt.append(el("span", "", `${hhmmss(x.t)} · ${t(x.label)}${win ? " (" + win + ")" : ""}${x.note ? " — " + noteOf(x) : ""}${x.source === "comma" ? " " + t("(bandeira)") : x.source === "auto" ? " " + t("(automática)") : ""}`));
     row.append(txt);
     const b = el("button", "link", t("editar")); b.type = "button"; b.addEventListener("click", () => openMark(x, x.reason));
     const acts = el("span", "row"); acts.style.gap = "4px";
@@ -1613,10 +1638,37 @@ function openMarkNow(mark, reason, tapped) {
   markPin = editing.id ? null : api("/api/radars/pin", {});  // the place of this tap, before anything is chosen
   drawPointKinds(null);
   if (markPin) markPin.then((r) => { if (editing && !editing.id) drawPointKinds(r); });
+  markWin = "now";
   drawReasons();
   $("markScrim").classList.remove("hidden"); $("markSheet").classList.remove("hidden");
-  if (carStopped || copOpen) $("markNote").focus({ preventScroll: true });  // the copilot is the passenger's: no box leaves by itself
-  else markTimer = setTimeout(closeMark, EDITOR_MS);
+  if (picked) markStep(2, !editing.id);  // a reason already chosen (Nota, or a mark being edited): straight to the text
+  else { markStep(1); if (!carStopped && !copOpen) markTimer = setTimeout(closeMark, EDITOR_MS); }  // the driver alone: it leaves by itself
+}
+// When it happened, around the tap (owner, 04/11): seconds [before, after] the mark, for whoever reads the log
+const MARK_WIN = { now: "Na hora", b10: "Últimos 10 s", b30: "Últimos 30 s", a30: "Próximos 30 s" };
+const MARK_WIN_S = { now: [0, 0], b10: [10, 0], b30: [30, 0], a30: [0, 30] };
+let markWin = "now";
+function markStep(n, focus = true) {
+  const two = n === 2;
+  $("markStep1").classList.toggle("hidden", two); $("markStep2").classList.toggle("hidden", !two);
+  $("markSheet").classList.toggle("up", two);  // the keyboard comes from below: the box goes up
+  $("markSheet").scrollTop = 0;
+  if (!two) { $("markNote").blur(); return; }
+  clearTimeout(markTimer);
+  const r = marksState.reasons.find((x) => x.key === picked);
+  const c = $("markChosen"); c.replaceChildren();
+  const ic = el("span", ""); ic.innerHTML = reasonIcon(r && !r.custom ? r.key : null, 26);
+  const g = el("span", "grow", r ? t(r.label) : picked || "");
+  c.append(ic, g, el("span", "small", editing && editing.id ? "" : t("trocar")));
+  c.disabled = !!(editing && editing.id);
+  $("markWinBox").classList.toggle("hidden", !!(editing && editing.id));  // a new mark only: an old one keeps its time
+  $("markWin").replaceChildren(...Object.keys(MARK_WIN).map((k) => {
+    const b = el("button", "", t(MARK_WIN[k])); b.type = "button"; b.setAttribute("aria-pressed", k === markWin ? "true" : "false");
+    b.addEventListener("click", () => { markWin = k; markStep(2, false); });
+    return b;
+  }));
+  drawReasons();
+  if (focus) $("markNote").focus({ preventScroll: true });  // inside the tap: the keyboard opens with it
 }
 
 // Three groups (owner, 03/11): what openpilot did, what was on the road, or only a note
@@ -1625,7 +1677,7 @@ function drawReasons() {
   const btn = (r) => {
     const b = el("button", r.custom ? "mine" : ""); b.type = "button"; b.setAttribute("aria-pressed", r.key === picked ? "true" : "false");
     b.innerHTML = reasonIcon(r.custom ? null : r.key, 24); b.append(el("span", "", t(r.label)));
-    b.addEventListener("click", () => { clearTimeout(markTimer); picked = picked === r.key ? null : r.key; drawReasons(); });
+    b.addEventListener("click", () => { clearTimeout(markTimer); picked = r.key; markStep(2); });  // one tap: on to the text
     return b;
   };
   const out = [];
@@ -1657,14 +1709,17 @@ function drawPointKinds(pinned) {
     : (pinned.data.error || t("Sem GPS agora."));
 }
 
-function closeMark() { clearTimeout(markTimer); editing = null; picked = null; $("markScrim").classList.add("hidden"); $("markSheet").classList.add("hidden"); }
+function closeMark() {
+  clearTimeout(markTimer); editing = null; picked = null; $("markNote").blur();
+  $("markScrim").classList.add("hidden"); $("markSheet").classList.add("hidden"); markStep(1);
+}
 
 async function saveMark() {
   const e = editing, note = $("markNote").value;
   if (!e || !picked) return;
   $("markSave").disabled = true;
   const res = e.id ? await api("/api/mark/classify", { id: e.id, reason: picked, note, replace_note: true })
-                   : await api("/api/mark", { reason: picked, note, delay_s: (Date.now() - e.tapped) / 1000 });
+                   : await api("/api/mark", { reason: picked, note, delay_s: (Date.now() - e.tapped) / 1000, window: MARK_WIN_S[markWin] });
   $("markSave").disabled = false;
   if (res.status === 200) {
     if (navigator.vibrate) navigator.vibrate(40);
@@ -3634,6 +3689,8 @@ $("markSave").addEventListener("click", saveMark);
 $("markCancel").addEventListener("click", closeMark);
 $("markScrim").addEventListener("click", closeMark);
 $("markNote").addEventListener("focus", () => clearTimeout(markTimer));
+$("markClose").addEventListener("click", closeMark);
+$("markChosen").addEventListener("click", () => { if (!(editing && editing.id)) markStep(1); });
 $("markNote").addEventListener("input", () => { clearTimeout(markTimer); if (picked === "nota") drawReasons(); });
 $("pendingBtn").addEventListener("click", () => { const p = marksState.marks.filter((m) => !m.reason).pop(); if (p) openMark(p, null); });
 $("readyCard").addEventListener("click", () => { readyOpen = !readyOpen; renderGarage(); });

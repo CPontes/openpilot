@@ -1069,3 +1069,17 @@ def test_skip_and_turning_a_kind_off_never_mark_and_turning_off_asks_first():
   save = html[html.index("function saveMute()"):html.index("function copRadarStrip(")]
   assert "mutedSave()" in save
   assert '"lpCopMuted"' not in (LOGIC.read_text())  # a preference: "Apagar dados" leaves it
+
+
+def test_marking_is_two_steps_with_nothing_to_scroll_and_the_text_box_on_top():
+  # owner, 04/11: "tudo ao alcance do dedo, sem ter que rolar a tela"; the keyboard lost the scroll in the old box
+  html = (LOGIC.parent / "index.html").read_text()
+  sheet = html[html.index('id="markSheet"'):]
+  sheet = sheet[:sheet.index("</section>")]
+  one, two = sheet[sheet.index('id="markStep1"'):sheet.index('id="markStep2"')], sheet[sheet.index('id="markStep2"'):]
+  assert "<textarea" not in one and 'id="reasons"' in one and "<textarea" in two and 'id="markWin"' in two  # no keyboard on step 1
+  assert two.index('id="markSave"') > two.index("<textarea") and 'class="duo"' in two
+  pick = html[html.index("function drawReasons()"):html.index("function drawPointKinds(")]
+  assert "markStep(2)" in pick  # one tap on a reason: on to the text
+  assert '$("markSheet").classList.toggle("up", two)' in html and 'class="sheet up hidden" id="evSheet"' in html  # above the keyboard
+  assert "window: MARK_WIN_S[markWin]" in html

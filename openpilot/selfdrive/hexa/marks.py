@@ -117,6 +117,19 @@ def clean_delay(delay) -> float:
   return round(float(delay), 1)
 
 
+# When it happened, around the tap (owner, 04/11): the instant, the last seconds, or from now on. Seconds before and after
+# the mark's time, for whoever reads the log; the bookmark stays at the tap.
+WINDOW_MAX_S = 60
+
+
+def clean_window(win) -> list[int] | None:
+  try:
+    before, after = (max(0, min(WINDOW_MAX_S, int(x))) for x in win)
+  except (TypeError, ValueError):
+    return None
+  return [before, after] if before or after else None
+
+
 def clean_note(note) -> str:
   return " ".join(str(note or "").split())[:MAX_NOTE]
 
@@ -168,7 +181,7 @@ def set_reason(marks: list[dict] | None, mark_id: str, reason: str, label: str, 
 
 def log_fields(mark: dict) -> dict:
   """What goes to the log with the 'hexa_mark' event."""
-  return {k: mark.get(k) for k in ("id", "t", "mono_ns", "source", "who", "reason", "label", "note", "delay_s")}
+  return {k: mark.get(k) for k in ("id", "t", "mono_ns", "source", "who", "reason", "label", "note", "delay_s", "win")}
 
 
 def public(mark: dict) -> dict:
