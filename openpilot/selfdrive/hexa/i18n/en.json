@@ -1429,5 +1429,11 @@
  "Início: a marca sem motivo no alto, o histórico recolhido em uma linha e os números da viagem a um toque": "Home: the mark without a reason on top, the history folded into one line and the drive numbers one tap away",
  "Viagens: as marcas logo no alto, a comparação de versões com o veredito à vista e as 8 viagens mais novas primeiro": "Trips: the marks right on top, the version comparison with its verdict in sight and the 8 newest drives first",
  "Missões: as 3 próximas e o resto a um toque, e as trilhas em grade": "Missions: the next 3 and the rest one tap away, and the trails in a grid",
- "Opções: uma linha de descrição, e o ↻ diz o que muda na próxima partida": "Options: one line of description, and ↻ tells what changes on the next start"
+ "Opções: uma linha de descrição, e o ↻ diz o que muda na próxima partida": "Options: one line of description, and ↻ tells what changes on the next start",
+ "Radar no Copiloto com ícone e placa": "Cameras in the Copilot with an icon and a sign",
+ "No Copiloto, o ponto da lista diz o que é: radar de velocidade, radar de sinal, lombada ou blitz": "In the Copilot, the point on the list says what it is: speed camera, red-light camera, bump or checkpoint",
+ "O desenho do radar, do semáforo ou da lombada ao lado do nome, e a placa com a velocidade": "The camera, traffic light or bump drawn next to the name, and the sign with the speed",
+ "Na lista «A conferir», o mesmo desenho e a velocidade em cada ponto": "In the «To review» list, the same drawing and the speed on each point",
+ "Base do LizPilot para outros carros": "LizPilot's groundwork for other cars",
+ "No Haval nada muda: o mesmo código passa a servir também o LizPilot de outras marcas": "Nothing changes on the Haval: the same code now also serves LizPilot on other makes"
 }

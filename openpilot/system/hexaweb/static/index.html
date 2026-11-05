@@ -294,6 +294,15 @@
   .evcard .evbtns .btn, .evcard .evthird { min-height: 0; height: 100%; margin: 0; font-size: 17px; }
   .evcard .evthird { width: 100%; border-radius: 14px; background: none; border: 1px solid var(--line-2); color: var(--muted); font-weight: 600; }
   .evcard .evwait { color: var(--muted); font-size: 15px; line-height: 1.5; overflow: hidden; }
+  /* A point of the list (owner, 05/11: "Passou por um ponto da lista" didn't say it was a camera): what it is, drawn and
+     named big, and the speed on the round sign, as on the road. Same 60 px row as any title: the buttons don't move. */
+  .evcard .evpt { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .evcard .evpt .evtitle { flex: 1; min-width: 0; }
+  .evcard .evpt svg { flex: none; }
+  .evglyph { flex: none; width: 56px; height: 56px; border-radius: 14px; display: grid; place-items: center; border: 2px solid currentColor; color: var(--muted); }
+  .evcard.live .evglyph { color: var(--accent); } .evcard.recent .evglyph { color: var(--warn); }
+  .evrow .evglyph { width: 34px; height: 34px; border-radius: 9px; border-width: 1.5px; }
+  .evrow.live .evglyph { color: var(--accent); } .evrow.recent .evglyph { color: var(--warn); }
   .evrow { display: flex; gap: 10px; align-items: center; width: 100%; min-height: 52px; padding: 8px 12px; margin: 0; border-radius: 12px; text-align: left;
            background: var(--card-2); border: 0; border-left: 4px solid var(--line-2); color: var(--text); font: inherit; }
   .evrow.recent { border-left-color: var(--warn); } .evrow.live { border-left-color: var(--accent); }
@@ -778,6 +787,12 @@ const POINT_SVG = {
   sinal: '<rect x="8" y="2.5" width="8" height="16" rx="2.5"/><circle cx="12" cy="6.5" r="1.4"/><circle cx="12" cy="10.5" r="1.4"/><circle cx="12" cy="14.5" r="1.4"/><path d="M12 18.5v3"/>',
   lombada: '<path d="M2 17h4.5c2.2 0 3.2-6 5.5-6s3.3 6 5.5 6H22"/>',
 };
+const POINT_SVG_BLITZ = '<path d="M12 3l5.5 17h-11z"/><path d="M8.6 14.5h6.8M10.1 9.5h3.8M4 20.5h16"/>';
+const POINT_TITLE = { radar: "Radar de velocidade", sinal: "Radar de sinal", blitz: "Blitz", lombada: "Lombada" };
+function pointGlyph(kind, size) {  // the camera, the light, the bump or the cone, in a tile that takes the card's colour
+  const s = size || 34, path = kind === "blitz" ? POINT_SVG_BLITZ : POINT_SVG[kind] || POINT_SVG.radar;
+  return `<span class="evglyph" aria-hidden="true"><svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${path}</svg></span>`;
+}
 let vvOpen = false;  // «A atualização valeu?»: the numbers stay open while Viagens refreshes
 const TRIPS_FIRST = 8, TRIPS_MAX = 15;  // the newest first; the history in Início has them all
 let tripsShown = TRIPS_FIRST;
@@ -1976,7 +1991,7 @@ function clockText(ev, now) {
   if (c.short && LPL.eventStage(ev, now) !== "past") return tf("há {m}:{s}", { m: c.m, s: String(c.s).padStart(2, "0") });
   return `${hhmm(ev.t / 1000)} · ` + tf("há {n} min", { n: c.short ? c.m : c.min });
 }
-function evSource(ev) {
+function evSource(ev, onCard) {
   const d = ev.data || {}, you = ev.v != null ? tf("você a {v} km/h", { v: ev.v }) : "";
   const at = ev.src === "log" ? tf("Do log da viagem, perto das {hora}", { hora: hhmm(ev.t / 1000) }) : tf("Lido às {hora}", { hora: hhmmss(ev.t / 1000) });
   const parts = [at];
@@ -1987,11 +2002,17 @@ function evSource(ev) {
   else if (ev.kind === "stop_long") parts.push(tf("parado há {s} s", { s: d.s }));
   else if (ev.kind === "cut_in") parts.push(tf("a {d} m", { d: d.d }), you);
   else if (ev.kind === "disengage") parts.push(you, d.by ? tf("com o {o}", { o: t(EV_BY[d.by] || d.by) }) : "");
-  else if (ev.kind === "radar" || ev.kind === "bump") {
-    parts.unshift(t(POINT[d.kind] || d.kind) + (d.limit ? " " + speedText({ kind: d.kind, limit: d.limit }) : ""));
+  else if (isPoint(ev)) {
+    if (!onCard) parts.unshift(t(POINT[d.kind] || d.kind) + (d.limit ? " " + speedText({ kind: d.kind, limit: d.limit }) : ""));
+    else if (d.kind === "lombada" && d.limit) parts.unshift(speedText({ kind: d.kind, limit: d.limit }));
     parts.push(d.confirmed ? t("já confirmado") : t("ainda não confirmado"));
   }
   return parts.filter(Boolean).join(" · ");
+}
+function isPoint(ev) { return ev.kind === "radar" || ev.kind === "bump"; }
+function evTitle(ev) {
+  const k = (ev.data || {}).kind;
+  return t(isPoint(ev) && POINT_TITLE[k] ? POINT_TITLE[k] : (EVENT_UI[ev.kind] || {}).title || ev.kind);
 }
 function evMission(ev) { return missions ? LPL.eventMission(ev, missions, mState().active, mProg()) : null; }
 function evButtons(ev, stage) {  // [ok, bad, third]: the same three places on every card
@@ -2013,7 +2034,7 @@ function evTap(ev, which, b) {  // which: 0 ok, 1 bad, 2 third
 }
 function openEv(ev, r, label, mission, tapped) {
   evAns = { ev, r, label, mission: mission || null, tapped: tapped || Date.now() };
-  $("evTitle").textContent = ev ? t((EVENT_UI[ev.kind] || {}).title || ev.kind) : t(mOf(mission).title);
+  $("evTitle").textContent = ev ? evTitle(ev) : t(mOf(mission).title);
   const age = ev ? LPL.eventClock(ev, Date.now()) : null;  // the time it happened and how long ago, once each
   $("evWhen").textContent = ev ? `${hhmmss(ev.t / 1000)} · ` + (age.short && age.m < 2 ? tf("há {m}:{s}", { m: age.m, s: String(age.s).padStart(2, "0") })
     : tf("há {n} min", { n: age.short ? age.m : age.min })) : t("agora");
@@ -2038,7 +2059,7 @@ async function saveEv() {
     toast(a.r === "stop" ? t("Marcado. Quando parar o carro, desligue a opção e reinicie.") : t("Marcado: fica para conferir no log.")); return;
   }
   const ev = a.ev, age = LPL.eventAge(ev, Date.now());
-  const head = `${t((EVENT_UI[ev.kind] || {}).title || ev.kind)}: ${t(a.label)} (${evSource(ev)}${age > EV_DELAY_MAX ? "; " + t("respondido depois") : ""})`;
+  const head = `${evTitle(ev)}: ${t(a.label)} (${evSource(ev)}${age > EV_DELAY_MAX ? "; " + t("respondido depois") : ""})`;
   // the mark goes back to the event's time while the comma can still place it (marks.py MAX_MARK_DELAY); later, it's marked
   // now and its note says so. An event from before this drive never goes to this drive's log: it stays on the phone
   // with the car off (the review), at: the comma puts it at the event's time inside the drive, with no bookmark (CTO review of app-12)
@@ -2101,8 +2122,15 @@ function evCard(ev, stage, now) {
   const [okL, badL, thirdL] = evButtons(ev, stage), btns = el("div", "evbtns");
   [[okL, "btn", 0], [badL, "btn warn", 1]].forEach(([label, cls, i]) => { const b = el("button", cls, t(label)); b.type = "button"; b.addEventListener("click", () => evTap(ev, i, b)); btns.append(b); });
   const third = el("button", "evthird", t(thirdL)); third.type = "button"; third.addEventListener("click", () => evTap(ev, 2, third));
-  c.append(head, el("div", "evtitle", t((EVENT_UI[ev.kind] || {}).title || ev.kind)), el("div", "evsrc", evSource(ev)), el("div", "evmis"),
-           bar, el("div", ""), btns, third);
+  let title = el("div", "evtitle", evTitle(ev));
+  if (isPoint(ev)) {
+    const d = ev.data || {}, row = el("div", "evpt");
+    row.insertAdjacentHTML("beforeend", pointGlyph(d.kind, 38));
+    row.append(title);
+    if (d.limit) row.insertAdjacentHTML("beforeend", d.kind === "lombada" ? bumpSign(d.limit, 56) : sign(d.limit, 56));
+    title = row;
+  }
+  c.append(head, title, el("div", "evsrc", evSource(ev, true)), el("div", "evmis"), bar, el("div", ""), btns, third);
   evClock(c, ev, stage, now);
   return c;
 }
@@ -2167,7 +2195,9 @@ function renderCop() {
     out.push(el("div", "label", tf("A conferir · {n}", { n: v.pending.length })));
     for (const e of v.pending) {
       const b = el("button", "evrow " + e.stage); b.type = "button";
-      b.append(el("span", "x", t((EVENT_UI[e.kind] || {}).title || e.kind)), el("span", "w", clockText(e, now)));
+      if (isPoint(e)) b.insertAdjacentHTML("beforeend", pointGlyph((e.data || {}).kind, 22));
+      const lim = isPoint(e) && (e.data || {}).limit ? " · " + speedText({ kind: e.data.kind, limit: e.data.limit }) : "";
+      b.append(el("span", "x", evTitle(e) + lim), el("span", "w", clockText(e, now)));
       b.addEventListener("click", () => { evPick = e.id; evPickAt = Date.now(); renderCop(); window.scrollTo(0, 0); $("copSheet").scrollTo(0, 0); });
       out.push(b);
     }

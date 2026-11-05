@@ -20,7 +20,15 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "04/11", "8066720", "LizPilot com menos rolagem",
+  Release("", "05/11", "8066720", "Radar no Copiloto com ícone e placa",
+          ("No Copiloto, o ponto da lista diz o que é: radar de velocidade, radar de sinal, lombada ou blitz",
+           "O desenho do radar, do semáforo ou da lombada ao lado do nome, e a placa com a velocidade",
+           "Na lista «A conferir», o mesmo desenho e a velocidade em cada ponto"),
+          driving=False),
+  Release("fd87840", "04/11", "8066720", "Base do LizPilot para outros carros",
+          ("No Haval nada muda: o mesmo código passa a servir também o LizPilot de outras marcas",),
+          driving=False),
+  Release("d84cc30", "04/11", "8066720", "LizPilot com menos rolagem",
           ("Início: a marca sem motivo no alto, o histórico recolhido em uma linha e os números da viagem a um toque",
            "Viagens: as marcas logo no alto, a comparação de versões com o veredito à vista e as 8 viagens mais novas primeiro",
            "Missões: as 3 próximas e o resto a um toque, e as trilhas em grade",

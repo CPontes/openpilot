@@ -1429,5 +1429,11 @@
  "Início: a marca sem motivo no alto, o histórico recolhido em uma linha e os números da viagem a um toque": "Inicio: la marca sin motivo arriba, el historial plegado en una línea y los números del viaje a un toque",
  "Viagens: as marcas logo no alto, a comparação de versões com o veredito à vista e as 8 viagens mais novas primeiro": "Viajes: las marcas arriba, la comparación de versiones con el veredicto a la vista y los 8 viajes más nuevos primero",
  "Missões: as 3 próximas e o resto a um toque, e as trilhas em grade": "Misiones: las 3 próximas y el resto a un toque, y las rutas en cuadrícula",
- "Opções: uma linha de descrição, e o ↻ diz o que muda na próxima partida": "Opciones: una línea de descripción, y el ↻ indica lo que cambia en el próximo arranque"
+ "Opções: uma linha de descrição, e o ↻ diz o que muda na próxima partida": "Opciones: una línea de descripción, y el ↻ indica lo que cambia en el próximo arranque",
+ "Radar no Copiloto com ícone e placa": "Radares en el Copiloto con ícono y señal",
+ "No Copiloto, o ponto da lista diz o que é: radar de velocidade, radar de sinal, lombada ou blitz": "En el Copiloto, el punto de la lista dice qué es: radar de velocidad, fotomulta de semáforo, reductor o retén",
+ "O desenho do radar, do semáforo ou da lombada ao lado do nome, e a placa com a velocidade": "El dibujo del radar, del semáforo o del reductor junto al nombre, y la señal con la velocidad",
+ "Na lista «A conferir», o mesmo desenho e a velocidade em cada ponto": "En la lista «Por revisar», el mismo dibujo y la velocidad en cada punto",
+ "Base do LizPilot para outros carros": "La base de LizPilot para otros autos",
+ "No Haval nada muda: o mesmo código passa a servir também o LizPilot de outras marcas": "En el Haval no cambia nada: el mismo código ahora también sirve a LizPilot en otras marcas"
 }
