@@ -20,7 +20,12 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "05/11", "8066720", "Missões que avançam na hora",
+  Release("", "05/11", "8066720", "Direção: o atraso não muda sozinho",
+          ("O atraso que o comma usa para guiar fica em 0,50 s, como hoje: nada muda ao dirigir",
+           "Antes, um trecho de estrada acima de 80 km/h faria o comma trocar sozinho para ~0,27 s, aprendido numa versão antiga",
+           "O comma continua medindo e gravando o atraso, para um teste planejado"),
+          driving=False),
+  Release("b241578", "05/11", "8066720", "Missões que avançam na hora",
           ("Missões: o que você faz conta na hora, como «feita · a conferir»; o nível e os selos já sobem",
            "Depois o CTO confere no log: aceita, ou devolve com o motivo e o celular pede para refazer",
            "«Instalar a versão nova» espera a versão que o comma roda; «200 km» conta numa mesma semana"),

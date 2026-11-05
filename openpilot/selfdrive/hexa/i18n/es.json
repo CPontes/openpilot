@@ -1597,5 +1597,9 @@
  "Missões que avançam na hora": "Misiones que avanzan al instante",
  "Missões: o que você faz conta na hora, como «feita · a conferir»; o nível e os selos já sobem": "Misiones: lo que haces cuenta al instante, como «hecha · por revisar»; el nivel y las insignias ya suben",
  "Depois o CTO confere no log: aceita, ou devolve com o motivo e o celular pede para refazer": "Después el CTO revisa el log: la acepta, o la devuelve con el motivo y el celular pide rehacerla",
- "«Instalar a versão nova» espera a versão que o comma roda; «200 km» conta numa mesma semana": "«Instalar la versión nueva» espera la versión que corre el comma; «200 km» cuenta en una misma semana"
+ "«Instalar a versão nova» espera a versão que o comma roda; «200 km» conta numa mesma semana": "«Instalar la versión nueva» espera la versión que corre el comma; «200 km» cuenta en una misma semana",
+ "Direção: o atraso não muda sozinho": "Dirección: el retardo no cambia solo",
+ "O atraso que o comma usa para guiar fica em 0,50 s, como hoje: nada muda ao dirigir": "El retardo con que el comma guía queda en 0,50 s, como hoy: nada cambia al manejar",
+ "Antes, um trecho de estrada acima de 80 km/h faria o comma trocar sozinho para ~0,27 s, aprendido numa versão antiga": "Antes, un tramo de ruta arriba de 80 km/h haría que el comma cambiara solo a ~0,27 s, aprendido en una versión vieja",
+ "O comma continua medindo e gravando o atraso, para um teste planejado": "El comma sigue midiendo y grabando el retardo, para una prueba planificada"
 }

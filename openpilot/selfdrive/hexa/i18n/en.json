@@ -1597,5 +1597,9 @@
  "Missões que avançam na hora": "Missions that advance at once",
  "Missões: o que você faz conta na hora, como «feita · a conferir»; o nível e os selos já sobem": "Missions: what you do counts at once, as «done · to check»; the level and the badges go up right away",
  "Depois o CTO confere no log: aceita, ou devolve com o motivo e o celular pede para refazer": "Then the CTO checks the log: accepts it, or sends it back with the reason and the phone asks you to redo it",
- "«Instalar a versão nova» espera a versão que o comma roda; «200 km» conta numa mesma semana": "«Install the new version» waits for the version the comma runs; «200 km» counts within one week"
+ "«Instalar a versão nova» espera a versão que o comma roda; «200 km» conta numa mesma semana": "«Install the new version» waits for the version the comma runs; «200 km» counts within one week",
+ "Direção: o atraso não muda sozinho": "Steering: the delay doesn't change by itself",
+ "O atraso que o comma usa para guiar fica em 0,50 s, como hoje: nada muda ao dirigir": "The delay the comma steers with stays at 0.50 s, as today: nothing changes while driving",
+ "Antes, um trecho de estrada acima de 80 km/h faria o comma trocar sozinho para ~0,27 s, aprendido numa versão antiga": "Before, a stretch of highway above 80 km/h would make the comma switch by itself to ~0.27 s, learned on an old version",
+ "O comma continua medindo e gravando o atraso, para um teste planejado": "The comma keeps measuring and logging the delay, for a planned test"
 }
