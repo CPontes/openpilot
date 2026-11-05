@@ -12,6 +12,7 @@ VIN = "LGWEF4A59RH123456"
 DONGLE = "0123456789abcdef"
 SERIAL = "a1b2c3d4e5"
 T0 = 1_000 * NS
+ALLOW = {0x1A0, 0x2B0, 0x3E1, 0x7E8}  # as if this car's DBC described every address of the test drive
 
 
 class FakeStore:
@@ -106,7 +107,7 @@ def recorded():
 
 def test_cut_keeps_only_the_window_and_the_listed_services(recorded):
   center = T0 + 60 * NS
-  payload, stats = share.cut(recorded, center, vin=VIN, hide=[DONGLE, SERIAL])
+  payload, stats = share.cut(recorded, center, vin=VIN, hide=[DONGLE, SERIAL], can_allow=ALLOW)
   raw, evs = decode(payload)
   times = [e.logMonoTime for e in evs]
   assert min(times) >= center - int(share.BEFORE_S * NS) and max(times) <= center + int(share.AFTER_S * NS)
@@ -118,7 +119,7 @@ def test_cut_keeps_only_the_window_and_the_listed_services(recorded):
 
 
 def test_cut_has_no_vin_no_gps_no_device(recorded):
-  payload, stats = share.cut(recorded, T0 + 60 * NS, vin=VIN, hide=[DONGLE, SERIAL])
+  payload, stats = share.cut(recorded, T0 + 60 * NS, vin=VIN, hide=[DONGLE, SERIAL], can_allow=ALLOW)
   raw, evs = decode(payload)
   for secret in (VIN, VIN[-8:], VIN[:8], DONGLE):
     assert secret.encode() not in raw
@@ -134,10 +135,11 @@ def test_cut_has_no_vin_no_gps_no_device(recorded):
 
 def test_the_diagnostic_can_is_dropped_even_without_a_vin_to_look_for():
   evs = events(drive(seconds=2., vin_on_can=False))
-  payload, stats = share.cut(evs, T0 + NS // 2, vin="", before_s=1., after_s=1.)
+  payload, stats = share.cut(evs, T0 + NS // 2, vin="", can_allow=ALLOW, before_s=1., after_s=1.)
   _, out = decode(payload)
   assert not any(c.address == 0x7E8 for e in out if e.which() == "can" for c in e.can)
-  assert stats["vin_checked"] is False and stats["can_frames_dropped"] == 1
+  assert stats["can_frames_dropped"] == 1
+  assert stats["vin_checked"]  # no VIN given, but the carParams in the window has it: that one is looked for
 
 
 def test_a_cut_with_an_identifier_left_is_refused():
@@ -294,8 +296,8 @@ class World:
                                cutter=self.cutter, share_dir=tmp_path / "share")
     self.cut_error: str | None = None
 
-  def cutter(self, log_root, mark, vin="", hide=()):
-    self.cuts.append({"mark": mark, "vin": vin, "hide": list(hide)})
+  def cutter(self, log_root, mark, vin="", hide=(), model=None):
+    self.cuts.append({"mark": mark, "vin": vin, "hide": list(hide), "model": model})
     if self.cut_error:
       raise share.ShareError(self.cut_error)
     return b"\x28\xb5\x2f\xfdcut", {"services": {"carState": 1}}
@@ -317,7 +319,7 @@ def test_a_mark_is_cut_parked_and_sent_on_wifi(tmp_path):
   assert w.sharer.enqueue(MARK) == (200, {"ok": True, "item": {"id": MARK["id"], "state": "fila", "tries": 0, "added": 50_000}})
   assert w.sharer.step(offroad=False, network_ok=True, marks=[MARK]) == "nada"  # driving: no cut
   assert w.sharer.step(True, False, [MARK]) == "cortado"
-  assert w.cuts[0]["vin"] == VIN and set(w.cuts[0]["hide"]) == {DONGLE, SERIAL}
+  assert w.cuts[0]["vin"] == VIN and set(w.cuts[0]["hide"]) == {DONGLE, SERIAL} and w.cuts[0]["model"] == "GWM_HAVAL_H6"
   assert w.sharer.step(True, False, [MARK]) == "esperando rede"
   assert w.sharer.step(True, True, [MARK]) == "enviado"
   assert w.receiver.calls == ["/v1/register", "/v1/share"]
@@ -351,7 +353,7 @@ def test_a_refused_share_is_an_error_at_once(tmp_path):
   w = World(tmp_path)
   w.sharer.enqueue(MARK)
   w.sharer.step(True, True, [MARK])
-  w.sharer._register()
+  w.sharer._register(share.device(w.store))
   w.receiver.answer = 413
   assert w.sharer.step(True, True, [MARK]) == "erro"
   assert w.sharer.state()["items"][0]["error"] == "O receptor recusou este trecho."
@@ -382,7 +384,7 @@ def test_the_receiver_forgetting_the_key_registers_again(tmp_path):
   w = World(tmp_path)
   w.sharer.enqueue(MARK)
   w.sharer.step(True, True, [MARK])
-  w.sharer._register()
+  w.sharer._register(share.device(w.store))
   w.receiver.devices.clear()
   assert w.sharer.step(True, True, [MARK]) == "tentar depois"
   w.t += 100
@@ -414,7 +416,7 @@ def test_cancelled_while_being_cut_leaves_nothing(tmp_path):
     return out
   w.sharer.cutter = cancel_during
   assert w.sharer.step(True, True, [MARK]) == "cancelado"
-  assert not list((tmp_path / "share").iterdir()) and w.sharer.state()["items"] == []
+  assert not (tmp_path / "share").exists() and w.sharer.state()["items"] == []
 
 
 def test_forget_deletes_here_and_there_and_starts_a_new_key(tmp_path):
@@ -454,15 +456,36 @@ def test_without_a_receiver_the_queue_waits(tmp_path):
   assert w.sharer.step(True, True, [MARK]) == "esperando rede" and not w.sharer.state()["receiver"]
 
 
-def test_a_step_never_raises(tmp_path):
+def test_a_log_that_cant_be_read_is_tried_three_times_and_doesnt_block_the_rest(tmp_path):
   w = World(tmp_path)
+  other = {**MARK, "id": "ef56ab78"}
   w.sharer.enqueue(MARK)
-  w.sharer.cutter = lambda *a, **k: 1 / 0
+  w.sharer.enqueue(other)
+  real = w.cutter
+
+  def broken_for_mark(log_root, mark, **kw):
+    if mark["id"] == MARK["id"]:
+      raise RuntimeError("KjException: truncated")  # a minute cut short when the power went
+    return real(log_root, mark, **kw)
+  w.sharer.cutter = broken_for_mark
+  assert w.sharer.step(True, False, [MARK, other]) == "tentar depois"
+  assert w.sharer.step(True, False, [MARK, other]) == "cortado"  # the other one isn't held behind it
+  for _ in range(2):
+    w.t += 10_000
+    w.sharer.step(True, False, [MARK, other])
+  item = next(i for i in w.sharer.state()["items"] if i["id"] == MARK["id"])
+  assert item["state"] == "erro" and item["tries"] == 3
+
+
+def test_a_step_never_raises(tmp_path, monkeypatch):
+  w = World(tmp_path)
+  monkeypatch.setattr(share, "_queue", lambda store: 1 / 0)
   assert w.sharer.step(True, True, [MARK]) == "falhou"
 
 
-def test_the_real_cut_through_the_worker(tmp_path):
+def test_the_real_cut_through_the_worker(tmp_path, monkeypatch):
   root = write_segments(tmp_path / "realdata")
+  monkeypatch.setattr(share, "can_allowlist", lambda model: ALLOW if model == "GWM_HAVAL_H6" else None)
   w = World(tmp_path)
   w.sharer.cutter = share.cut_mark
   mark = {**MARK, "t": 10_000 + 60 + 30, "mono_ns": T0 + 90 * NS, "delay_s": 0.}
@@ -476,3 +499,192 @@ def test_the_real_cut_through_the_worker(tmp_path):
   assert m["cut"]["can_addresses_with_vin"] == ["0:0x3e1"]
   assert w.sharer.step(True, True, [mark]) == "enviado"
   assert root.is_dir()
+
+
+# *** the independent review of c92a2e7 (codeweb-06): one test per finding ***
+
+def can_event(t, frames):
+  from openpilot.cereal import log
+  ev = log.Event.new_message(logMonoTime=t, valid=True)
+  lst = ev.init("can", len(frames))
+  for dst, (a, d, src) in zip(lst, frames, strict=True):
+    dst.address, dst.dat, dst.src = a, d, src
+  return events(ev.to_bytes())[0]
+
+
+def test_only_the_cars_own_dbc_addresses_leave_without_the_private_ones():
+  allow = share.can_allowlist("GWM_HAVAL_H6")
+  assert allow and 0x13B in allow and 0x245 in allow  # WHEEL_SPEEDS, STEER_SENSOR
+  assert 0x27F not in allow  # REQ_REVIEW_ODOMETER: how far the car went
+  assert share.can_allowlist("NOT_A_CAR") is None and share.can_allowlist(None) is None
+  for name in ("GPS_LAT", "NaviLatitude", "ODOMETER", "Odo_Km", "CLOCK_HOUR", "PHONE_NAME", "VIN_PART1", "BT_DEVICE", "RadioStationText"):
+    assert share.private_signal(name), name
+  for name in ("WHEEL_SPEEDS", "STEER_ANGLE", "LONG_ACCEL", "ACC_TIME_GAP", "CHARGE_LEVEL", "LANE_LINE", "COUNTER", "CRC_X7F"):
+    assert not share.private_signal(name), name
+
+
+def test_no_dbc_no_can(recorded):
+  payload, stats = share.cut(recorded, T0 + 60 * NS, vin=VIN, can_allow=None)
+  _, evs = decode(payload)
+  assert not any(len(e.can) for e in evs if e.which() == "can") and stats["can"] == "none" and stats["can_addresses"] == 0
+
+
+def test_an_address_that_is_mostly_text_is_dropped_and_a_crc_that_looks_like_text_is_not():
+  base = events(drive(seconds=2., vin_on_can=False))
+  name = b"Joao 9988"
+  extra = [can_event(T0 + i * NS // 10, [(0x5A0, (b"\x01" + name)[:8], 0), (0x5B0, b"a3abu+\x00\x00" if i == 3 else bytes(8), 0)])
+           for i in range(20)]
+  payload, stats = share.cut(base + extra, T0 + NS, can_allow=ALLOW | {0x5A0, 0x5B0}, before_s=1., after_s=1.)
+  _, evs = decode(payload)
+  addrs = {c.address for e in evs if e.which() == "can" for c in e.can}
+  assert 0x5A0 not in addrs and 0x5B0 in addrs and stats["can_addresses_with_text"] == ["0:0x5a0"]
+  raw, _ = decode(payload)
+  assert b"Joao" not in raw
+
+
+def test_the_vin_of_the_drive_is_looked_for_even_without_the_persistent_one(recorded):
+  payload, stats = share.cut(recorded, T0 + 60 * NS, vin="", can_allow=ALLOW)
+  raw, _ = decode(payload)
+  assert stats["vin_checked"] and stats["can_addresses_with_vin"] == ["0:0x3e1"] and VIN.encode() not in raw
+  assert not share.valid_vin("0" * 17) and not share.valid_vin("") and share.valid_vin(VIN)
+  assert share.scrubbed(b"0" * 40, ["0" * 17]) == []  # "000…0" is no identifier
+
+
+def test_a_parked_mark_in_a_short_last_minute_gets_its_own_window(tmp_path):
+  """Review finding 3: the last minute of a drive is short, and its mtime is not 60 s after its start."""
+  import zstandard
+  root = tmp_path / "realdata"
+  route = "00000010--abcdef1234"
+  for n, (secs, end) in enumerate(((60., 10_060.), (20., 10_080.))):
+    d = root / f"{route}--{n}"
+    d.mkdir(parents=True)
+    f = d / "rlog.zst"
+    f.write_bytes(zstandard.ZstdCompressor().compress(drive(seconds=secs, start=T0 + n * 60 * NS)))
+    os.utime(f, (end, end))
+  # parked, no bookmark: 10 s into the short last minute (wall 10_070), and 40 s into the full one (wall 10_040)
+  for t, expected in ((10_070., T0 + 70 * NS), (10_040., T0 + 40 * NS)):
+    payload, _ = share.cut_mark(str(root), {"id": "m1", "t": t, "mono_ns": None})
+    _, evs = decode(payload)
+    times = [e.logMonoTime for e in evs]
+    assert min(times) == pytest.approx(max(T0, expected - 30 * NS), abs=NS // 20), t
+    assert max(times) == pytest.approx(min(T0 + 80 * NS - NS // 100, expected + 15 * NS), abs=NS // 20), t
+
+
+def test_a_broken_minute_next_door_is_skipped_and_a_broken_one_is_said(tmp_path):
+  root = write_segments(tmp_path / "realdata")
+  broken = root / "00000010--abcdef1234--0" / "rlog.zst"
+  broken.write_bytes(b"\x28\xb5\x2f\xfd broken")  # the power went
+  os.utime(broken, (10_060, 10_060))
+  mono = T0 + 70 * NS
+  payload, _ = share.cut_mark(str(root), {"id": "m1", "t": 10_000 + 60 + 10, "mono_ns": mono})
+  _, evs = decode(payload)
+  assert min(e.logMonoTime for e in evs) >= T0 + 60 * NS  # only its own minute
+  with pytest.raises(share.ShareError, match="Não foi possível ler"):
+    share.cut_mark(str(root), {"id": "m1", "t": 10_000 + 30, "mono_ns": None})
+
+
+def test_the_bookmark_is_checked_after_the_phones_delay(tmp_path):
+  root = write_segments(tmp_path / "realdata")
+  mono = T0 + 100 * NS
+  payload, _ = share.cut_mark(str(root), {"id": "m1", "t": 10_000 + 60 + 40, "mono_ns": mono, "delay_s": 3600.})  # not a phone delay
+  _, evs = decode(payload)
+  assert max(e.logMonoTime for e in evs) == pytest.approx(mono + 15 * NS, abs=NS // 20)
+
+
+def test_a_parked_marks_hours_dont_go_in_the_manifest(tmp_path):
+  w = World(tmp_path)
+  mark = {**MARK, "delay_s": 5400.}  # marked an hour and a half after it happened
+  w.sharer.enqueue(mark)
+  w.sharer.step(True, True, [mark])
+  w.sharer.step(True, True, [mark])
+  assert w.receiver.shares[0][1]["mark"]["delay_s"] is None
+
+
+def test_forget_while_registering_still_deletes_on_the_receiver(tmp_path):
+  """Review finding 5: forget lands while the worker is registering; the registration must not undo it."""
+  w = World(tmp_path)
+  w.sharer.enqueue(MARK)
+  w.sharer.step(True, False, [MARK])
+  real = w.receiver.__call__
+
+  def forget_during_register(url, body, hdrs):
+    out = real(url, body, hdrs)
+    if url.endswith("/v1/register"):
+      w.sharer.forget()
+    return out
+  w.sharer.post = forget_during_register
+  w.sharer.step(True, True, [MARK])
+  assert w.store.get(share.DEVICE_PARAM)["forget"]
+  assert w.sharer.step(True, True, [MARK]) == "apagado"
+  assert w.receiver.devices == {} and w.receiver.shares == []
+
+
+def test_cancel_while_sending_is_refused_and_forget_while_sending_reaches_the_receiver(tmp_path):
+  w = World(tmp_path)
+  w.sharer.enqueue(MARK)
+  w.sharer.step(True, False, [MARK])
+  real = w.receiver.__call__
+  answers = {}
+
+  def during_send(url, body, hdrs):
+    if url.endswith("/v1/share"):
+      answers["cancel"] = w.sharer.cancel(MARK["id"])
+      w.sharer.forget()
+    return real(url, body, hdrs)
+  w.sharer.post = during_send
+  assert w.sharer.step(True, True, [MARK]) == "enviado"
+  assert answers["cancel"][0] == 409  # it's on its way: only "apagar meus envios" can take it back
+  assert w.receiver.shares and w.store.get(share.DEVICE_PARAM)["forget"]
+  w.sharer.post = real
+  assert w.sharer.step(True, True, [MARK]) == "apagado" and w.receiver.shares == []
+
+
+def test_forget_after_a_401_still_asks_the_receiver(tmp_path):
+  """Review finding 6: a 401 makes the comma register again, but what it sent before is still there."""
+  w = World(tmp_path)
+  w.sharer.enqueue(MARK)
+  w.sharer.step(True, True, [MARK])
+  w.sharer.step(True, True, [MARK])
+  other = {**MARK, "id": "ef56ab78"}
+  w.sharer.enqueue(other)
+  w.sharer.step(True, False, [other])
+  w.receiver.answer = 401
+  w.sharer.step(True, True, [other])
+  assert w.store.get(share.DEVICE_PARAM)["registered"] is False
+  w.receiver.answer = None
+  w.sharer.forget()
+  assert w.store.get(share.DEVICE_PARAM)["forget"]
+  assert w.sharer.step(True, True, [MARK]) == "apagado" and w.receiver.shares == []
+
+
+def test_a_clock_that_jumps_back_doesnt_hold_the_queue(tmp_path):
+  w = World(tmp_path)
+  w.sharer.enqueue(MARK)
+  w.sharer.step(True, True, [MARK])
+  w.receiver.answer = 503
+  w.sharer.step(True, True, [MARK])
+  w.receiver.answer = None
+  w.t -= 86400 * 30  # the comma's clock corrected a month back after boot
+  w.receiver.now = lambda: w.t
+  assert w.sharer.step(True, True, [MARK]) == "enviado"
+
+
+def test_the_oldest_items_go_with_their_cuts(tmp_path):
+  w = World(tmp_path)
+  w.sharer.enqueue(MARK)
+  w.sharer.step(True, False, [MARK])
+  q = w.store.get(share.QUEUE_PARAM)
+  w.store.put(share.QUEUE_PARAM, q + [{"id": f"s{i:07d}", "state": "enviado"} for i in range(share.MAX_KEPT)])
+  w.sharer.enqueue({**MARK, "id": "newone00"})
+  assert not list((tmp_path / "share").iterdir()) and len(w.store.get(share.QUEUE_PARAM)) == share.MAX_KEPT
+
+
+def test_the_cut_runs_in_a_low_priority_child_and_stops_when_the_car_turns_on(tmp_path):
+  root = write_segments(tmp_path / "realdata", minutes=2)
+  mark = {"id": "m1", "t": 10_000 + 60 + 30, "mono_ns": T0 + 90 * NS, "delay_s": 0.}
+  payload, stats = share.cut_in_child(str(root), mark, vin=VIN, hide=[DONGLE], model="GWM_HAVAL_H6")
+  assert stats["seconds"] == pytest.approx(45., abs=0.1) and stats["can"] == "dbc" and decode(payload)[1]
+  with pytest.raises(share.CutInterrupted):
+    share.cut_in_child(str(root), mark, vin=VIN, offroad=lambda: False)
+  with pytest.raises(share.ShareError, match="não está mais"):
+    share.cut_in_child(str(root), {**mark, "t": 99_999})

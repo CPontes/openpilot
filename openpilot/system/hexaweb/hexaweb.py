@@ -1552,7 +1552,9 @@ def main():
   from openpilot.selfdrive.hexa import edition
   backend = PanelBackend(params, vehicle_state, log_event=lambda fields: cloudlog.event("hexa_mark", **fields),
                          log_root=Paths.log_root(), live_state=live_state, radar_path=radars.updated_path(), gps_fix=gps_fix,
-                         health_state=health_state, sharer=hexa_share.Sharer(params, Paths.log_root(), edition=edition.EDITION))
+                         health_state=health_state,
+                         sharer=hexa_share.Sharer(params, Paths.log_root(), edition=edition.EDITION,
+                                                  offroad=lambda: not backend.vehicle_state().onroad))  # the car on stops a cut
 
   def share_worker():
     # one cut or one send at a time, car off for the cut, a network that isn't metered for the send

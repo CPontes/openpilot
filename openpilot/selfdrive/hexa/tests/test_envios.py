@@ -71,3 +71,16 @@ def test_a_package_that_doesnt_match_its_manifest_is_refused(tmp_path):
     assert "não bate" in str(e)
   else:
     raise AssertionError("opened a broken package")
+
+
+def test_a_broken_download_is_not_kept_and_typed_text_is_shown_plain(tmp_path):
+  envios = tool()
+  row = {"id": "s2", "object": "x/s2.lzs", "created_at": "2026-11-05T00:00:00Z", "note": "a\x1b[31mb\x07c", "label": "x\ny"}
+  op = Opener({"https://p.supabase.co/storage/": b"LZS1 not really"})
+  try:
+    envios.download("https://p.supabase.co", "svc", row, tmp_path / "out", opener=op)
+  except (ValueError, SystemExit):
+    pass
+  assert not (tmp_path / "out" / "s2.lzs").exists()
+  line = envios.describe(row)
+  assert "\x1b" not in line and "\x07" not in line and "\n" not in line and line.startswith("2026-11-05  s2")

@@ -161,3 +161,55 @@ test("unpack refuses lengths that don't fit", () => {
   new DataView(b.buffer).setUint32(4, 999);
   assert.throws(() => unpack(b));
 });
+
+// *** the independent review of c92a2e7 (codeweb-06) ***
+
+test("the day is kept, never the hour it arrived", async () => {
+  const w = world();
+  w.tick(12 * 3600 + 1234);
+  await register(w);
+  await call(w, "/v1/share", await pkg());
+  assert.equal(w.store.shares[0].created_at % 86400, 0);
+  assert.equal(w.store.devices.get(DEVICE)!.at % 86400, 0);
+});
+
+test("a day's bytes have a ceiling for everyone", async () => {
+  const big = new Uint8Array(600);
+  big.set([0x28, 0xb5, 0x2f, 0xfd]);
+  const size = (await pkg({ mark: { id: "bbbbbbb1" } }, big)).length;
+  const w = world({ bytesPerDayAll: 2 * size + 10 });
+  await register(w);
+  assert.equal((await call(w, "/v1/share", await pkg({ mark: { id: "bbbbbbb1" } }, big))).status, 201);
+  assert.equal((await call(w, "/v1/share", await pkg({ mark: { id: "bbbbbbb2" } }, big))).status, 201);
+  assert.equal((await call(w, "/v1/share", await pkg({ mark: { id: "bbbbbbb3" } }, big))).status, 429);
+});
+
+test("what an owner typed is plain text, and inert in the notice", async () => {
+  const sent: any[] = [];
+  const fake = (async (_u: string, init: any) => { sent.push(JSON.parse(init.body)); return new Response("{}", { status: 201 }); }) as typeof fetch;
+  const w = world({ notify: githubNotifier("t", "CPontes/lizpilot-envios", fake) });
+  await register(w);
+  const note = "olha @CPontes [aqui](https://evil.example) \u001b[31mvermelho\u0007\n![x](http://img)";
+  await call(w, "/v1/share", await pkg({ mark: { id: "ccccccc1", label: "curva\u0000 #1", note } }));
+  const row = w.store.shares[0];
+  assert.ok(!/[\u0000-\u001f\u007f]/.test(row.note) && !/[\u0000-\u001f]/.test(row.label!));
+  const body = sent[0].body as string, title = sent[0].title as string;
+  assert.ok(!body.includes("@CPontes") && !body.includes("](https://") && !body.includes("![x]"));
+  assert.ok(!title.includes("#1") || title.includes("\\#1"));
+});
+
+test("a body without Content-Length is cut at the limit, not read whole", async () => {
+  const w = world({ maxBytes: 64 });
+  await register(w);
+  let pulled = 0;
+  const stream = new ReadableStream({
+    pull(c) { pulled += 1; if (pulled > 1000) c.close(); else c.enqueue(new Uint8Array(32)); },
+  });
+  const ts = w.now();
+  const req = new Request("https://x/v1/share", {
+    method: "POST", body: stream, duplex: "half",
+    headers: { "X-LizPilot-Time": String(ts), "X-LizPilot-Device": DEVICE, "X-LizPilot-Signature": "00".repeat(32) },
+  } as RequestInit);
+  assert.equal((await handle(req, w.store, w.cfg)).status, 413);
+  assert.ok(pulled < 10);
+});

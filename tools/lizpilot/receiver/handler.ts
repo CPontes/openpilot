@@ -17,7 +17,7 @@ export interface ShareRow {
   id: string;
   device: string;
   mark_id: string;
-  created_at: number; // s
+  created_at: number; // s, the day only (00:00 UTC): when it arrived would say when the owner parked
   brand: string | null;
   model: string | null;
   reason: string | null;
@@ -36,6 +36,7 @@ export interface Store {
   addDevice(id: string, key: string, now: number): Promise<void>;
   devicesSince(since: number): Promise<number>;
   sharesSince(device: string | null, since: number): Promise<number>; // null: every device
+  bytesSince(since: number): Promise<number>; // every device
   findShare(device: string, markId: string): Promise<string | null>;
   putShare(row: ShareRow, data: Uint8Array): Promise<void>;
   forgetDevice(id: string): Promise<number>; // its packages, its rows and itself; returns how many packages
@@ -47,11 +48,20 @@ export interface Config {
   maxBytes: number;
   perDevicePerDay: number;
   perDayAll: number;
+  bytesPerDayAll: number;
   newDevicesPerDay: number;
   notify?: (row: ShareRow) => Promise<void>;
 }
 
-export const DEFAULTS = { maxBytes: 8 * 1024 * 1024, perDevicePerDay: 50, perDayAll: 2000, newDevicesPerDay: 200 };
+// Registration is open (any comma may help), so the limits are what keeps someone from filling the storage or crowding out real
+// owners: per comma, and for everyone per day. The days are UTC days.
+export const DEFAULTS = { maxBytes: 8 * 1024 * 1024, perDevicePerDay: 30, perDayAll: 500, bytesPerDayAll: 1024 * 1024 * 1024, newDevicesPerDay: 100 };
+export const day = (s: number) => Math.floor(s / 86400) * 86400;
+
+// What a person typed (the reason's label, the note): one line of plain text, no control characters, at most max characters.
+export function plain(v: unknown, max: number): string {
+  return typeof v === "string" ? v.replace(/[\p{C}\u2028\u2029]+/gu, " ").replace(/\s+/g, " ").trim().slice(0, max) : "";
+}
 
 const enc = new TextEncoder();
 const HEX32 = /^[0-9a-f]{32}$/;
@@ -120,7 +130,7 @@ export async function cleanManifest(m: Record<string, unknown>, payload: Uint8Ar
   const services = obj(cut.services);
   return {
     format: 1,
-    mark: { id, reason: str(mark.reason, 40, CODE), label: str(mark.label, 40), note: typeof mark.note === "string" ? mark.note.slice(0, 500) : "",
+    mark: { id, reason: str(mark.reason, 40, CODE), label: plain(mark.label, 40) || null, note: plain(mark.note, 500),
             delay_s: num(mark.delay_s), source: str(mark.source, 20, CODE) },
     month: str(m.month, 7, /^\d{4}-\d{2}$/),
     car: { brand: str(car.brand, 40, CODE), model: str(car.model, 60, CODE) },
@@ -130,9 +140,13 @@ export async function cleanManifest(m: Record<string, unknown>, payload: Uint8Ar
     cut: {
       services: Object.fromEntries(Object.entries(services).filter(([k, v]) => CODE.test(k) && typeof v === "number").slice(0, 64)),
       left_out: Array.isArray(cut.left_out) ? cut.left_out.filter((x) => typeof x === "string" && CODE.test(x)).slice(0, 200) : [],
+      can: cut.can === "dbc" ? "dbc" : "none",
+      can_addresses: num(cut.can_addresses),
       can_frames_dropped: num(cut.can_frames_dropped),
       can_addresses_with_vin: Array.isArray(cut.can_addresses_with_vin)
         ? cut.can_addresses_with_vin.filter((x) => typeof x === "string" && /^\d+:0x[0-9a-f]+$/.test(x)).slice(0, 64) : [],
+      can_addresses_with_text: Array.isArray(cut.can_addresses_with_text)
+        ? cut.can_addresses_with_text.filter((x) => typeof x === "string" && /^\d+:0x[0-9a-f]+$/.test(x)).slice(0, 64) : [],
       vin_checked: cut.vin_checked === true,
       seconds: num(cut.seconds),
     },
@@ -141,11 +155,28 @@ export async function cleanManifest(m: Record<string, unknown>, payload: Uint8Ar
   };
 }
 
+// Reads at most max bytes, and stops there: a body without Content-Length (chunked) is never read whole before the check.
 async function readBody(req: Request, max: number): Promise<Uint8Array | null> {
   const declared = Number(req.headers.get("Content-Length") ?? "0");
   if (declared > max) return null;
-  const data = new Uint8Array(await req.arrayBuffer());
-  return data.length > max ? null : data;
+  if (!req.body) return new Uint8Array();
+  const reader = req.body.getReader();
+  const parts: Uint8Array[] = [];
+  let n = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    n += value.length;
+    if (n > max) {
+      await reader.cancel();
+      return null;
+    }
+    parts.push(value);
+  }
+  const out = new Uint8Array(n);
+  let at = 0;
+  for (const p of parts) { out.set(p, at); at += p.length; }
+  return out;
 }
 
 export async function handle(req: Request, store: Store, cfg: Config): Promise<Response> {
@@ -177,8 +208,8 @@ export async function handle(req: Request, store: Store, cfg: Config): Promise<R
     if (!sameHex(await sign(key, ts, "POST", path, body), sig)) return json(401, { error: "signature" });
     const known = await store.getDevice(device);
     if (known) return sameHex(known.key, key) ? json(200, { ok: true }) : json(409, { error: "taken" });
-    if (await store.devicesSince(now - 86400) >= cfg.newDevicesPerDay) return json(429, { error: "busy" });
-    await store.addDevice(device, key, now);
+    if (await store.devicesSince(day(now)) >= cfg.newDevicesPerDay) return json(429, { error: "busy" });
+    await store.addDevice(device, key, day(now));
     return json(201, { ok: true });
   }
 
@@ -202,13 +233,14 @@ export async function handle(req: Request, store: Store, cfg: Config): Promise<R
   const mark = manifest.mark as Record<string, unknown>;
   const already = await store.findShare(device, mark.id as string);
   if (already) return json(200, { ok: true, id: already, again: true });
-  if (await store.sharesSince(device, now - 86400) >= cfg.perDevicePerDay) return json(429, { error: "per device" });
-  if (await store.sharesSince(null, now - 86400) >= cfg.perDayAll) return json(429, { error: "busy" });
+  if (await store.sharesSince(device, day(now)) >= cfg.perDevicePerDay) return json(429, { error: "per device" });
+  if (await store.sharesSince(null, day(now)) >= cfg.perDayAll) return json(429, { error: "busy" });
+  if (await store.bytesSince(day(now)) + body.length > cfg.bytesPerDayAll) return json(429, { error: "busy" });
 
   const car = manifest.car as Record<string, string | null>, sw = manifest.software as Record<string, string | null>;
   const id = cfg.newId();
   const row: ShareRow = {
-    id, device, mark_id: mark.id as string, created_at: Math.floor(now),
+    id, device, mark_id: mark.id as string, created_at: day(now),
     brand: car.brand, model: car.model, reason: mark.reason as string | null, label: mark.label as string | null, note: mark.note as string,
     edition: sw.edition, branch: sw.branch, git_commit: sw.commit, bytes: body.length, object: `${device}/${id}.lzs`, manifest,
   };
@@ -220,15 +252,20 @@ export async function handle(req: Request, store: Store, cfg: Config): Promise<R
 }
 
 // A new package opens an issue in a private repository, for whoever develops: car, reason, note, version. Never the device.
+// Whatever an owner typed goes into the issue as inert text: no mention, link, image or markup can act from it.
+export function inert(text: string): string {
+  return plain(text, 500).replace(/[\\`*_{}\[\]()<>#+!|~]/g, (c) => `\\${c}`).replace(/@/g, "@\u200b").replace(/:\/\//g, ":\u200b//");
+}
+
 export function githubNotifier(token: string, repo: string, fetchFn: typeof fetch = fetch) {
   return async (row: ShareRow) => {
-    const title = `[envio] ${row.brand ?? "?"} ${row.model ?? "?"}: ${row.label ?? row.reason ?? "sem motivo"}`.slice(0, 120);
+    const title = `[envio] ${row.brand ?? "?"} ${row.model ?? "?"}: ${inert(row.label ?? row.reason ?? "sem motivo")}`.slice(0, 120);
     const cut = (row.manifest.cut ?? {}) as Record<string, unknown>;
     const body = [
       `Envio \`${row.id}\` (${(row.bytes / 1024).toFixed(0)} KB, ${cut.seconds ?? "?"} s).`,
       "",
       `- Carro: ${row.brand ?? "?"} / ${row.model ?? "?"}`,
-      `- Motivo: ${row.label ?? row.reason ?? "?"}${row.note ? `: ${row.note}` : ""}`,
+      `- Motivo: ${inert(row.label ?? row.reason ?? "?")}${row.note ? `: ${inert(row.note)}` : ""}`,
       `- Software: ${row.edition ?? "?"} ${row.branch ?? "?"} @ ${row.git_commit ?? "?"}`,
       `- VIN procurado na CAN: ${cut.vin_checked ? "sim" : "não (carro sem VIN conhecido)"}`,
       "",
@@ -253,6 +290,7 @@ export class MemoryStore implements Store {
   async sharesSince(device: string | null, since: number) {
     return this.shares.filter((s) => (device === null || s.device === device) && s.created_at >= since).length;
   }
+  async bytesSince(since: number) { return this.shares.filter((s) => s.created_at >= since).reduce((a, s) => a + s.bytes, 0); }
   async findShare(device: string, markId: string) { return this.shares.find((s) => s.device === device && s.mark_id === markId)?.id ?? null; }
   async putShare(row: ShareRow, data: Uint8Array) { this.shares.push(row); this.objects.set(row.object, data); }
   async forgetDevice(id: string) {

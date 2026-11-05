@@ -15,6 +15,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import sys
 import urllib.parse
 import urllib.request
@@ -65,18 +66,31 @@ def open_package(path: Path, out_dir: Path) -> Path:
 
 
 def download(base: str, key: str, row: dict, out_dir: Path, opener=urllib.request.urlopen) -> Path:
+  """Kept under its id only once it opens and matches its manifest: a broken download is fetched again next time."""
   out_dir.mkdir(parents=True, exist_ok=True)
   f = out_dir / f"{row['id']}.lzs"
   if not f.is_file():
-    f.write_bytes(_get(f"{base}/storage/v1/object/{BUCKET}/{urllib.parse.quote(row['object'])}", key, opener))
+    part = f.with_suffix(".part")
+    part.write_bytes(_get(f"{base}/storage/v1/object/{BUCKET}/{urllib.parse.quote(row['object'])}", key, opener))
+    try:
+      open_package(part, out_dir / ".check")
+    finally:
+      shutil.rmtree(out_dir / ".check", ignore_errors=True)
+    os.replace(part, f)
   return open_package(f, out_dir)
 
 
+def _plain(v) -> str:
+  """What an owner typed, shown without control characters (a terminal escape can't act from it)."""
+  return re.sub(r"\s+", " ", "".join(c if c.isprintable() else " " for c in str(v or ""))).strip()
+
+
 def describe(r: dict) -> str:
-  note = f" — {r['note']}" if r.get("note") else ""
+  note = f" — {_plain(r['note'])}" if r.get("note") else ""
   car = f"{r.get('brand') or '?'}/{r.get('model') or '?'}"
   sw = f"{r.get('edition') or '?'} {r.get('branch') or '?'}@{r.get('git_commit') or '?'}"
-  return f"{r['created_at'][:16]}  {r['id']}  {car}  {r.get('label') or r.get('reason') or '?'}{note}  [{sw}, {int(r.get('bytes') or 0) // 1024} KB]"
+  label = _plain(r.get("label") or r.get("reason") or "?")
+  return f"{r['created_at'][:10]}  {r['id']}  {_plain(car)}  {label}{note}  [{_plain(sw)}, {int(r.get('bytes') or 0) // 1024} KB]"
 
 
 def main(argv=None) -> None:

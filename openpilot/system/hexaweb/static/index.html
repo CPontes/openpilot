@@ -1680,7 +1680,7 @@ function shareButton(mark) {
 }
 async function shareMark(mark, old) {
   if (old && old.error) toast(t(old.error));
-  if (!confirm(tf("Enviar aos desenvolvedores o log de {hora}, 30 s antes e 15 s depois?\nVai o que o carro e o openpilot fizeram, com a rede CAN. Sem o GPS do comma, câmeras, áudio, VIN nem o número do comma.", { hora: hhmmss(mark.t) }))) return;
+  if (!confirm(tf("Enviar aos desenvolvedores o log de {hora}, 30 s antes e 15 s depois?\nVai o que o carro e o openpilot fizeram, e da rede CAN só o que o openpilot lê deste carro. Sem GPS, câmeras, áudio, VIN nem o número do comma.", { hora: hhmmss(mark.t) }))) return;
   const r = await api("/api/share", { id: mark.id });
   toast(r.status === 200 ? t("Na fila: vai com o carro desligado, num Wi-Fi.") : (r.data.error || t("Não foi possível.")));
   shareAt = 0; refreshShare();

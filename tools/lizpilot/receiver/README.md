@@ -12,8 +12,8 @@ celular (marca → enviar) → comma: corta, limpa, assina, espera Wi-Fi → rec
 |---|---|
 | 30 s antes e 15 s depois da marca | O resto da viagem |
 | `carState`, `carControl`, `carOutput`, `carParams` (sem VIN), `controlsState`, `selfdriveState`, `onroadEvents`, `longitudinalPlan`, `radarState`, `drivingModelData`, parâmetros aprendidos, `driverMonitoringState` (só o estado), `accelerometer`, `pandaStates` | GPS do comma (`gpsLocation*`, `ubloxGnss`, `qcomGnss`), câmeras, áudio, `initData` (dongle id, parâmetros), `logMessage`, `deviceState` e todo serviço que não está na lista |
-| A rede CAN do carro como ele a transmite | A CAN de diagnóstico (0x700–0x7FF e 0x18DA/DBxxxx, onde o VIN é pedido) e todo endereço que carrega um pedaço do VIN |
-| Marca e modelo do carro, edição, branch, commit e versão do LizPilot | VIN, dongle id, serial do comma, nome do celular, dia e hora (só vai o mês) |
+| Da CAN, só os endereços que o DBC **deste carro** descreve (o que o openpilot lê dele) | Endereços fora do DBC; mensagens do DBC com sinal de posição, hora, data, odômetro, VIN, nome, telefone ou Bluetooth (`share.private_signal`); a CAN de diagnóstico (0x700–0x7FF e 0x18DA/DBxxxx); todo endereço que carrega um pedaço do VIN; todo endereço cujos quadros são na maior parte texto. **Carro sem DBC conhecido: nenhuma CAN** |
+| Marca e modelo do carro, edição, branch, commit e versão do LizPilot | VIN, dongle id, serial do comma, nome do celular, dia e hora (só vai o mês). O receptor guarda só o dia da chegada |
 | Motivo e anotação da marca | |
 
 **Garantias** (todas testadas em `openpilot/selfdrive/hexa/tests/test_share.py`):
@@ -22,13 +22,25 @@ celular (marca → enviar) → comma: corta, limpa, assina, espera Wi-Fi → rec
 - A chave de envio é aleatória, criada no comma; não é o dongle id. O receptor não sabe de quem é o comma.
 - "apagar meus envios" apaga a fila no comma e pede ao receptor que apague tudo o que aquela chave mandou; depois o comma cria uma chave nova.
 
-**Limite conhecido** [hipótese]: alguns carros transmitem na própria CAN a posição da central multimídia ou o odômetro. A CAN vai como o carro a manda (é o que se precisa para portar e ajustar um carro). A opção diz isso ao dono. Se um carro conhecido fizer isso, inclua o endereço numa lista de exclusão por marca em `share.py`.
+**Medido no Haval** [log], em 15 minutos reais (`logs_data`, rotas 0, 1, 2, 7, 9, 11 e 12):
+- cada trecho de 45 s deu de 0,7 a 1,7 MB (mediana 1,4 MB);
+- foram de 59 a 87 pares barramento/endereço, todos do DBC do Haval;
+- nenhum VIN apareceu no trecho;
+- o filtro de texto só pegou 0x7AE/0x7AF, que são de diagnóstico e já saem.
+
+Um CRC às vezes parece texto: `WHEEL_SPEEDS` chega a 11% dos quadros. Por isso um endereço só sai como texto com metade dos quadros ou mais.
+
+**Limites conhecidos:**
+- Um DBC pode ter mensagem com dado pessoal e nome inocente. A lista de palavras (`PRIVATE_TOKENS`) cobre os nomes comuns; um carro novo merece uma olhada no DBC antes.
+- A Supabase registra o IP de quem chama a função, nos logs da plataforma. O receptor não guarda IP.
 
 ## O comma
 
 - Opção **enviar trechos aos desenvolvedores** (`HexaShareEnabled`, desligada por padrão), em Ajustes → Celular. Ela é o consentimento.
 - No celular, cada marca ganha **enviar**. A confirmação diz o que vai. Os estados são: na fila → esperando Wi-Fi → enviado.
-- Corta só com o carro desligado. Envia só em rede que não é medida (`deviceState.networkMetered`).
+- Corta só com o carro desligado, num processo à parte com prioridade mínima (`nice 19`). Se o carro ligar no meio, o corte para e é refeito depois.
+- Envia só em rede que não é medida (`deviceState.networkMetered`).
+- Um log que não abre (minuto cortado quando a energia caiu) é tentado 3 vezes e não segura os outros da fila.
 - A fila tem no máximo 20 trechos e 8 tentativas por trecho, com espera crescente. Cada trecho tem no máximo 8 MB (um Haval dá algumas centenas de KB).
 - Código: `openpilot/selfdrive/hexa/share.py`, `system/hexaweb/hexaweb.py` (`/api/share*` e o `share_worker`).
 - **`share.RECEIVER_URL` está vazio** até o receptor ir ao ar. Até lá, os trechos esperam no comma e o celular diz isso.
@@ -50,11 +62,17 @@ Para pôr no ar, o dono ou o CTO:
    - `LIZPILOT_GITHUB_REPO`: `CPontes/lizpilot-envios`.
 5. Põe a URL da função em `share.RECEIVER_URL` (`https://<projeto>.supabase.co/functions/v1/lizpilot-share`) num commit no canal.
 
-Limites (`handler.ts` `DEFAULTS`):
+Limites (`handler.ts` `DEFAULTS`, por dia UTC):
 - 8 MB por envio;
-- 50 envios por comma por dia, e 2000 por dia no total;
-- 200 commas novos por dia;
+- 30 envios por comma, 500 no total e 1 GB no total;
+- 100 commas novos;
 - relógio com até 300 s de diferença. Se o do comma estiver errado, o receptor responde a hora dele e o comma assina de novo.
+
+O cadastro é aberto (qualquer comma pode ajudar). Por isso:
+- os limites existem;
+- motivo e anotação ficam como texto puro: no aviso, nenhuma menção, link ou imagem age, e no terminal nenhum caractere de controle age.
+
+Ver "Pontos para o CTO" em `codeweb-06`: travar o cadastro com um segredo da build, e anti-replay dentro dos 300 s.
 
 ## Os desenvolvedores
 

@@ -47,6 +47,7 @@ AFTER_S = 15.
 SEGMENT_S = 60.
 MAX_BYTES = 8 * 1024 * 1024  # the receiver refuses more
 MAX_QUEUE = 20
+MAX_KEPT = 100  # items kept in the list, sent ones included
 MAX_TRIES = 8
 BACKOFF_S = (60., 300., 1800., 7200.)
 TIME_HEADER, DEVICE_HEADER, SIG_HEADER = "X-LizPilot-Time", "X-LizPilot-Device", "X-LizPilot-Signature"
@@ -65,6 +66,14 @@ CAN_SERVICES = ("can", "sendcan")
 DIAG_RANGES = ((0x700, 0x7FF), (0x18DA0000, 0x18DBFFFF))
 VIN_PIECE = 6  # a CAN address whose bytes hold 6 characters in a row of the VIN carries it
 MIN_SECRET = 8  # shorter identifiers would match by chance
+TEXT_RUN = re.compile(rb"[A-Za-z0-9 .,:/@+-]{6,}")  # 6 printable characters in a row, 3 letters, 4 different: text
+# DBC messages and signals that say where, when, how far or who (whole words of the name, then parts anywhere in it)
+PRIVATE_TOKENS = frozenset({"LAT", "LON", "LNG", "GPS", "GNSS", "NAV", "NAVI", "ODO", "ODOMETER", "MILEAGE", "TRIP", "DATE", "YEAR",
+                            "MONTH", "HOUR", "MINUTE", "CLOCK", "RTC", "UTC", "VIN", "NAME", "PHONE", "CALL", "CONTACT", "TEXT", "ASCII",
+                            "CHAR", "STRING", "BT", "BLUETOOTH", "SERIAL", "ID3", "SONG", "ARTIST", "STATION", "ADDRESS"})
+PRIVATE_PARTS = ("LATITUDE", "LONGITUDE", "GPS", "GNSS", "ODOMET", "MILEAGE", "VIN_", "PHONE", "BLUETOOTH")
+CUT_TIMEOUT_S = 180.
+TEXT_SHARE = 0.5  # an address with text in half of its frames or more is text
 
 STATES = ("fila", "pronto", "enviado", "erro")  # queued, cut and waiting for the network, sent, failed for good
 
@@ -123,44 +132,93 @@ def _is_diag(address: int) -> bool:
   return any(lo <= address <= hi for lo, hi in DIAG_RANGES)
 
 
+def valid_vin(vin: str) -> bool:
+  v = (vin or "").strip()
+  return len(v) >= MIN_SECRET and set(v) != {"0"}  # "000…0": the car didn't say
+
+
 def _vin_pieces(vin: str) -> list[bytes]:
   v = vin.strip().upper().encode("ascii", "ignore")
   return [v[i:i + VIN_PIECE] for i in range(len(v) - VIN_PIECE + 1)] if len(v) >= VIN_PIECE else []
 
 
-def vin_addresses(events: Iterable, vin: str) -> set[tuple[int, int]]:
-  """(bus, address) whose frames carry the VIN: some cars broadcast it all the time, a few characters per frame. Looks at
+def _frames(events: Iterable):
+  for ev in events:
+    if ev.which() in CAN_SERVICES:
+      for c in getattr(ev, ev.which()):
+        yield (c.src, c.address), bytes(c.dat)
+
+
+def vin_addresses(events: Iterable, vins: Iterable[str]) -> set[tuple[int, int]]:
+  """(bus, address) whose frames carry a VIN: some cars broadcast it all the time, a few characters per frame. Looks at
   each frame, and at the frames of one address in a row with the first byte (the frame's number) taken out."""
-  pieces = _vin_pieces(vin)
+  pieces = [p for v in vins for p in _vin_pieces(v)]
   if not pieces:
     return set()
   whole: dict[tuple[int, int], bytearray] = {}
   tails: dict[tuple[int, int], bytearray] = {}
-  for ev in events:
-    if ev.which() not in CAN_SERVICES:
-      continue
-    for c in getattr(ev, ev.which()):
-      k = (c.src, c.address)
-      d = bytes(c.dat)
-      whole.setdefault(k, bytearray()).extend(d)
-      tails.setdefault(k, bytearray()).extend(d[1:])
-  found = set()
-  for k in whole:
-    up_whole, up_tails = bytes(whole[k]).upper(), bytes(tails[k]).upper()
-    if any(p in up_whole or p in up_tails for p in pieces):
-      found.add(k)
-  return found
+  for k, d in _frames(events):
+    whole.setdefault(k, bytearray()).extend(d)
+    tails.setdefault(k, bytearray()).extend(d[1:])
+  return {k for k in whole if any(p in bytes(whole[k]).upper() or p in bytes(tails[k]).upper() for p in pieces)}
+
+
+def text_addresses(events: Iterable) -> set[tuple[int, int]]:
+  """(bus, address) whose frames are mostly text: a name, a phone number, a radio station from the head unit. Cars send these
+  to the cluster; openpilot never needs them. Mostly: a CRC or a speed reads as text now and then ([log] Haval, 4 routes:
+  WHEEL_SPEEDS up to 11% of its frames, every other address under 3%)."""
+  def is_text(run: bytes) -> bool:  # letters, and not one byte repeated (a fill or a counter that happens to be printable)
+    return sum(chr(c).isalpha() for c in run) >= 3 and len(set(run)) >= 4
+  frames: dict[tuple[int, int], list[int]] = {}
+  for k, d in _frames(events):
+    n = frames.setdefault(k, [0, 0])
+    n[0] += 1
+    n[1] += any(is_text(m.group()) for m in TEXT_RUN.finditer(d))
+  return {k for k, (total, text) in frames.items() if text >= 3 and text >= TEXT_SHARE * total}
+
+
+def private_signal(name: str) -> bool:
+  """A DBC message or signal that says where, when, how far or who: GPS, clock, odometer, VIN, names, phone."""
+  up = name.upper()
+  tokens = set(re.split(r"[^A-Z0-9]+", re.sub(r"([a-z])([A-Z])", r"\1_\2", name).upper()))
+  return bool(tokens & PRIVATE_TOKENS) or any(p in up for p in PRIVATE_PARTS)
+
+
+_ALLOW_CACHE: dict[str, set[int] | None] = {}
+
+
+def can_allowlist(model: str | None) -> set[int] | None:
+  """The CAN addresses this car's DBC files describe, without the private ones. None: no DBC known, no CAN leaves."""
+  if not model:
+    return None
+  if model in _ALLOW_CACHE:
+    return _ALLOW_CACHE[model]
+  out: set[int] | None = None
+  try:
+    from opendbc.can.dbc import DBC
+    from opendbc.car.values import PLATFORMS
+    platform = PLATFORMS.get(model)
+    if platform is not None:
+      out = set()
+      for name in platform.config.dbc_dict.values():
+        for addr, msg in DBC(name).msgs.items():
+          if not private_signal(msg.name) and not any(private_signal(sig) for sig in msg.sigs):
+            out.add(addr)
+  except Exception:
+    out = None
+  _ALLOW_CACHE[model] = out
+  return out
 
 
 def scrubbed(raw: bytes, hide: Iterable[str]) -> list[str]:
   """Which of the identifiers to hide are still in the cut. Must be empty for it to leave."""
   up = raw.upper()
-  return [s for s in hide if len(s) >= MIN_SECRET and s.upper().encode("utf-8", "ignore") in up]
+  return [s for s in hide if len(s) >= MIN_SECRET and set(s) != {"0"} and s.upper().encode("utf-8", "ignore") in up]
 
 
-def _copy_can(ev, which: str, drop: set[tuple[int, int]]):
+def _copy_can(ev, which: str, keep: Callable[[int, int], bool]):
   from openpilot.cereal import log
-  kept = [c for c in getattr(ev, which) if not _is_diag(c.address) and (c.src, c.address) not in drop]
+  kept = [c for c in getattr(ev, which) if keep(c.src, c.address)]
   out = log.Event.new_message(logMonoTime=ev.logMonoTime, valid=ev.valid)
   lst = out.init(which, len(kept))
   for dst, c in zip(lst, kept, strict=True):
@@ -168,23 +226,35 @@ def _copy_can(ev, which: str, drop: set[tuple[int, int]]):
   return out, len(getattr(ev, which)) - len(kept)
 
 
-def cut(events: Iterable, center_ns: int, vin: str = "", hide: Iterable[str] = (),
+def cut(events: Iterable, center_ns: int, vin: str = "", hide: Iterable[str] = (), can_allow: set[int] | None = None,
         before_s: float = BEFORE_S, after_s: float = AFTER_S) -> tuple[bytes, dict]:
   """The events from before_s before center_ns to after_s after it, only SERVICES, scrubbed. Returns (zstd of the events,
-  stats for the manifest). Raises ShareError when nothing is left or an identifier is still in it."""
+  stats for the manifest). Raises ShareError when nothing is left or an identifier is still in it.
+
+  CAN: only the addresses in can_allow (can_allowlist(): what this car's DBC describes, nothing private), never the diagnostic
+  ones, nor an address that carries a VIN or text. can_allow None: no CAN at all."""
   import zstandard
   lo, hi = center_ns - int(before_s * 1e9), center_ns + int(after_s * 1e9)
   window = [ev for ev in events if lo <= ev.logMonoTime <= hi]
   kept = [ev for ev in window if ev.which() in SERVICES]
-  drop = vin_addresses(kept, vin)
+  vins = {v.strip() for v in [vin, *(ev.carParams.carVin for ev in kept if ev.which() == "carParams")] if valid_vin(v)}
+  allow = can_allow or set()
+  candidates = [ev for ev in kept if ev.which() in CAN_SERVICES]
+  drop = vin_addresses(candidates, vins) | text_addresses(candidates)
+
+  def keep(bus: int, addr: int) -> bool:
+    return addr in allow and not _is_diag(addr) and (bus, addr) not in drop
+
   counts: dict[str, int] = {}
   can_dropped = 0
+  can_kept: set[tuple[int, int]] = set()
   out = bytearray()
   for ev in kept:
     which = ev.which()
     if which in CAN_SERVICES:
-      b, n = _copy_can(ev, which, drop)
+      b, n = _copy_can(ev, which, keep)
       can_dropped += n
+      can_kept |= {(c.src, c.address) for c in getattr(b, which)}
     else:
       b = ev.as_builder()
       if which == "carParams":
@@ -194,16 +264,18 @@ def cut(events: Iterable, center_ns: int, vin: str = "", hide: Iterable[str] = (
   if not counts.get("carState"):
     raise ShareError("O log deste momento não tem o carro.")
   raw = bytes(out)
-  hide = [vin, *hide]
-  if scrubbed(raw, hide):
+  if scrubbed(raw, [*vins, *hide]):
     raise ShareError("O trecho ainda tem um dado do carro ou do comma. Não foi enviado.")
   payload = zstandard.ZstdCompressor(level=10).compress(raw)
   stats = {
     "services": dict(sorted(counts.items())),
     "left_out": sorted({ev.which() for ev in window if ev.which() not in SERVICES}),
+    "can": "dbc" if can_allow else "none",
+    "can_addresses": len(can_kept),
     "can_frames_dropped": can_dropped,
-    "can_addresses_with_vin": sorted(f"{bus}:{hex(addr)}" for bus, addr in drop),
-    "vin_checked": len(vin.strip()) >= MIN_SECRET,
+    "can_addresses_with_vin": sorted(f"{bus}:{hex(addr)}" for bus, addr in vin_addresses(candidates, vins)),
+    "can_addresses_with_text": sorted(f"{bus}:{hex(addr)}" for bus, addr in text_addresses(candidates)),
+    "vin_checked": bool(vins),
     "seconds": round((max(ev.logMonoTime for ev in kept) - min(ev.logMonoTime for ev in kept)) / 1e9, 1),
   }
   return payload, stats
@@ -232,34 +304,96 @@ def segments(log_root: str) -> list[dict]:
   return out
 
 
-def cut_mark(log_root: str, mark: dict, vin: str = "", hide: Iterable[str] = (),
+def cut_mark(log_root: str, mark: dict, vin: str = "", hide: Iterable[str] = (), model: str | None = None,
              read: Callable[[str], list] | None = None) -> tuple[bytes, dict]:
-  """The cut around a mark: the minute it is in, and the minute before or after when the window crosses into it."""
+  """The cut around a mark: the minute it is in, and the minute before or after when the window crosses into it.
+
+  The minute is the first one that closed after the mark (a drive's minutes follow each other; the last one is shorter). With
+  the bookmark, the window is on its exact log time; without it (a mark made parked), on the mark's wall time counted back
+  from when that minute's log closed."""
   if read is None:
     from openpilot.selfdrive.hexa.timeline import read_rlog as read
   t = mark.get("t")
-  if not isinstance(t, int | float):
+  if not isinstance(t, int | float) or isinstance(t, bool):
     raise ShareError("Marca sem hora.")
   segs = segments(log_root)
-  seg = next((s for s in sorted(segs, key=lambda s: -s["end"]) if s["end"] - SEGMENT_S - 2 <= t <= s["end"] + 2), None)
+  seg = min((s for s in segs if s["end"] >= t - 2), key=lambda s: s["end"], default=None)
   if seg is None:
     raise ShareError("O log deste momento não está mais no comma.")
-  by_n = {s["n"]: s for s in segs if s["route"] == seg["route"]}
-  events = list(read(seg["file"]))
-  if not events:
-    raise ShareError("O log deste momento não está mais no comma.")
+  try:
+    events = list(read(seg["file"]))
+  except Exception as e:
+    raise ShareError("Não foi possível ler o log deste momento.") from e
+  if not events:  # the file is there, but nothing in it can be read
+    raise ShareError("Não foi possível ler o log deste momento.")
   first, last = min(ev.logMonoTime for ev in events), max(ev.logMonoTime for ev in events)
-  delay = float(mark.get("delay_s") or 0.)
+  if t < seg["end"] - (last - first) / 1e9 - 2:
+    raise ShareError("O log deste momento não está mais no comma.")  # between two drives, or its minute was deleted
+  delay = mark.get("delay_s")
+  delay = float(delay) if isinstance(delay, int | float) and not isinstance(delay, bool) and 0 <= delay <= 300 else 0.
   mono = mark.get("mono_ns")
-  if isinstance(mono, int) and first - 90e9 <= mono <= last + 90e9:  # the bookmark itself: the exact log time
-    center = mono - int(delay * 1e9)
-  else:  # a mark made parked, or one whose bookmark never came: its wall time inside the minute
-    center = first + int(max(0., t - (seg["end"] - SEGMENT_S)) * 1e9)
-  if center - BEFORE_S * 1e9 < first and seg["n"] - 1 in by_n:
-    events = list(read(by_n[seg["n"] - 1]["file"])) + events
-  if center + AFTER_S * 1e9 > last and seg["n"] + 1 in by_n:
-    events += list(read(by_n[seg["n"] + 1]["file"]))
-  return cut(events, center, vin=vin, hide=hide)
+  at = mono - int(delay * 1e9) if isinstance(mono, int) and not isinstance(mono, bool) else None
+  if at is not None and first - 90e9 <= at <= last + 90e9:  # the bookmark itself: the exact log time
+    center = at
+  else:
+    center = last - int((seg["end"] - t) * 1e9)
+  by_n = {s["n"]: s for s in segs if s["route"] == seg["route"]}
+  for n, before in ((seg["n"] - 1, True), (seg["n"] + 1, False)):
+    if n not in by_n or (before and center - BEFORE_S * 1e9 >= first) or (not before and center + AFTER_S * 1e9 <= last):
+      continue
+    try:
+      more = list(read(by_n[n]["file"]))
+    except Exception:
+      continue  # a minute cut short (the comma lost power): the window just ends there
+    events = more + events if before else events + more
+  return cut(events, center, vin=vin, hide=hide, can_allow=can_allowlist(model))
+
+
+class CutInterrupted(Exception):
+  """The car was turned on while cutting: the cut stops and is done again later."""
+
+
+def cut_in_child(log_root: str, mark: dict, vin: str = "", hide: Iterable[str] = (), model: str | None = None,
+                 offroad: Callable[[], bool] = lambda: True, timeout: float = CUT_TIMEOUT_S) -> tuple[bytes, dict]:
+  """cut_mark in a separate process at the lowest priority (_child_cut): reading the logs never holds up the phone panel, and it stops
+  if the car is turned on. The VIN goes by stdin, never on the command line."""
+  import subprocess
+  import sys
+  import tempfile
+  with tempfile.TemporaryDirectory(prefix="lizpilot-cut-") as tmp:
+    out_file = Path(tmp) / "cut.zst"
+    job = json.dumps({"log_root": log_root, "mark": mark, "vin": vin, "hide": list(hide), "model": model, "out": str(out_file)})
+    p = subprocess.Popen([sys.executable, "-m", "openpilot.selfdrive.hexa.share", "cut"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                         stderr=subprocess.DEVNULL, text=True)
+    assert p.stdin is not None and p.stdout is not None
+    p.stdin.write(job)
+    p.stdin.close()
+    start = time.monotonic()
+    while p.poll() is None:
+      if not offroad() or time.monotonic() - start > timeout:
+        p.kill()
+        p.wait()
+        raise CutInterrupted()
+      time.sleep(0.2)
+    answer = json.loads(p.stdout.read() or "{}")
+    if "error" in answer:
+      raise ShareError(str(answer["error"]))
+    if p.returncode != 0 or "stats" not in answer:
+      raise RuntimeError(f"cut exited {p.returncode}")  # tried again a few times (Sharer._cut)
+    return out_file.read_bytes(), answer["stats"]
+
+
+def _child_cut() -> None:
+  import sys
+  os.nice(19)  # the lowest priority: the comma's own processes first
+  job = json.loads(sys.stdin.read())
+  try:
+    payload, stats = cut_mark(job["log_root"], job["mark"], vin=job["vin"], hide=job["hide"], model=job["model"])
+  except ShareError as e:
+    print(json.dumps({"error": str(e)}))
+    return
+  Path(job["out"]).write_bytes(payload)
+  print(json.dumps({"stats": stats}))
 
 
 def car_info(store) -> tuple[dict, str]:
@@ -284,7 +418,8 @@ def manifest(store, mark: dict, stats: dict, payload: bytes, edition: str) -> di
   info, _ = car_info(store)
   return {
     "format": FORMAT_VERSION,
-    "mark": {k: mark.get(k) for k in ("id", "reason", "label", "note", "delay_s", "source")},
+    "mark": {**{k: mark.get(k) for k in ("id", "reason", "label", "note", "source")},
+             "delay_s": mark.get("delay_s") if isinstance(mark.get("delay_s"), int | float) and 0 <= mark["delay_s"] <= 60 else None},
     "month": time.strftime("%Y-%m", time.gmtime(float(mark.get("t") or 0))),  # the day and the hour stay on the comma
     "car": info,
     "software": {"edition": edition, "branch": _text_param(store, "GitBranch")[:40], "commit": _text_param(store, "GitCommit")[:12],
@@ -323,21 +458,28 @@ def http_post(url: str, body: bytes, hdrs: dict, timeout: float = HTTP_TIMEOUT) 
 
 
 class Sharer:
-  """The queue and the one worker that cuts and sends. Every step is short and never raises: hexaweb runs it in a thread."""
+  """The queue and the one worker that cuts and sends. Every step is short and never raises: hexaweb runs it in a thread.
+
+  The phone's requests (enqueue, cancel, forget) and the worker run in different threads. They meet only under self.lock, and
+  the worker checks again under it right before and right after each request to the receiver: a cancel or a forget that
+  arrives while a cut or a send is under way is never lost, and a forget always reaches the receiver once anything may have."""
 
   def __init__(self, store, log_root: str, edition: str = "h6gt", url: str | None = None,
                post: Callable[[str, bytes, dict], tuple[int, dict]] = http_post, clock: Callable[[], float] = wall_time,
-               cutter: Callable[..., tuple[bytes, dict]] = cut_mark, share_dir: Path | None = None):
+               cutter: Callable[..., tuple[bytes, dict]] | None = None, share_dir: Path | None = None,
+               offroad: Callable[[], bool] = lambda: True):
     self.store = store
     self.log_root = log_root
     self.edition = edition
     self.url = RECEIVER_URL if url is None else url
     self.post = post
     self.clock = clock
-    self.cutter = cutter
+    self.offroad = offroad  # asked during the cut: the car turned on stops it
+    self.cutter = cutter or (lambda log_root, mark, **kw: cut_in_child(log_root, mark, offroad=self.offroad, **kw))
     self.dir = share_dir or (Path(log_root).parent / SHARE_DIR)
     self.skew = 0.  # the receiver's clock minus ours, learned when it says ours is off (a comma without GPS or NTP yet)
-    self.lock = threading.RLock()  # the queue: the phone's requests and the worker change it from different threads
+    self.lock = threading.RLock()  # the queue and the identity: the phone's requests and the worker change them from different threads
+    self._sending: str | None = None  # the mark whose package is on its way to the receiver right now
 
   # what the phone asks
 
@@ -364,8 +506,10 @@ class Sharer:
       if sum(1 for i in q if i.get("state") in ("fila", "pronto")) >= MAX_QUEUE:
         return 429, {"error": "Muitos trechos esperando. Espere enviar os que estão na fila."}
       item = {"id": str(mark["id"]), "state": "fila", "tries": 0, "next_at": 0., "added": int(self.clock())}
-      q = (q + [item])[-100:]
-      self.store.put(QUEUE_PARAM, q)
+      q = q + [item]
+      for gone in q[:-MAX_KEPT]:  # the oldest go, and their cuts with them
+        self._drop_file(gone["id"])
+      self.store.put(QUEUE_PARAM, q[-MAX_KEPT:])
       return 200, {"ok": True, "item": public_item(item)}
 
   def cancel(self, mark_id: str) -> tuple[int, dict]:
@@ -374,7 +518,7 @@ class Sharer:
       item = next((i for i in q if i["id"] == mark_id), None)
       if item is None:
         return 404, {"error": "Este trecho não está na fila."}
-      if item.get("state") == "enviado":
+      if item.get("state") == "enviado" or self._sending == mark_id:
         return 409, {"error": "Este trecho já foi enviado. Para apagar, use \"apagar meus envios\"."}
       self._drop_file(mark_id)
       self.store.put(QUEUE_PARAM, [i for i in q if i["id"] != mark_id])
@@ -387,8 +531,8 @@ class Sharer:
         self._drop_file(i["id"])
       self.store.put(QUEUE_PARAM, [])
       dev = self.store.get(DEVICE_PARAM)
-      if isinstance(dev, dict) and dev.get("registered"):
-        self.store.put(DEVICE_PARAM, dict(dev, forget=True))
+      if isinstance(dev, dict) and (dev.get("used") or dev.get("registered") or self._sending):
+        self.store.put(DEVICE_PARAM, dict(dev, forget=True))  # the receiver may have something: ask it
       else:
         self.store.remove(DEVICE_PARAM)  # never reached the receiver: nothing there to delete
       return 200, {"ok": True}
@@ -404,13 +548,25 @@ class Sharer:
     except OSError:
       pass
 
+  def _item(self, mark_id: str) -> dict | None:
+    return next((i for i in _queue(self.store) if i["id"] == mark_id), None)
+
   def _update(self, mark_id: str, **fields) -> None:
     with self.lock:
       q = _queue(self.store)
       self.store.put(QUEUE_PARAM, [dict(i, **fields) if i["id"] == mark_id else i for i in q])
 
-  def _signed_post(self, path: str, body: bytes) -> tuple[int, dict]:
-    dev = device(self.store)
+  def _same_device(self, dev: dict) -> bool:
+    now = self.store.get(DEVICE_PARAM)
+    return isinstance(now, dict) and now.get("id") == dev["id"] and not now.get("forget")
+
+  def _mark_device(self, dev: dict, **fields) -> None:
+    """Change this identity only if it is still the current one and no forget is pending."""
+    with self.lock:
+      if self._same_device(dev):
+        self.store.put(DEVICE_PARAM, dict(self.store.get(DEVICE_PARAM), **fields))
+
+  def _signed_post(self, dev: dict, path: str, body: bytes) -> tuple[int, dict]:
     try:
       status, out = self.post(self.url.rstrip("/") + path, body, headers(dev, "POST", path, body, self.clock() + self.skew))
     except Exception:
@@ -424,95 +580,129 @@ class Sharer:
         return 0, {}
     return status, out
 
-  def _register(self) -> bool:
-    dev = device(self.store)
+  def _register(self, dev: dict) -> bool:
     if dev.get("registered"):
       return True
     body = json.dumps({"device": dev["id"], "key": dev["key"]}).encode()
-    status, _ = self._signed_post("/v1/register", body)
+    status, _ = self._signed_post(dev, "/v1/register", body)
     if status in (200, 201):
-      self.store.put(DEVICE_PARAM, dict(dev, registered=True))
+      self._mark_device(dev, registered=True)
       return True
-    if status == 409:  # the receiver knows this id with another key: start a new identity
-      self.store.remove(DEVICE_PARAM)
+    if status == 409:  # the receiver knows this id with another key, and nothing of ours was ever sent with it
+      with self.lock:
+        if self._same_device(dev) and not dev.get("used"):
+          self.store.remove(DEVICE_PARAM)
     return False
 
-  def _retry(self, item: dict, *, error: str) -> None:
+  def _retry(self, item: dict, *, error: str, give_up: int = MAX_TRIES) -> None:
     tries = int(item.get("tries", 0)) + 1
-    if tries >= MAX_TRIES:
+    if tries >= give_up:
       self._update(item["id"], state="erro", tries=tries, error=error)
       self._drop_file(item["id"])
     else:
       self._update(item["id"], tries=tries, error=error, next_at=self.clock() + BACKOFF_S[min(tries, len(BACKOFF_S)) - 1])
 
+  def _due(self, item: dict) -> bool:
+    wait = float(item.get("next_at", 0)) - self.clock()
+    return wait <= 0 or wait > max(BACKOFF_S)  # a clock that jumped back never holds an item for long
+
   def step(self, offroad: bool, network_ok: bool, marks: list[dict]) -> str:
-    """One thing at a time: forget, cut, or send. Returns what it did (for the tests and the log)."""
+    """One thing at a time: forget, send, or cut. Returns what it did (for the tests and the log)."""
     try:
       return self._step(offroad, network_ok, marks)
     except Exception:
       return "falhou"
 
   def _step(self, offroad: bool, network_ok: bool, marks: list[dict]) -> str:
-    dev = self.store.get(DEVICE_PARAM)
-    if isinstance(dev, dict) and dev.get("forget"):
-      if not (network_ok and self.url):
+    online = network_ok and bool(self.url)
+    with self.lock:
+      dev = self.store.get(DEVICE_PARAM)
+      forgetting = isinstance(dev, dict) and dev.get("forget")
+    if forgetting:
+      if not online:
         return "esperando rede"
-      status, _ = self._signed_post("/v1/forget", b"")
+      status, _ = self._signed_post(dev, "/v1/forget", b"")
       if status in (200, 204, 404):
-        self.store.remove(DEVICE_PARAM)
+        with self.lock:
+          if self.store.get(DEVICE_PARAM) == dev:
+            self.store.remove(DEVICE_PARAM)
         return "apagado"
       return "esperando rede"
     if not self.enabled():
       return "desligado"
-    q = _queue(self.store)
-    todo = next((i for i in q if i.get("state") == "fila"), None)
+    with self.lock:
+      q = _queue(self.store)
+      ready = next((i for i in q if i.get("state") == "pronto" and self._due(i)), None)
+      todo = next((i for i in q if i.get("state") == "fila" and self._due(i)), None)
+    if ready is not None and online:
+      return self._send(ready)
     if todo is not None and offroad:  # reading the rlogs costs CPU: never while driving
-      mark = next((m for m in marks if m.get("id") == todo["id"]), None)
-      if mark is None:
-        self._update(todo["id"], state="erro", error="A marca foi apagada.")
-        return "erro"
-      _, vin = car_info(self.store)
-      hide = [_text_param(self.store, k) for k in ("DongleId", "HardwareSerial")]
-      try:
-        payload, stats = self.cutter(self.log_root, mark, vin=vin, hide=hide)
-        man = manifest(self.store, mark, stats, payload, self.edition)
-        data = pack(man, payload)
-        if len(data) > MAX_BYTES:
-          raise ShareError("O trecho ficou grande demais para enviar.")
-        self.dir.mkdir(parents=True, exist_ok=True)
-        tmp = self._file(todo["id"]).with_suffix(".tmp")
-        tmp.write_bytes(data)
-        os.replace(tmp, self._file(todo["id"]))
-      except ShareError as e:
-        self._update(todo["id"], state="erro", error=str(e))
-        return "erro"
-      with self.lock:  # cancelled or forgotten while it was being cut: the cut goes too
-        still = next((i for i in _queue(self.store) if i["id"] == todo["id"]), None)
-        if still is None or still.get("state") != "fila":
-          self._drop_file(todo["id"])
-          return "cancelado"
-        self._update(todo["id"], state="pronto", bytes=len(data), error=None)
-      return "cortado"
-    ready = next((i for i in q if i.get("state") == "pronto" and float(i.get("next_at", 0)) <= self.clock()), None)
-    if ready is None:
-      return "nada"
-    if not (network_ok and self.url):
-      return "esperando rede"
+      return self._cut(todo, marks)
+    return "esperando rede" if ready is not None else "nada"
+
+  def _cut(self, todo: dict, marks: list[dict]) -> str:
+    mark = next((m for m in marks if m.get("id") == todo["id"]), None)
+    if mark is None:
+      self._update(todo["id"], state="erro", error="A marca foi apagada.")
+      return "erro"
+    info, vin = car_info(self.store)
+    hide = [_text_param(self.store, k) for k in ("DongleId", "HardwareSerial")]
     try:
-      data = self._file(ready["id"]).read_bytes()
-    except OSError:
-      self._update(ready["id"], state="fila", error=None)  # the cut is gone: cut it again
-      return "recortar"
-    if not self._register():
-      self._retry(ready, error="O receptor não respondeu.")
+      payload, stats = self.cutter(self.log_root, mark, vin=vin, hide=hide, model=info["model"])
+      data = pack(manifest(self.store, mark, stats, payload, self.edition), payload)
+      if len(data) > MAX_BYTES:
+        raise ShareError("O trecho ficou grande demais para enviar.")
+    except CutInterrupted:
+      return "interrompido"  # the car was turned on: cut again later
+    except ShareError as e:
+      self._update(todo["id"], state="erro", error=str(e))
+      return "erro"
+    except Exception:  # a broken log, a full disk: a few more tries, then it stops asking
+      self._retry(todo, error="Não foi possível ler o log deste momento.", give_up=3)
       return "tentar depois"
-    status, out = self._signed_post("/v1/share", data)
+    with self.lock:  # cancelled or forgotten while it was being cut: the cut goes too
+      still = self._item(todo["id"])
+      if still is None or still.get("state") != "fila":
+        return "cancelado"
+      self.dir.mkdir(parents=True, exist_ok=True)
+      tmp = self._file(todo["id"]).with_suffix(".tmp")
+      tmp.write_bytes(data)
+      os.replace(tmp, self._file(todo["id"]))
+      self._update(todo["id"], state="pronto", bytes=len(data), error=None, tries=0, next_at=0.)
+    return "cortado"
+
+  def _send(self, ready: dict) -> str:
+    with self.lock:  # right before: still asked for, still the same identity
+      still = self._item(ready["id"])
+      if still is None or still.get("state") != "pronto":
+        return "cancelado"
+      try:
+        data = self._file(ready["id"]).read_bytes()
+      except OSError:
+        self._update(ready["id"], state="fila", error=None)  # the cut is gone: cut it again
+        return "recortar"
+      dev = device(self.store)
+      self.store.put(DEVICE_PARAM, dev := dict(dev, used=True))  # from here on, a forget must ask the receiver
+      self._sending = ready["id"]
+    try:
+      if not self._register(dev):
+        self._retry(ready, error="O receptor não respondeu.")
+        return "tentar depois"
+      status, out = self._signed_post(dev, "/v1/share", data)
+    finally:
+      with self.lock:
+        self._sending = None
     if status in (200, 201):
-      self._update(ready["id"], state="enviado", sent_at=int(self.clock()), error=None, receipt=str(out.get("id", ""))[:40])
+      with self.lock:
+        sent = {"state": "enviado", "sent_at": int(self.clock()), "error": None, "receipt": str(out.get("id", ""))[:40]}
+        if self._item(ready["id"]) is not None:
+          self._update(ready["id"], **sent)
+        elif not (self.store.get(DEVICE_PARAM) or {}).get("forget"):  # cancelled while on its way: it went, say so
+          self.store.put(QUEUE_PARAM, _queue(self.store) + [{"id": ready["id"], "tries": 0, "added": ready.get("added"), **sent}])
       self._drop_file(ready["id"])
       return "enviado"
     if status == 401:  # the receiver forgot this key (or never had it): register again, then retry
-      self.store.put(DEVICE_PARAM, dict(device(self.store), registered=False))
+      self._mark_device(dev, registered=False)
       self._retry(ready, error="O receptor não reconheceu este comma.")
       return "tentar depois"
     if status in (400, 413, 415, 422):
@@ -521,3 +711,8 @@ class Sharer:
       return "erro"
     self._retry(ready, error="O receptor não respondeu.")  # 0, 408, 429, 5xx
     return "tentar depois"
+
+if __name__ == "__main__":
+  import sys
+  if sys.argv[1:] == ["cut"]:
+    _child_cut()

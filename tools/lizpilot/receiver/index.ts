@@ -32,6 +32,10 @@ const store: Store = {
     if (r.error) throw r.error;
     return r.count ?? 0;
   },
+  async bytesSince(since) {
+    const rows = check(await db.from("lizpilot_shares").select("bytes").gte("created_at", iso(since)));
+    return rows.reduce((a: number, r: { bytes: number }) => a + r.bytes, 0);
+  },
   async findShare(device, markId) {
     const rows = check(await db.from("lizpilot_shares").select("id").eq("device", device).eq("mark_id", markId).limit(1));
     return rows.length ? rows[0].id : null;
@@ -46,7 +50,10 @@ const store: Store = {
   },
   async forgetDevice(id) {
     const rows = check(await db.from("lizpilot_shares").select("object").eq("device", id));
-    if (rows.length) check(await db.storage.from(BUCKET).remove(rows.map((r: { object: string }) => r.object)));
+    // by the rows, and by the folder too: a package whose row was never written (a forget in the middle of a send) goes as well
+    const listed = check(await db.storage.from(BUCKET).list(id, { limit: 1000 })).map((f: { name: string }) => `${id}/${f.name}`);
+    const objects = [...new Set([...rows.map((r: { object: string }) => r.object), ...listed])];
+    if (objects.length) check(await db.storage.from(BUCKET).remove(objects));
     check(await db.from("lizpilot_devices").delete().eq("id", id)); // the rows go with it (on delete cascade)
     return rows.length;
   },
