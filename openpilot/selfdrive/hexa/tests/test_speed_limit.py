@@ -265,7 +265,7 @@ def test_view_for_the_phone():
   out = {"speedLimit": 60 * KPH, "nextSpeedLimit": 40 * KPH, "nextSpeedLimitDistance": 231.7, "tileLoaded": True, "roadName": "Av. X"}
   v = sl.view(out, 0.2, sl.WARN, True, {"active": True, "done": 2, "total": 6})
   assert v["fresh"] and v["limit"] == 60 and v["next"] == 40 and v["next_m"] == 232 and v["road"] == "Av. X"
-  assert v["download"] == {"active": True, "done": 2, "total": 6} and v["pinned"] is False
+  assert v["download"] == {"active": True, "done": 2, "total": 6} and v["pinned"] is bool(sl.MAPD_URL and sl.MAPD_SHA256)  # the pins, once the CTO fills them
   assert sl.view(out, 5., sl.SHOW, True)["fresh"] is False
   assert sl.view(dict(out, speedLimit=0.), 0.1, sl.SHOW, True)["limit"] is None
 

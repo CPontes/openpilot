@@ -29,8 +29,8 @@ MAPD_BIN = MAPD_DIR / "mapd"
 # The CTO builds mapd 8e5eee6 (the schema in cereal/custom.capnp) on the Mac and publishes it with its hash (owner, 05/11:
 # "melhor né, aí temos controle"). Empty: nothing is downloaded and nothing runs.
 MAPD_VERSION = "8e5eee6"
-MAPD_URL = ""
-MAPD_SHA256 = ""
+MAPD_URL = "https://github.com/CPontes/openpilot/releases/download/mapd-8e5eee6/mapd"  # CTO build of pfeiferj/mapd 8e5eee6 (BUILD-mapd.md)
+MAPD_SHA256 = "b8b6c8a2180df22833201023e725da990cbc4ec689fdad870fe9276ea9a126fa"  # reproducible: two clean builds, same hash
 MAX_BINARY = 64 * 1024 * 1024
 INSTALL_FREE_BYTES = 200 * 1024 * 1024
 
