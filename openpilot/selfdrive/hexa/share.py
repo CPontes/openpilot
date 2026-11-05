@@ -38,8 +38,13 @@ DEVICE_PARAM = "HexaShareDevice"  # {"id", "key", "registered"}: random, never t
 QUEUE_PARAM = "HexaShareQueue"  # [item]: what the owner asked to send, and how it went. DONT_LOG
 SHARE_DIR = "lizpilot_share"  # next to the log folder: the cuts waiting for a network
 
-# The receiver (tools/lizpilot/receiver/README.md). Empty until it is deployed: then the queue waits and the phone says why.
+# The receiver (tools/lizpilot/receiver/README.md): the owner's own Supabase project, in São Paulo. Empty until it is deployed: then
+# the queue waits and the phone says why. Only https (http only to this machine, for the tests and dev_server.ts).
 RECEIVER_URL = os.environ.get("LIZPILOT_SHARE_URL", "")
+# Only a LizPilot build registers (owner, 05/11: "qualquer um usando lizpilot"). The receiver keeps the same word in
+# LIZPILOT_BUILD_SECRETS. It is in a public repository: it keeps out what isn't LizPilot, not someone who reads the code.
+BUILD_SECRET = "lizpilot-share-2026-11-a7c3e91f"
+BRANDS = ("gwm",)  # owner, 05/11: only the Haval; another brand only with its DBC reviewed by hand (DECISIONS.md)
 
 FORMAT = b"LZS1"
 FORMAT_VERSION = 1
@@ -70,13 +75,17 @@ MIN_SECRET = 8  # shorter identifiers would match by chance
 TEXT_RUN = re.compile(rb"[A-Za-z0-9 .,:/@+-]{6,}")  # 6 printable characters in a row, 3 letters, 4 different: text
 # DBC messages and signals that say where, when, how far or who (whole words of the name, then parts anywhere in it)
 PRIVATE_TOKENS = frozenset({
-  "GPS", "GNSS", "NAV", "NAVI", "LOC", "LOCATION", "LATT", "LON", "LNG", "ALTITUDE",  # where
+  "GPS", "GNSS", "NAV", "NAVI", "LOC", "LOCATION", "LATT", "LON", "LNG", "ALTITUDE", "PSD",  # where (PSD: VW's map data)
   "ODO", "ODOMETER", "MILEAGE", "TRIP",  # how far
   "TIME", "DATE", "YEAR", "MONTH", "DAY", "WEEKDAY", "DOW", "HOUR", "HOURS", "HR", "MINUTE", "MINUTES", "SECONDS", "CLOCK", "RTC", "UTC",  # when
   "VIN", "SERIAL", "NAME", "PHONE", "CALL", "CONTACT", "TEXT", "ASCII", "CHAR", "STRING", "BT", "BLUETOOTH",  # who
-  "ID3", "SONG", "ARTIST", "STATION", "ADDRESS",
+  "ID3", "SONG", "ARTIST", "STATION", "ADDRESS", "FOB", "FOBID", "IMMO", "COUNTRY", "COUNTRYCFG",
+  # German (VW, Audi, Skoda, Porsche DBCs): year, month, day, hour, minute, second, time, date, odometer, secret, key
+  "JAHR", "MONAT", "TAG", "STUNDE", "SEKUNDE", "UHR", "UHRZEIT", "DATUM", "ZEIT", "KILOMETERSTAND", "KM", "GEHEIMNIS", "SCHLUESSEL",
+  "UH",  # "Uhrzeit" in VW's abbreviations (UH_Jahr, UH_Stunde)
 })
-PRIVATE_PARTS = ("LATITUD", "LONGITUD", "LATT", "LOCAT", "GPS", "GNSS", "ODOMET", "MILEAGE", "VIN_", "PHONE", "BLUETOOTH", "LONGDEG", "LATDEG")
+PRIVATE_PARTS = ("LATITUD", "LONGITUD", "LATT", "LOCAT", "GPS", "GNSS", "ODOMET", "MILEAGE", "VIN_", "PHONE", "BLUETOOTH", "LONGDEG", "LATDEG",
+                 "NAVIGAT", "KILOMETERSTAND", "GEHEIM", "UHRZEIT", "FOBID", "SMKFOB", "COUNTRYCFG")
 CUT_TIMEOUT_S = 180.
 SEND_JITTER_S = 2 * 3600.  # a cut waits a random time up to this before it is sent
 TEXT_SHARE = 0.5  # an address with text in half of its frames or more is text
@@ -396,9 +405,10 @@ def cut_in_child(log_root: str, mark: dict, vin: str = "", hide: Iterable[str] =
     job = json.dumps({"log_root": log_root, "mark": mark, "vin": vin, "hide": list(hide), "model": model, "out": str(out_file)})
     p = subprocess.Popen([sys.executable, "-m", "openpilot.selfdrive.hexa.share", "cut"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                          stderr=subprocess.DEVNULL, text=True)
-    assert p.stdin is not None and p.stdout is not None
+    assert p.stdin is not None
     p.stdin.write(job)
     p.stdin.close()
+    p.stdin = None  # sent and closed: communicate() below only reads the answer
     start = time.monotonic()
     while p.poll() is None:
       if not offroad() or time.monotonic() - start > timeout:
@@ -406,7 +416,8 @@ def cut_in_child(log_root: str, mark: dict, vin: str = "", hide: Iterable[str] =
         p.wait()
         raise CutInterrupted() if not offroad() else CutTimeout()
       time.sleep(0.2)
-    answer = json.loads(p.stdout.read() or "{}")
+    out, _ = p.communicate(timeout=10)
+    answer = json.loads(out or "{}")
     if "error" in answer:
       raise ShareError(str(answer["error"]))
     if p.returncode != 0 or "stats" not in answer:
@@ -445,17 +456,23 @@ def _text_param(store, key: str) -> str:
   return v.decode("utf-8", "ignore") if isinstance(v, bytes) else str(v or "")
 
 
-def manifest(store, mark: dict, stats: dict, payload: bytes, edition: str) -> dict:
+def manifest(store, mark: dict, stats: dict, payload: bytes, edition: str, with_note: bool = False) -> dict:
+  """with_note: the owner chose, in the dialog that showed it, to send what he typed (the note, and a reason of his own)."""
   info, _ = car_info(store)
+  typed = str(mark.get("reason") or "").startswith("c-")  # marks.add_reason: a reason he wrote himself
   return {
     "format": FORMAT_VERSION,
-    "mark": {**{k: mark.get(k) for k in ("id", "reason", "label", "note", "source")},
+    "mark": {"id": mark.get("id"), "source": mark.get("source"),
+             "reason": mark.get("reason") if with_note or not typed else "proprio",
+             "label": mark.get("label") if with_note or not typed else None,
+             "note": (mark.get("note") or "") if with_note else "",
              "delay_s": mark.get("delay_s") if isinstance(mark.get("delay_s"), int | float) and 0 <= mark["delay_s"] <= 60 else None},
     "month": time.strftime("%Y-%m", time.gmtime(float(mark.get("t") or 0))),  # the day and the hour stay on the comma
     "car": info,
     "software": {"edition": edition, "branch": _text_param(store, "GitBranch")[:40], "commit": _text_param(store, "GitCommit")[:12],
                  "version": _text_param(store, "Version")[:20]},
     "window": {"before_s": BEFORE_S, "after_s": AFTER_S},
+    "with_note": bool(with_note),
     "cut": stats,
     "sha256": hashlib.sha256(payload).hexdigest(),
     "bytes": len(payload),
@@ -464,13 +481,20 @@ def manifest(store, mark: dict, stats: dict, payload: bytes, edition: str) -> di
 
 # *** the queue ***
 
+def receiver_ok(url: str) -> bool:
+  """https, or http to this machine only."""
+  from urllib.parse import urlparse
+  u = urlparse(url or "")
+  return u.scheme == "https" and bool(u.hostname) or (u.scheme == "http" and u.hostname in ("127.0.0.1", "localhost"))
+
+
 def _queue(store) -> list[dict]:
   q = store.get(QUEUE_PARAM)
   return [i for i in q if isinstance(i, dict) and i.get("id")] if isinstance(q, list) else []
 
 
 def public_item(item: dict) -> dict:
-  return {k: item.get(k) for k in ("id", "state", "error", "tries", "bytes", "added", "sent_at") if item.get(k) is not None}
+  return {k: item.get(k) for k in ("id", "state", "error", "tries", "bytes", "added", "sent_at", "receipt", "with_note") if item.get(k) is not None}
 
 
 def http_post(url: str, body: bytes, hdrs: dict, timeout: float = HTTP_TIMEOUT) -> tuple[int, dict]:
@@ -522,14 +546,20 @@ class Sharer:
     with self.lock:
       q = _queue(self.store)
       dev = self.store.get(DEVICE_PARAM)
-      return {"enabled": self.enabled(), "receiver": bool(self.url), "items": [public_item(i) for i in q],
+      return {"enabled": self.enabled(), "receiver": receiver_ok(self.url), "items": [public_item(i) for i in q],
               "forgetting": bool(isinstance(dev, dict) and dev.get("forget")),
               "sent": sum(1 for i in q if i.get("state") == "enviado")}
 
-  def enqueue(self, mark: dict) -> tuple[int, dict]:
+  def allowed_car(self) -> bool:
+    from openpilot.selfdrive.hexa import edition
+    return edition.car_brand(self.store) in BRANDS
+
+  def enqueue(self, mark: dict, with_note: bool = False) -> tuple[int, dict]:
     with self.lock:
       if not self.enabled():
         return 409, {"error": "Ligue antes \"enviar trechos aos desenvolvedores\" em Ajustes."}
+      if not self.allowed_car():
+        return 409, {"error": "Por enquanto, os envios são só do Haval."}
       q = _queue(self.store)
       old = next((i for i in q if i["id"] == mark.get("id")), None)
       if old is not None and old.get("state") != "erro":
@@ -537,7 +567,7 @@ class Sharer:
       q = [i for i in q if i["id"] != mark.get("id")]
       if sum(1 for i in q if i.get("state") in ("fila", "pronto")) >= MAX_QUEUE:
         return 429, {"error": "Muitos trechos esperando. Espere enviar os que estão na fila."}
-      item = {"id": str(mark["id"]), "state": "fila", "tries": 0, "next_at": 0., "added": int(self.clock())}
+      item = {"id": str(mark["id"]), "state": "fila", "tries": 0, "next_at": 0., "added": int(self.clock()), "with_note": bool(with_note)}
       q = q + [item]
       for gone in q[:-MAX_KEPT]:  # the oldest go, and their cuts with them
         self._drop_file(gone["id"])
@@ -615,7 +645,7 @@ class Sharer:
   def _register(self, dev: dict) -> bool:
     if dev.get("registered"):
       return True
-    body = json.dumps({"device": dev["id"], "key": dev["key"]}).encode()
+    body = json.dumps({"device": dev["id"], "key": dev["key"], "build": BUILD_SECRET}).encode()
     status, _ = self._signed_post(dev, "/v1/register", body)
     if status in (200, 201):
       self._mark_device(dev, registered=True)
@@ -646,7 +676,7 @@ class Sharer:
       return "falhou"
 
   def _step(self, offroad: bool, network_ok: bool, marks: list[dict]) -> str:
-    online = network_ok and bool(self.url)
+    online = network_ok and receiver_ok(self.url)
     with self.lock:
       dev = self.store.get(DEVICE_PARAM)
       forgetting = isinstance(dev, dict) and dev.get("forget")
@@ -661,12 +691,20 @@ class Sharer:
         return "apagado"
       return "esperando rede"
     if not self.enabled():
+      with self.lock:  # turned off: what hasn't left yet goes, here and on the disk (owner, 05/11)
+        q = _queue(self.store)
+        pending = [i for i in q if i.get("state") in ("fila", "pronto")]
+        for i in pending:
+          if i["id"] != self._sending:
+            self._drop_file(i["id"])
+        if pending:
+          self.store.put(QUEUE_PARAM, [i for i in q if i not in pending or i["id"] == self._sending])
       return "desligado"
     with self.lock:
       q = _queue(self.store)
       ready = next((i for i in q if i.get("state") == "pronto" and self._due(i)), None)
       todo = next((i for i in q if i.get("state") == "fila" and self._due(i)), None)
-    if ready is not None and online:
+    if ready is not None and online and offroad:  # only with the car off (owner, 05/11)
       return self._send(ready)
     if todo is not None and offroad:  # reading the rlogs costs CPU: never while driving
       return self._cut(todo, marks)
@@ -678,10 +716,13 @@ class Sharer:
       self._update(todo["id"], state="erro", error="A marca foi apagada.")
       return "erro"
     info, vin = car_info(self.store)
+    if info["brand"] not in BRANDS:
+      self._update(todo["id"], state="erro", error="Por enquanto, os envios são só do Haval.")
+      return "erro"
     hide = [_text_param(self.store, k) for k in ("DongleId", "HardwareSerial")]
     try:
       payload, stats = self.cutter(self.log_root, mark, vin=vin, hide=hide, model=info["model"])
-      data = pack(manifest(self.store, mark, stats, payload, self.edition), payload)
+      data = pack(manifest(self.store, mark, stats, payload, self.edition, with_note=bool(todo.get("with_note"))), payload)
       if len(data) > MAX_BYTES:
         raise ShareError("O trecho ficou grande demais para enviar.")
     except CutInterrupted:

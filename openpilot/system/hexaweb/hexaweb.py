@@ -1212,14 +1212,14 @@ class PanelBackend:
     with self.lock:
       return self.sharer.state()
 
-  def share_add(self, who: dict, mark_id: str) -> tuple[int, dict]:
+  def share_add(self, who: dict, mark_id: str, with_note: bool = False) -> tuple[int, dict]:
     if self.sharer is None:
       return 404, {"error": "Este comma não envia trechos."}
     with self.lock:
       mark = next((m for m in self._marks() if m.get("id") == mark_id), None)
       if mark is None:
         return 404, {"error": "Marca não encontrada."}
-      status, out = self.sharer.enqueue(mark)
+      status, out = self.sharer.enqueue(mark, with_note=with_note)
       if status == 200:
         self._audit({"event": "share_queued", "who": who.get("name", ""), "new": mark_id})
       return status, out
@@ -1465,7 +1465,7 @@ def make_handler(backend: PanelBackend):
         "/api/phones/revoke": lambda who, b: backend.revoke_phone(who, str(b.get("id", ""))),
         "/api/comma/set": lambda who, b: backend.comma_set(who, str(b.get("key", "")), b.get("value")),
         "/api/comma/action": lambda who, b: backend.comma_action(who, str(b.get("action", ""))),
-        "/api/share": lambda who, b: backend.share_add(who, str(b.get("id", ""))),
+        "/api/share": lambda who, b: backend.share_add(who, str(b.get("id", "")), b.get("with_note") is True),
         "/api/share/cancel": lambda who, b: backend.share_cancel(who, str(b.get("id", ""))),
         "/api/share/forget": lambda who, b: backend.share_forget(who),
       }

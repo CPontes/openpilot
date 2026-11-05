@@ -1671,6 +1671,8 @@ def _sharing_panel(panel, tmp_path, enabled=True):
                                       cutter=lambda *a, **k: (b"cut", {"services": {"carState": 1}}), share_dir=tmp_path / "share",
                                       send_jitter_s=0.)
   panel.store.put(share.ENABLED_PARAM, enabled)
+  from opendbc.car.structs import car
+  panel.store.put("CarParamsPersistent", car.CarParams.new_message(brand="gwm", carFingerprint="GWM_HAVAL_H6").to_bytes())  # only the Haval
   return sent
 
 

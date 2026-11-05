@@ -269,6 +269,8 @@ class Receiver:
     dev = hdrs[share.DEVICE_HEADER]
     if path == "/v1/register":
       reg = json.loads(body)
+      if reg.get("build") != share.BUILD_SECRET:
+        return 403, {"error": "build"}
       key = self.devices.setdefault(reg["device"], reg["key"])
       if key != reg["key"]:
         return 409, {}
@@ -317,7 +319,8 @@ def test_nothing_happens_with_the_option_off(tmp_path):
 
 def test_a_mark_is_cut_parked_and_sent_on_wifi(tmp_path):
   w = World(tmp_path)
-  assert w.sharer.enqueue(MARK) == (200, {"ok": True, "item": {"id": MARK["id"], "state": "fila", "tries": 0, "added": 50_000}})
+  assert w.sharer.enqueue(MARK) == (200, {"ok": True, "item": {"id": MARK["id"], "state": "fila", "tries": 0, "added": 50_000,
+                                                                 "with_note": False}})
   assert w.sharer.step(offroad=False, network_ok=True, marks=[MARK]) == "nada"  # driving: no cut
   assert w.sharer.step(True, False, [MARK]) == "cortado"
   assert w.cuts[0]["vin"] == VIN and set(w.cuts[0]["hide"]) == {DONGLE, SERIAL} and w.cuts[0]["model"] == "GWM_HAVAL_H6"
@@ -326,7 +329,7 @@ def test_a_mark_is_cut_parked_and_sent_on_wifi(tmp_path):
   assert w.receiver.calls == ["/v1/register", "/v1/share"]
   dev, m = w.receiver.shares[0]
   assert dev == w.store.get(share.DEVICE_PARAM)["id"] != DONGLE
-  assert m["mark"] == {k: MARK[k] for k in ("id", "reason", "label", "note", "delay_s", "source")}  # never "who" nor the time
+  assert m["mark"] == {**{k: MARK[k] for k in ("id", "reason", "label", "delay_s", "source")}, "note": ""}  # never "who"; the note only if chosen
   assert m["car"] == {"brand": "gwm", "model": "GWM_HAVAL_H6"} and m["month"] == "1970-01"
   assert m["software"] == {"edition": "h6gt", "branch": "h6gt", "commit": "0123456789ab", "version": "0.10.1"}
   assert VIN not in json.dumps(m) and DONGLE not in json.dumps(m)
@@ -693,8 +696,12 @@ def test_the_cut_runs_in_a_low_priority_child_and_stops_when_the_car_turns_on(tm
 
 # *** the second pass of the review (79b5c1d) ***
 
+# English, German (VW group: UH_Jahr, KBI_Kilometerstand, IDT_Geheimnis) and Hyundai/Kia's abbreviations (SMKFobID, CountryCfg).
+# The CTO's review (05/11) found these passing with English only: the test looks in the languages the DBCs are written in.
 AUDIT = re.compile("|".join(("HOUR", "MINUTE", "LOCAL_?TIME", "LATIT", "LONGIT", "LATT", "LOCAT", "GPS", "GNSS", "ODOMET", "MILEAGE",
-                              "(?<![A-Za-z])VIN(?![A-Za-z])", "PHONE", "BLUETOOTH", "CLOCK", "CALENDAR", "ARTIST")), re.I)
+                              "(?<![A-Za-z])VIN(?![A-Za-z])", "PHONE", "BLUETOOTH", "CLOCK", "CALENDAR", "ARTIST",
+                              "JAHR", "MONAT", "STUNDE", "SEKUNDE", "UHRZEIT", "DATUM", "KILOMETERSTAND", "GEHEIM", "NAVIGAT",
+                              "(?<![A-Za-z])UH_", "FOBID", "COUNTRY")), re.I)
 
 
 def test_no_car_lets_a_clock_a_position_or_a_name_through():
@@ -716,7 +723,8 @@ def test_no_car_lets_a_clock_a_position_or_a_name_through():
 
 
 def test_the_review_cases_and_lateral_stays():
-  for name in ("LOCAL_TIME2", "HOURS", "MINUTES", "SECONDS", "Saved_Charge_Location_FD1", "ChrgLocLattPostv", "ChrgLocLongDeg_An_Sav",
+  for name in ("CF_Gway_SMKFobID", "CountryCfg", "IDT_Geheimnis_1", "UH_Jahr", "UH_Stunde", "KBI_Kilometerstand", "Navigation_1", "PSD_05",
+               "LOCAL_TIME2", "HOURS", "MINUTES", "SECONDS", "Saved_Charge_Location_FD1", "ChrgLocLattPostv", "ChrgLocLongDeg_An_Sav",
                "LocationServices_Data1_FD1", "OffPeakTime_Hr", "DayOfWeek_D_Stat"):
     assert share.private_signal(name), name
   for name in ("LAT_ACCEL", "LAT_DIST", "TRACK_A_0", "KINEMATICS", "VEHICLE_DYNAMICS", "ESP12", "LONG_ACCEL", "STEER_TORQUE"):
@@ -770,3 +778,80 @@ def test_a_private_signal_is_zeroed_and_the_rest_of_the_frame_stays():
   out = [bytes(c.dat) for e in evs if e.which() == "can" for c in e.can if c.address == 0x27F]
   assert out and all(sig.get_raw_value(d) == 0 for d in out) and all(d != bytes(8) for d in out)  # only that signal
   assert stats["can_signals_zeroed"] == ["REQ_REVIEW_ODOMETER"]
+
+
+
+# *** codeweb-07: the owner's decisions of 05/11 (DECISIONS.md) ***
+
+def test_only_the_haval_sends(tmp_path):
+  w = World(tmp_path)
+  w.store.put("CarParamsPersistent", car_params(brand="toyota", model="TOYOTA_RAV4_TSS2").to_bytes())
+  status, out = w.sharer.enqueue(MARK)
+  assert status == 409 and "Haval" in out["error"]
+  w.store.put(share.QUEUE_PARAM, [{"id": MARK["id"], "state": "fila", "tries": 0}])  # queued in the Haval, the comma moved to another car
+  assert w.sharer.step(True, True, [MARK]) == "erro" and w.cuts == []
+  from openpilot.selfdrive.hexa.options import get_option
+  assert get_option("HexaShareEnabled").brands == ("gwm",)
+
+
+def test_it_leaves_only_with_the_car_off(tmp_path):
+  w = World(tmp_path)
+  w.sharer.enqueue(MARK)
+  w.sharer.step(True, True, [MARK])
+  assert w.sharer.step(offroad=False, network_ok=True, marks=[MARK]) == "esperando rede" and w.receiver.calls == []
+  assert w.sharer.step(True, True, [MARK]) == "enviado"
+
+
+def test_the_note_goes_only_when_chosen_and_a_reason_of_his_own_too(tmp_path):
+  w = World(tmp_path)
+  mine = {**MARK, "id": "ab12cd35", "reason": "c-perto-de-casa", "label": "perto de casa"}
+  w.sharer.enqueue(MARK)  # not chosen
+  w.sharer.enqueue(mine, with_note=False)
+  for _ in range(4):
+    w.sharer.step(True, True, [MARK, mine])
+  sent = {m["mark"]["id"]: m for _, m in w.receiver.shares}
+  assert sent[MARK["id"]]["mark"]["note"] == "" and sent[MARK["id"]]["mark"]["label"] == "curva difícil" and not sent[MARK["id"]]["with_note"]
+  assert sent[mine["id"]]["mark"]["reason"] == "proprio" and sent[mine["id"]]["mark"]["label"] is None
+  assert "perto de casa" not in json.dumps(sent[mine["id"]]) and "na serra" not in json.dumps(w.receiver.shares)
+  w2 = World(tmp_path / "w2")
+  w2.sharer.enqueue(mine, with_note=True)
+  w2.sharer.step(True, True, [mine])
+  w2.sharer.step(True, True, [mine])
+  m = w2.receiver.shares[0][1]
+  assert m["with_note"] and m["mark"]["note"] == "na serra" and m["mark"]["label"] == "perto de casa"
+  assert w2.sharer.state()["items"][0]["with_note"] is True
+
+
+def test_turning_the_option_off_deletes_what_hasnt_left(tmp_path):
+  w = World(tmp_path)
+  other = {**MARK, "id": "ef56ab78"}
+  w.sharer.enqueue(MARK)
+  w.sharer.step(True, True, [MARK])
+  w.sharer.step(True, True, [MARK])  # sent
+  w.sharer.enqueue(other)
+  w.sharer.step(True, False, [MARK, other])  # cut, on the disk
+  assert list((tmp_path / "share").iterdir())
+  w.store.put(share.ENABLED_PARAM, False)
+  assert w.sharer.step(True, True, [MARK, other]) == "desligado"
+  assert [i["id"] for i in w.sharer.state()["items"]] == [MARK["id"]]  # what went stays listed; "apagar meus envios" deletes it there
+  assert not list((tmp_path / "share").iterdir())
+
+
+def test_only_https_receivers(tmp_path):
+  assert share.receiver_ok("https://abc.supabase.co/functions/v1/lizpilot-share")
+  assert share.receiver_ok("http://127.0.0.1:8123") and share.receiver_ok("http://localhost:1")
+  for bad in ("http://abc.supabase.co", "ftp://x", "", "https://", "abc.supabase.co"):
+    assert not share.receiver_ok(bad), bad
+  w = World(tmp_path)
+  w.sharer.url = "http://abc.supabase.co"
+  w.sharer.enqueue(MARK)
+  w.sharer.step(True, True, [MARK])
+  assert w.sharer.step(True, True, [MARK]) == "esperando rede" and w.receiver.calls == [] and not w.sharer.state()["receiver"]
+
+
+def test_the_receipt_is_shown_to_ask_for_deletion(tmp_path):
+  w = World(tmp_path)
+  w.sharer.enqueue(MARK)
+  w.sharer.step(True, True, [MARK])
+  w.sharer.step(True, True, [MARK])
+  assert w.sharer.state()["items"][0]["receipt"] == "s1"

@@ -29,8 +29,10 @@ def node_ok() -> bool:
 def receiver():
   if not node_ok():
     pytest.skip("no Node 22.6+ here")
+  import os
+  env = dict(os.environ, LIZPILOT_BUILD_SECRETS=share.BUILD_SECRET)
   p = subprocess.Popen(["node", "--experimental-strip-types", "--no-warnings", str(RECEIVER / "dev_server.ts"), "0"],
-                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
   line = p.stdout.readline()
   assert line.startswith("listening "), p.stderr.read()
   url = f"http://127.0.0.1:{int(line.split()[1])}"
@@ -102,3 +104,28 @@ def test_the_package_on_the_receiver_is_the_comma_s(tmp_path, receiver):
   _, evs = decode(payload)
   assert held(receiver)["shares"][0]["bytes"] == len(got["share"])
   assert {e.which() for e in evs} <= share.SERVICES and m["mark"]["id"] == mark["id"]
+
+
+def test_the_reader_lists_and_downloads_what_arrived(tmp_path, receiver):
+  """envios.py against the receiver itself, with the reader word: the package comes back as the comma packed it."""
+  import importlib.util
+  write_segments(tmp_path / "realdata", minutes=2)
+  w = World(tmp_path)
+  w.sharer = share.Sharer(w.store, str(tmp_path / "realdata"), url=receiver, share_dir=tmp_path / "share", send_jitter_s=0.)
+  mark = {**MARK, "t": 10_000 + 60 + 30, "mono_ns": T0 + 90 * NS, "delay_s": 0.}
+  w.sharer.enqueue(mark, with_note=True)
+  w.sharer.step(True, True, [mark])
+  assert w.sharer.step(True, True, [mark]) == "enviado"
+  spec = importlib.util.spec_from_file_location("envios", RECEIVER.parent / "envios.py")
+  envios = importlib.util.module_from_spec(spec)
+  spec.loader.exec_module(envios)
+  rows = envios.rows(receiver, "dev-reader", brand="gwm")
+  assert len(rows) == 1 and "device" not in rows[0] and rows[0]["note"] == "na serra"
+  dest = envios.download(receiver, "dev-reader", rows[0], tmp_path / "out")
+  assert json.loads((dest / "manifest.json").read_text())["mark"]["id"] == mark["id"]
+  try:
+    envios.rows(receiver, "wrong")
+  except Exception as e:
+    assert "403" in str(e)
+  else:
+    raise AssertionError("read without the word")

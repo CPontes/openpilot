@@ -6,7 +6,10 @@ import { DEFAULTS, handle, MemoryStore } from "./handler.ts";
 
 const store = new MemoryStore();
 let n = 0;
-const cfg = { ...DEFAULTS, now: () => Date.now() / 1000, newId: () => `dev-${++n}` };
+// Dev only: the build word of share.py (or LIZPILOT_BUILD_SECRETS), and fixed purge and reader words for the tests.
+const cfg = { ...DEFAULTS, now: () => Date.now() / 1000, newId: () => `dev-${++n}`,
+              buildSecrets: (process.env.LIZPILOT_BUILD_SECRETS ?? "lizpilot-share-2026-11-a7c3e91f").split(","),
+              purgeSecret: "dev-purge", readerSecret: "dev-reader" };
 
 const server = createServer(async (req, res) => {
   const chunks: Buffer[] = [];

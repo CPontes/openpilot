@@ -36,3 +36,14 @@ alter table lizpilot_shares enable row level security;
 insert into storage.buckets (id, name, public, file_size_limit)
 values ('lizpilot-shares', 'lizpilot-shares', false, 8388608)
 on conflict (id) do nothing;
+
+-- Retention (owner, 05/11): 12 months, then deleted, with the packages. Once a day, pg_cron calls the function's /v1/purge with
+-- the purge word kept in Vault (LIZPILOT_PURGE_SECRET is the same word, set as a secret of the function). Replace <project>.
+-- Database → Extensions: turn on pg_cron and pg_net. Then:
+--   select vault.create_secret('<the purge word>', 'lizpilot_purge');
+--   select cron.schedule('lizpilot-retention', '17 6 * * *', $$
+--     select net.http_post(
+--       url := 'https://<project>.supabase.co/functions/v1/lizpilot-share/v1/purge',
+--       headers := jsonb_build_object('X-LizPilot-Purge',
+--                    (select decrypted_secret from vault.decrypted_secrets where name = 'lizpilot_purge'))
+--     ) $$);

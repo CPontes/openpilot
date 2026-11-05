@@ -31,7 +31,7 @@ celular (marca → enviar) → comma: corta, limpa, assina, espera Wi-Fi → rec
 
 Um CRC às vezes parece texto: `WHEEL_SPEEDS` chega a 11% dos quadros. Por isso um endereço só sai como texto com metade dos quadros ou mais.
 
-**Em todos os carros do opendbc** [teste], `test_no_car_lets_a_clock_a_position_or_a_name_through`: nenhuma mensagem que sai tem, aberto, um sinal com nome de hora, posição, distância ou pessoa. Exemplos:
+**Em todos os carros do opendbc** [teste], `test_no_car_lets_a_clock_a_position_or_a_name_through`: nenhuma mensagem que sai tem, aberto, um sinal com nome de hora, posição, distância ou pessoa, **em inglês, em alemão** (os DBCs da VW: `UH_Jahr`, `KBI_Kilometerstand`, `IDT_Geheimnis`) **e nas abreviações da Hyundai/Kia** (`SMKFobID`, `CountryCfg`). Hoje só o Haval envia; isso é a base para as próximas marcas. Exemplos:
 - Haval: as 29 mensagens saem; `REQ_REVIEW_ODOMETER` sai zerado;
 - RAV4: saem 90 de 94 (ficam de fora `TIME` e `VIN_PART_1..3`);
 - Civic 2022: saem 52 de 53 (fica de fora `ODOMETER`);
@@ -45,56 +45,64 @@ Um CRC às vezes parece texto: `WHEEL_SPEEDS` chega a 11% dos quadros. Por isso 
 - A hora em que o pacote chega fica nos metadados do bucket e na issue. Por isso o comma espera um tempo aleatório de até 2 h depois do corte (`SEND_JITTER_S`): a chegada não diz quando o carro foi estacionado.
 - Uma só pessoa pode ocupar os limites do dia (100 commas novos, 500 envios). Isso só fecha com limite por IP na borda ou com um segredo da build no cadastro: está nos pontos para o CTO.
 
+## Decisões do dono (05/11, `DECISIONS.md`)
+
+1. **Só no Haval** (`brands=edition.GWM_ONLY` e `share.BRANDS`). Outra marca, só com as mensagens do DBC dela revisadas à mão.
+2. **Só sobe com o carro desligado**: o corte e o envio.
+3. **A nota vai só se o dono escolher**, num diálogo que mostra o texto. Um motivo que ele mesmo escreveu conta como nota. Nunca vai na issue do GitHub.
+4. **Cadastro fechado por um segredo da build** (`share.BUILD_SECRET`): só um comma com LizPilot se cadastra. O segredo está num repositório público: barra o que não é LizPilot, não quem lê o código. Por isso os limites diários ficam.
+5. **Receptor num projeto Supabase novo e exclusivo, em São Paulo** (a região da Supabase no Brasil).
+6. **Retenção de 12 meses**, com exclusão automática.
+7. **Desligar a opção apaga a fila** que ainda não saiu, com os arquivos `.lzs`.
+
 ## O comma
 
-- Opção **enviar trechos aos desenvolvedores** (`HexaShareEnabled`, desligada por padrão), em Ajustes → Celular. Ela é o consentimento.
-- No celular, cada marca ganha **enviar**. A confirmação diz o que vai. Os estados são: na fila → esperando Wi-Fi → enviado.
-- Corta só com o carro desligado, num processo à parte com prioridade mínima (`nice 19`). Se o carro ligar no meio, o corte para e é refeito depois. Um corte que passa de 180 s conta como tentativa.
-- Envia só em rede que não é medida (`deviceState.networkMetered`).
-- Um log que não abre (minuto cortado quando a energia caiu) é tentado 3 vezes e não segura os outros da fila.
-- A fila tem no máximo 20 trechos e 8 tentativas por trecho, com espera crescente. Cada trecho tem no máximo 8 MB (um Haval dá algumas centenas de KB).
-- Código: `openpilot/selfdrive/hexa/share.py`, `system/hexaweb/hexaweb.py` (`/api/share*` e o `share_worker`).
-- **`share.RECEIVER_URL` está vazio** até o receptor ir ao ar. Até lá, os trechos esperam no comma e o celular diz isso.
+- Opção **enviar trechos aos desenvolvedores** (`HexaShareEnabled`, desligada, só no Haval), em Ajustes → Celular. Ela é o consentimento.
+- No celular, cada marca ganha **enviar**:
+  - a confirmação diz o que vai;
+  - se a marca tem nota, um segundo diálogo mostra o texto e pergunta se inclui;
+  - estados: na fila → pronto para enviar → ✓ enviado. Tocar no enviado mostra o **código do envio**.
+- Corta e envia só com o carro desligado. O corte roda num processo à parte com prioridade mínima (`nice 19`) e para se o carro ligar. Um corte que passa de 180 s conta como tentativa.
+- Envia só em rede que não é medida (`deviceState.networkMetered`), num momento aleatório dentro de 2 h.
+- Um log que não abre é tentado 3 vezes e não segura os outros. A fila tem no máximo 20 trechos, com 8 tentativas por trecho.
+- `share.RECEIVER_URL` aceita só `https`. Fica vazio até o receptor ir ao ar; até lá os trechos esperam e o celular diz isso.
 
-## O receptor (Supabase)
+## O receptor (Supabase), passo a passo
 
-Os arquivos ficam nesta pasta:
-- `handler.ts`: toda a lógica, sem plataforma;
-- `index.ts`: a Edge Function;
-- `schema.sql`: as tabelas e o bucket privado;
-- `dev_server.ts`: o receptor em memória, num computador.
+Quem cria o projeto é o dono:
 
-Para pôr no ar, o dono ou o CTO:
-1. Cria um projeto no Supabase (de preferência, região São Paulo).
-2. Roda `schema.sql` no SQL Editor. Ele cria duas tabelas com RLS ligado e sem política, e o bucket privado `lizpilot-shares`.
-3. Faz o deploy da função com `supabase functions deploy lizpilot-share --no-verify-jwt`. O `--no-verify-jwt` é porque a autenticação é a assinatura do comma, não o JWT do Supabase.
-4. Opcional: para receber uma issue a cada envio, cria um repositório **privado** (ex.: `CPontes/lizpilot-envios`) e configura os segredos da função:
-   - `LIZPILOT_GITHUB_TOKEN`: um token fine-grained só com Issues: write nesse repositório;
-   - `LIZPILOT_GITHUB_REPO`: `CPontes/lizpilot-envios`.
-5. Põe a URL da função em `share.RECEIVER_URL` (`https://<projeto>.supabase.co/functions/v1/lizpilot-share`) num commit no canal.
+1. Em supabase.com, crie um projeto **novo, só para isto**, na região **South America (São Paulo)**.
+2. No SQL Editor, rode `schema.sql`. Ele cria duas tabelas com RLS ligado e sem política, e o bucket privado `lizpilot-shares` (8 MB por arquivo).
+3. Em Edge Functions → Secrets, crie:
+   - `LIZPILOT_BUILD_SECRETS`: o valor de `share.BUILD_SECRET`. Separe por vírgula para aceitar uma versão antiga e uma nova;
+   - `LIZPILOT_PURGE_SECRET`: uma palavra longa e aleatória, para a exclusão automática;
+   - `LIZPILOT_READER_SECRET`: outra palavra longa e aleatória, só para os desenvolvedores lerem;
+   - opcional: `LIZPILOT_GITHUB_TOKEN`, um token fine-grained só com Issues: write num repositório **privado** (ex.: `CPontes/lizpilot-envios`), e `LIZPILOT_GITHUB_REPO`.
+4. Faça o deploy: `supabase functions deploy lizpilot-share --no-verify-jwt`. A autenticação é a assinatura do comma, não o JWT da Supabase.
+5. **Retenção:** em Database → Extensions, ligue `pg_cron` e `pg_net`. Rode o bloco comentado no fim de `schema.sql`: ele guarda a palavra de exclusão no Vault e agenda a chamada diária a `/v1/purge`, que apaga pacotes e linhas com mais de 365 dias.
+6. Ponha a URL da função (`https://<projeto>.supabase.co/functions/v1/lizpilot-share`) em `share.RECEIVER_URL`, num commit no canal.
 
-Limites (`handler.ts` `DEFAULTS`, por dia UTC):
+**Limites** (`handler.ts` `DEFAULTS`, por dia UTC):
 - 8 MB por envio;
 - 30 envios por comma, 500 no total e 1 GB no total;
 - 100 commas novos;
 - relógio com até 300 s de diferença. Se o do comma estiver errado, o receptor responde a hora dele e o comma assina de novo.
 
-O cadastro é aberto (qualquer comma pode ajudar). Por isso:
-- os limites existem;
-- motivo e anotação ficam como texto puro: no aviso, nenhuma menção, link ou imagem age, e no terminal nenhum caractere de controle age.
+**O receptor guarda:** o dia da chegada (não a hora), o carro, a versão, o motivo e o pacote. A nota só se o dono escolheu. Nunca o dongle id nem o IP. A Supabase registra o IP nos logs da plataforma, e a hora da chegada fica nos metadados do bucket; a espera aleatória de até 2 h serve para isso.
 
-Ver "Pontos para o CTO" em `codeweb-06`: travar o cadastro com um segredo da build, e anti-replay dentro dos 300 s.
+**Pedido de exclusão sem o comma** (o comma foi resetado e a chave se perdeu): o dono mostra o **código do envio** que o celular exibiu. Quem administra apaga a linha e o pacote pelo painel da Supabase. Os dados são pseudonimizados (chave aleatória), não anônimos. Por isso há retenção e exclusão.
 
 ## Os desenvolvedores
 
 ```bash
-export LIZPILOT_SUPABASE_URL=https://<projeto>.supabase.co
-export LIZPILOT_SUPABASE_KEY=<service role>     # só no ambiente, nunca em arquivo de repositório
-python tools/lizpilot/envios.py listar --carro toyota
+export LIZPILOT_SHARE_URL=https://<projeto>.supabase.co/functions/v1/lizpilot-share
+export LIZPILOT_READER_KEY=<LIZPILOT_READER_SECRET>   # só lê: listar e baixar. Nunca a chave service role
+python tools/lizpilot/envios.py listar --carro gwm
 python tools/lizpilot/envios.py baixar novos    # em ~/lizpilot-envios/<id>/rlog.zst + manifest.json
 ```
 
-O `rlog.zst` abre nas ferramentas de sempre: `LogReader`, plotjuggler, `openpilot/tools/hexa_replay.py` e `timeline.read_rlog`.
+- O `envios.py` recusa pacote maior que 9 MB e descompactado maior que 256 MB.
+- O `rlog.zst` abre nas ferramentas de sempre: `LogReader`, plotjuggler, `openpilot/tools/hexa_replay.py` e `timeline.read_rlog`.
 
 **Os envios são dados de quem dirigiu.** Nunca vão para repositório público nem para commit. Ficam no Supabase, na pasta local e, se for o caso, como anexo de Release no repositório privado de coordenação.
 

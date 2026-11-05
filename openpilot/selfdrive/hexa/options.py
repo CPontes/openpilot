@@ -219,6 +219,7 @@ OPTIONS: tuple[HexaOption, ...] = (
   ),
   HexaOption(
     key="HexaShareEnabled",
+    brands=edition.GWM_ONLY,  # owner, 05/11: only the Haval; another brand only with its DBC reviewed by hand
     group="celular",
     title="enviar trechos aos desenvolvedores",
     description="Numa marca, o botão Enviar manda aos desenvolvedores 45 s do log daquele momento, para melhorar o LizPilot.\n" +

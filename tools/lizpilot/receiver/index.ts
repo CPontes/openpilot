@@ -48,6 +48,27 @@ const store: Store = {
       throw r.error;
     }
   },
+  async purgeBefore(before) {
+    let n = 0;
+    for (;;) { // in pages: storage removes up to 1000 at a time
+      const rows = check(await db.from("lizpilot_shares").select("id,object").lt("created_at", iso(before)).limit(500));
+      if (!rows.length) return n;
+      check(await db.storage.from(BUCKET).remove(rows.map((r: { object: string }) => r.object)));
+      check(await db.from("lizpilot_shares").delete().in("id", rows.map((r: { id: string }) => r.id)));
+      n += rows.length;
+    }
+  },
+  async listShares(brand, limit) {
+    let q = db.from("lizpilot_shares").select("*").order("created_at", { ascending: false }).limit(limit);
+    if (brand !== null) q = q.eq("brand", brand);
+    return check(await q).map((r: Record<string, unknown>) => ({ ...r, created_at: Date.parse(String(r.created_at)) / 1000 }) as ShareRow);
+  },
+  async getPackage(id) {
+    const rows = check(await db.from("lizpilot_shares").select("object").eq("id", id).limit(1));
+    if (!rows.length) return null;
+    const blob = check(await db.storage.from(BUCKET).download(rows[0].object)) as Blob;
+    return new Uint8Array(await blob.arrayBuffer());
+  },
   async forgetDevice(id) {
     const rows = check(await db.from("lizpilot_shares").select("object").eq("device", id));
     // by the rows, and by the folder too: a package whose row was never written (a forget in the middle of a send) goes as well
@@ -65,8 +86,12 @@ const store: Store = {
 };
 
 const token = Deno.env.get("LIZPILOT_GITHUB_TOKEN"), repo = Deno.env.get("LIZPILOT_GITHUB_REPO");
+const env = (k: string) => Deno.env.get(k) || undefined;
 const cfg = {
   ...DEFAULTS,
+  buildSecrets: (env("LIZPILOT_BUILD_SECRETS") ?? "").split(",").map((x) => x.trim()).filter(Boolean),
+  purgeSecret: env("LIZPILOT_PURGE_SECRET"),
+  readerSecret: env("LIZPILOT_READER_SECRET"),
   now: () => Date.now() / 1000,
   newId: () => crypto.randomUUID(),
   notify: token && repo ? githubNotifier(token, repo) : undefined,

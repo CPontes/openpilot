@@ -44,11 +44,11 @@ def test_download_and_open_as_an_rlog(tmp_path):
   data = a_package(tmp_path)
   row = {"id": "s1", "object": "ab" * 16 + "/s1.lzs", "created_at": "2026-11-05T10:00:00Z", "brand": "gwm", "model": "GWM_HAVAL_H6",
          "label": "curva difícil", "note": "na serra", "bytes": len(data)}
-  base = "https://p.supabase.co"
-  op = Opener({f"{base}/rest/v1/lizpilot_shares?": json.dumps([row]).encode(), f"{base}/storage/v1/object/lizpilot-shares/": data})
-  rows = envios.rows(base, "svc", ids=["s1"], opener=op)
-  assert rows == [row] and "id=in.%28s1%29" in op.asked[0][0]
-  assert op.asked[0][1]["Authorization"] == "Bearer svc"
+  base = "https://p.supabase.co/functions/v1/lizpilot-share"
+  op = Opener({f"{base}/v1/shares?": json.dumps({"shares": [row]}).encode(), f"{base}/v1/shares/s1": data})
+  rows = envios.rows(base, "svc", brand="gwm", opener=op)
+  assert rows == [row] and "brand=gwm" in op.asked[0][0]
+  assert op.asked[0][1]["X-lizpilot-reader"] == "svc" and "Authorization" not in op.asked[0][1]  # the reader word, never the service role
   dest = envios.download(base, "svc", row, tmp_path / "out", opener=op)
   manifest = json.loads((dest / "manifest.json").read_text())
   assert manifest["mark"]["id"] == MARK["id"]
@@ -76,7 +76,7 @@ def test_a_package_that_doesnt_match_its_manifest_is_refused(tmp_path):
 def test_a_broken_download_is_not_kept_and_typed_text_is_shown_plain(tmp_path):
   envios = tool()
   row = {"id": "s2", "object": "x/s2.lzs", "created_at": "2026-11-05T00:00:00Z", "note": "a\x1b[31mb\x07c", "label": "x\ny"}
-  op = Opener({"https://p.supabase.co/storage/": b"LZS1 not really"})
+  op = Opener({"https://p.supabase.co/v1/shares/": b"LZS1 not really"})
   try:
     envios.download("https://p.supabase.co", "svc", row, tmp_path / "out", opener=op)
   except (ValueError, SystemExit):
@@ -84,3 +84,20 @@ def test_a_broken_download_is_not_kept_and_typed_text_is_shown_plain(tmp_path):
   assert not (tmp_path / "out" / "s2.lzs").exists()
   line = envios.describe(row)
   assert "\x1b" not in line and "\x07" not in line and "\n" not in line and line.startswith("2026-11-05  s2")
+
+
+def test_a_package_that_unpacks_into_too_much_is_refused(tmp_path, monkeypatch):
+  import hashlib
+  import zstandard
+  envios = tool()
+  monkeypatch.setattr(envios, "MAX_RLOG", 1024)
+  payload = zstandard.ZstdCompressor().compress(bytes(4096))  # a few bytes that unpack into 4 KB
+  f = tmp_path / "bomb.lzs"
+  f.write_bytes(share.pack({"format": 1, "sha256": hashlib.sha256(payload).hexdigest()}, payload))
+  try:
+    envios.open_package(f, tmp_path / "out")
+  except SystemExit as e:
+    assert "descompactado" in str(e)
+  else:
+    raise AssertionError("opened a bomb")
+  assert not (tmp_path / "out").exists()

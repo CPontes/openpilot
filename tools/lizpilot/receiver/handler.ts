@@ -40,6 +40,9 @@ export interface Store {
   findShare(device: string, markId: string): Promise<string | null>;
   putShare(row: ShareRow, data: Uint8Array): Promise<void>;
   forgetDevice(id: string): Promise<number>; // its packages, its rows and itself; returns how many packages
+  purgeBefore(before: number): Promise<number>; // packages and rows that arrived before this day; returns how many
+  listShares(brand: string | null, limit: number): Promise<ShareRow[]>; // newest first
+  getPackage(id: string): Promise<Uint8Array | null>;
 }
 
 export interface Config {
@@ -50,12 +53,30 @@ export interface Config {
   perDayAll: number;
   bytesPerDayAll: number;
   newDevicesPerDay: number;
+  retentionDays: number;
+  buildSecrets: string[]; // the words a LizPilot build registers with (share.BUILD_SECRET); empty: nobody registers
+  purgeSecret?: string; // the daily retention job (schema.sql) calls /v1/purge with it
+  readerSecret?: string; // the developers read (envios.py) with it: list and download, nothing else
   notify?: (row: ShareRow) => Promise<void>;
 }
 
-// Registration is open (any comma may help), so the limits are what keeps someone from filling the storage or crowding out real
-// owners: per comma, and for everyone per day. The days are UTC days.
-export const DEFAULTS = { maxBytes: 8 * 1024 * 1024, perDevicePerDay: 30, perDayAll: 500, bytesPerDayAll: 1024 * 1024 * 1024, newDevicesPerDay: 100 };
+// Only a LizPilot build registers (its BUILD_SECRET, owner 05/11). The secret is in a public repository, so the limits stay: per
+// comma, and for everyone per day (UTC days). Packages are kept 12 months, then deleted (owner, 05/11).
+export const DEFAULTS = { maxBytes: 8 * 1024 * 1024, perDevicePerDay: 30, perDayAll: 500, bytesPerDayAll: 1024 * 1024 * 1024, newDevicesPerDay: 100,
+                          retentionDays: 365 };
+
+function secretOk(given: string | null, expected: string | undefined): boolean {
+  if (!expected || !given || given.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < given.length; i++) diff |= given.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0;
+}
+
+// What the developers see of a row: never the device.
+function publicRow(r: ShareRow) {
+  const { device: _device, object: _object, ...rest } = r;
+  return { ...rest, created_at: new Date(r.created_at * 1000).toISOString().slice(0, 10) };
+}
 export const day = (s: number) => Math.floor(s / 86400) * 86400;
 
 // What a person typed (the reason's label, the note): one line of plain text, no control characters, at most max characters.
@@ -137,6 +158,7 @@ export async function cleanManifest(m: Record<string, unknown>, payload: Uint8Ar
     software: { edition: str(sw.edition, 20, CODE), branch: str(sw.branch, 40, CODE), commit: str(sw.commit, 12, /^[0-9a-f]{1,12}$/),
                 version: str(sw.version, 20, CODE) },
     window: { before_s: num(win.before_s), after_s: num(win.after_s) },
+    with_note: m.with_note === true,
     cut: {
       services: Object.fromEntries(Object.entries(services).filter(([k, v]) => CODE.test(k) && typeof v === "number").slice(0, 64)),
       left_out: Array.isArray(cut.left_out) ? cut.left_out.filter((x) => typeof x === "string" && CODE.test(x)).slice(0, 200) : [],
@@ -184,6 +206,25 @@ export async function handle(req: Request, store: Store, cfg: Config): Promise<R
   const at = url.pathname.lastIndexOf("/v1/"); // Supabase puts its own prefix and the function first: /functions/v1/lizpilot-share/v1/share
   const path = at >= 0 ? url.pathname.slice(at) : url.pathname;
   if (req.method === "GET" && path === "/v1/health") return json(200, { ok: true, now: Math.floor(cfg.now()) });
+
+  if (path === "/v1/purge" && req.method === "POST") { // the daily retention job
+    if (!secretOk(req.headers.get("X-LizPilot-Purge"), cfg.purgeSecret)) return json(403, { error: "purge" });
+    const n = await store.purgeBefore(day(cfg.now()) - cfg.retentionDays * 86400);
+    return json(200, { ok: true, deleted: n });
+  }
+  if (path === "/v1/shares" || path.startsWith("/v1/shares/")) { // the developers, read only
+    if (req.method !== "GET" || !secretOk(req.headers.get("X-LizPilot-Reader"), cfg.readerSecret)) return json(403, { error: "reader" });
+    if (path === "/v1/shares") {
+      const brand = url.searchParams.get("brand");
+      const limit = Math.max(1, Math.min(200, Number(url.searchParams.get("limit") ?? "30") || 30));
+      return json(200, { shares: (await store.listShares(brand && CODE.test(brand) ? brand : null, limit)).map(publicRow) });
+    }
+    const id = path.slice("/v1/shares/".length);
+    if (!/^[A-Za-z0-9-]{1,64}$/.test(id)) return json(404, { error: "not found" });
+    const data = await store.getPackage(id);
+    return data ? new Response(data, { status: 200, headers: { "Content-Type": "application/octet-stream", "Cache-Control": "no-store" } })
+                : json(404, { error: "not found" });
+  }
   if (req.method !== "POST" || !["/v1/register", "/v1/share", "/v1/forget"].includes(path)) return json(404, { error: "not found" });
 
   const now = cfg.now();
@@ -201,6 +242,7 @@ export async function handle(req: Request, store: Store, cfg: Config): Promise<R
     try {
       const reg = JSON.parse(new TextDecoder().decode(body));
       if (reg.device !== device || typeof reg.key !== "string" || !HEX64.test(reg.key)) return json(400, { error: "register" });
+      if (typeof reg.build !== "string" || !cfg.buildSecrets.some((b) => secretOk(reg.build, b))) return json(403, { error: "build" });
       key = reg.key;
     } catch {
       return json(400, { error: "register" });
@@ -251,7 +293,8 @@ export async function handle(req: Request, store: Store, cfg: Config): Promise<R
   return json(201, { ok: true, id });
 }
 
-// A new package opens an issue in a private repository, for whoever develops: car, reason, note, version. Never the device.
+// A new package opens an issue in a private repository, for whoever develops: car, reason, version. Never the device, and never
+// what the owner wrote (owner, 05/11): the note stays in the package, for whoever downloads it.
 // Whatever an owner typed goes into the issue as inert text: no mention, link, image or markup can act from it.
 export function inert(text: string): string {
   return plain(text, 500).replace(/[\\`*_{}\[\]()<>#+!|~]/g, (c) => `\\${c}`).replace(/@/g, "@\u200b").replace(/:\/\//g, ":\u200b//");
@@ -259,13 +302,14 @@ export function inert(text: string): string {
 
 export function githubNotifier(token: string, repo: string, fetchFn: typeof fetch = fetch) {
   return async (row: ShareRow) => {
-    const title = `[envio] ${row.brand ?? "?"} ${row.model ?? "?"}: ${inert(row.label ?? row.reason ?? "sem motivo")}`.slice(0, 120);
+    const what = row.reason === "proprio" ? "motivo próprio" : row.label ?? row.reason ?? "sem motivo";
+    const title = `[envio] ${row.brand ?? "?"} ${row.model ?? "?"}: ${inert(what)}`.slice(0, 120);
     const cut = (row.manifest.cut ?? {}) as Record<string, unknown>;
     const body = [
       `Envio \`${row.id}\` (${(row.bytes / 1024).toFixed(0)} KB, ${cut.seconds ?? "?"} s).`,
       "",
       `- Carro: ${row.brand ?? "?"} / ${row.model ?? "?"}`,
-      `- Motivo: ${inert(row.label ?? row.reason ?? "?")}${row.note ? `: ${inert(row.note)}` : ""}`,
+      `- Motivo: ${inert(row.reason === "proprio" ? "motivo próprio" : row.label ?? row.reason ?? "?")}${row.note ? " (com nota)" : ""}`,
       `- Software: ${row.edition ?? "?"} ${row.branch ?? "?"} @ ${row.git_commit ?? "?"}`,
       `- VIN procurado na CAN: ${cut.vin_checked ? "sim" : "não (carro sem VIN conhecido)"}`,
       "",
@@ -293,6 +337,16 @@ export class MemoryStore implements Store {
   async bytesSince(since: number) { return this.shares.filter((s) => s.created_at >= since).reduce((a, s) => a + s.bytes, 0); }
   async findShare(device: string, markId: string) { return this.shares.find((s) => s.device === device && s.mark_id === markId)?.id ?? null; }
   async putShare(row: ShareRow, data: Uint8Array) { this.shares.push(row); this.objects.set(row.object, data); }
+  async purgeBefore(before: number) {
+    const old = this.shares.filter((s) => s.created_at < before);
+    for (const s of old) this.objects.delete(s.object);
+    this.shares = this.shares.filter((s) => s.created_at >= before);
+    return old.length;
+  }
+  async listShares(brand: string | null, limit: number) {
+    return this.shares.filter((s) => brand === null || s.brand === brand).sort((a, b) => b.created_at - a.created_at).slice(0, limit);
+  }
+  async getPackage(id: string) { const s = this.shares.find((x) => x.id === id); return s ? this.objects.get(s.object) ?? null : null; }
   async forgetDevice(id: string) {
     const mine = this.shares.filter((s) => s.device === id);
     for (const s of mine) this.objects.delete(s.object);

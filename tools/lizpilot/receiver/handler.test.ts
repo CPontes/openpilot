@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { DEFAULTS, githubNotifier, handle, MemoryStore, sha256hex, sign, unpack, type Config } from "./handler.ts";
 
 const DEVICE = "ab".repeat(16);
+const BUILD = "lizpilot-share-2026-11-a7c3e91f"; // share.BUILD_SECRET
 const KEY = "11".repeat(32);
 const enc = new TextEncoder();
 // the same vector is in openpilot/selfdrive/hexa/tests/test_share.py (VECTOR_SIG): both sides sign the same way
@@ -12,7 +13,8 @@ const VECTOR_SIG = "a9fec4e84c31022756b5670c1c1c18733ae1fc303d5d1d3d10efb616cc42
 function world(over: Partial<Config> = {}) {
   let t = 1_700_000_000, n = 0;
   const store = new MemoryStore();
-  const cfg: Config = { ...DEFAULTS, now: () => t, newId: () => `id${++n}`, ...over };
+  const cfg: Config = { ...DEFAULTS, now: () => t, newId: () => `id${++n}`, buildSecrets: [BUILD], purgeSecret: "purge-word",
+                        readerSecret: "reader-word", ...over };
   return { store, cfg, tick: (s: number) => { t += s; }, now: () => t };
 }
 
@@ -27,8 +29,8 @@ async function call(w: ReturnType<typeof world>, path: string, body: Uint8Array,
   return { status: r.status, body: await r.json() };
 }
 
-const register = (w: ReturnType<typeof world>, device = DEVICE, key = KEY) =>
-  call(w, "/v1/register", enc.encode(JSON.stringify({ device, key })), { device, key });
+const register = (w: ReturnType<typeof world>, device = DEVICE, key = KEY, build = BUILD) =>
+  call(w, "/v1/register", enc.encode(JSON.stringify({ device, key, build })), { device, key });
 
 async function pkg(over: Record<string, unknown> = {}, payload = new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 1, 2, 3])) {
   const manifest = {
@@ -59,7 +61,7 @@ test("register once, then the same key is fine and another is refused", async ()
   assert.equal((await register(w)).status, 201);
   assert.equal((await register(w)).status, 200);
   assert.equal((await register(w, DEVICE, "22".repeat(32))).status, 409);
-  assert.equal((await call(w, "/v1/register", enc.encode(JSON.stringify({ device: "cd".repeat(16), key: KEY })))).status, 400); // not its id
+  assert.equal((await call(w, "/v1/register", enc.encode(JSON.stringify({ device: "cd".repeat(16), key: KEY, build: BUILD })))).status, 400); // not its id
 });
 
 test("a share is kept with a clean manifest", async () => {
@@ -195,6 +197,7 @@ test("what an owner typed is plain text, and inert in the notice", async () => {
   assert.ok(!/[\u0000-\u001f\u007f]/.test(row.note) && !/[\u0000-\u001f]/.test(row.label!));
   const body = sent[0].body as string, title = sent[0].title as string;
   assert.ok(!body.includes("@CPontes") && !body.includes("](https://") && !body.includes("![x]"));
+  assert.ok(!body.includes("olha") && !body.includes("vermelho") && body.includes("(com nota)")); // the note never goes in the issue
   assert.ok(!title.includes("#1") || title.includes("\\#1"));
 });
 
@@ -212,4 +215,50 @@ test("a body without Content-Length is cut at the limit, not read whole", async 
   } as RequestInit);
   assert.equal((await handle(req, w.store, w.cfg)).status, 413);
   assert.ok(pulled < 10);
+});
+
+// *** codeweb-07: the owner's decisions of 05/11 ***
+
+test("only a LizPilot build registers", async () => {
+  const w = world();
+  assert.deepEqual((await register(w, DEVICE, KEY, "not-lizpilot")).body, { error: "build" });
+  assert.equal((await register(w, DEVICE, KEY, "")).status, 403);
+  assert.equal((await register(w)).status, 201);
+  const closed = world({ buildSecrets: [] });
+  assert.equal((await register(closed)).status, 403); // nothing configured: nobody
+});
+
+test("12 months, then the package and its row go", async () => {
+  const w = world();
+  await register(w);
+  await call(w, "/v1/share", await pkg({ mark: { id: "ddddddd1" } }));
+  w.tick(200 * 86400);
+  await call(w, "/v1/share", await pkg({ mark: { id: "ddddddd2" } }));
+  const purge = (secret: string) => handle(new Request("https://x/v1/purge", { method: "POST", headers: { "X-LizPilot-Purge": secret } }), w.store, w.cfg);
+  assert.equal((await purge("wrong-word")).status, 403);
+  assert.deepEqual(await (await purge("purge-word")).json(), { ok: true, deleted: 0 });
+  w.tick(170 * 86400); // the first is now 370 days old
+  assert.deepEqual(await (await purge("purge-word")).json(), { ok: true, deleted: 1 });
+  assert.deepEqual(w.store.shares.map((s) => s.mark_id), ["ddddddd2"]);
+  assert.equal(w.store.objects.size, 1);
+});
+
+test("the developers read with their own word: list and download, never the device", async () => {
+  const w = world();
+  await register(w);
+  await call(w, "/v1/share", await pkg());
+  const get = (path: string, word: string) => handle(new Request(`https://x/functions/v1/lizpilot-share${path}`, { headers: { "X-LizPilot-Reader": word } }),
+                                                     w.store, w.cfg);
+  assert.equal((await get("/v1/shares", "nope")).status, 403);
+  const list = await (await get("/v1/shares?brand=gwm", "reader-word")).json();
+  assert.equal(list.shares.length, 1);
+  assert.equal(list.shares[0].device, undefined);
+  assert.equal(list.shares[0].object, undefined);
+  assert.match(list.shares[0].created_at, /^\d{4}-\d{2}-\d{2}$/);
+  const pkgRes = await get(`/v1/shares/${list.shares[0].id}`, "reader-word");
+  assert.equal(pkgRes.status, 200);
+  assert.deepEqual(new Uint8Array(await pkgRes.arrayBuffer()), w.store.objects.get(w.store.shares[0].object));
+  assert.equal((await get("/v1/shares/../x", "reader-word")).status, 404);
+  const post = await handle(new Request("https://x/v1/shares", { method: "POST", headers: { "X-LizPilot-Reader": "reader-word" } }), w.store, w.cfg);
+  assert.equal(post.status, 403); // read only
 });
