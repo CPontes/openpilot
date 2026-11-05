@@ -305,6 +305,49 @@
     }
     return out;
   }
+  // ----- the Mapa (owner, 05/11: "ao colocar o endereço, ele mostrar no mapa [...] ver se é aquele endereço certinho") -----
+  // A view centred on (lat, lon) at the zoom zf, in a w × h box: the same shape as mapFit, to reuse mapTiles
+  function mapCenter(lat, lon, zf, w, h) {
+    zf = Math.max(MAP_ZMIN, Math.min(18, zf));
+    const z = Math.floor(zf), k = Math.pow(2, zf), c = mercator(lat, lon, 0);
+    return { z, zf, k, size: TILE * Math.pow(2, zf - z), ox: c[0] * k - w / 2, oy: c[1] * k - h / 2 };
+  }
+  function mapXY(v, lat, lon) { const c = mercator(lat, lon, 0); return [c[0] * v.k - v.ox, c[1] * v.k - v.oy]; }
+  // the place under a pixel of the box: the pin in the middle, after the map was dragged
+  function mapLatLon(v, x, y) {
+    const n = TILE * v.k, mx = (x + v.ox) / n, my = (y + v.oy) / n;
+    const lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * my))) * 180 / Math.PI;
+    return [Math.round(lat * 1e6) / 1e6, Math.round((mx * 360 - 180) * 1e6) / 1e6];
+  }
+  function distanceM(a, b) {
+    if (!a || !b) return null;
+    const r = Math.PI / 180, dl = (b[0] - a[0]) * r, dn = (b[1] - a[1]) * r;
+    const h = Math.sin(dl / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dn / 2) ** 2;
+    return Math.round(2 * 6371000 * Math.asin(Math.sqrt(h)));
+  }
+  // The search's long name, short: the first two parts, then the city. Nominatim gives "Estrada Leopoldo Fróes, São Francisco,
+  // Região Praias da Baía, Niterói, Rio de Janeiro, Região Sudeste, 24360-022, Brasil" (owner's print, 05/11).
+  const PLACE_DROP = /^(brasil|brazil|regi[ãa]o\b.*|\d{5}-?\d{3}|\d{8}|região metropolitana.*|microrregião.*|mesorregião.*)$/i;
+  const STATES = new Set(["acre", "alagoas", "amapá", "amazonas", "bahia", "ceará", "distrito federal", "espírito santo", "goiás", "maranhão", "mato grosso",
+    "mato grosso do sul", "minas gerais", "pará", "paraíba", "paraná", "pernambuco", "piauí", "rio de janeiro", "rio grande do norte", "rio grande do sul",
+    "rondônia", "roraima", "santa catarina", "são paulo", "sergipe", "tocantins"]);
+  function shortPlace(name) {
+    if (/^\s*-?\d+\.\d+\s*,\s*-?\d+\.\d+\s*$/.test(String(name || ""))) return { title: String(name).trim(), sub: "" };  // a point, not an address
+    const parts = String(name || "").split(",").map((x) => x.trim()).filter(Boolean);
+    const keep = parts.filter((x, i) => !PLACE_DROP.test(x) && !(i > 0 && STATES.has(x.toLowerCase())));
+    if (keep.length <= 3) return { title: keep[0] || "", sub: keep.slice(1).join(", ") };
+    return { title: keep[0], sub: [keep[1], keep[keep.length - 1]].join(", ") };
+  }
+  // navd's maneuver as one of the arrows the page draws
+  function maneuverKind(type, modifier) {
+    const t = String(type || ""), m = String(modifier || "");
+    if (t === "arrive") return "arrive";
+    if (m.includes("uturn")) return "uturn";
+    if (m.includes("left")) return m.includes("slight") ? "slight-left" : "left";
+    if (m.includes("right")) return m.includes("slight") ? "slight-right" : "right";
+    return "straight";
+  }
+
   // A wall clock time as the path counts it, from minute 0 of the route: the deleter may have taken the first minutes of the list
   function pathSecond(t, at) { return at - tripStart(t) + ((t.segments && t.segments[0]) || 0) * 60; }
   // The path point closest in time to s seconds from the start of the drive
@@ -893,6 +936,6 @@
   const DATA_KEYS = ["lpTrips", "lpMissionSnap", "lpCopEvents", "lpCopAnswers"];  // the copilot's events of the drive, and the answers
 
   root.LPL = { groupPending, quietEvent, mutedKinds, EV_KINDS, eventStep, pointPassed, eventsMerge, logEvents, driveStart, reviewList, answerKeep, eventMission, copilotView, eventAge, eventStage, eventClock, EV_MISSIONS, EV_REASON, EV_LIVE_S, EV_RECENT_S, EV_KEEP, versionList, versionChips, VERSION_CHIPS, copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
-               tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
+               tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, mapCenter, mapXY, mapLatLon, distanceM, shortPlace, maneuverKind, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

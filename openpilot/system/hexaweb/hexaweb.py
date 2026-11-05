@@ -1300,8 +1300,10 @@ class PanelBackend:
 
   def nav_state(self) -> dict:
     n = self.navigator
+    near = n.position()  # the car on the phone's Mapa and the distance to each result; the drives already show the paths
     return {"enabled": n.enabled(), "destination": n.destination(), "places": n.places(),
-            "token": bool(self.store.get(hexa_nav.TOKEN_PARAM)), "route": self._route_state()}
+            "token": bool(self.store.get(hexa_nav.TOKEN_PARAM)), "route": self._route_state(),
+            "near": [round(near[0], 4), round(near[1], 4)] if near else None}
 
   def _nav(self, fn) -> tuple[int, dict]:
     try:

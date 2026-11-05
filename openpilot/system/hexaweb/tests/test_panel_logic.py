@@ -1174,3 +1174,37 @@ def test_the_page_behind_a_layer_stays_put():
   layers = re.findall(r'<section class="(?:sheet|cop)[^"]*" id="(\w+)"', html)
   assert len(layers) >= 8 and "copSheet" in layers and "markSheet" in layers  # the observer watches them all, present and future, by class
   assert 'class="row cophead"' in html  # the copilot's title and Fechar stay on top while its list scrolls
+
+
+def test_the_map_centres_and_reads_back_the_place_under_the_pin():
+  v = run("mapCenter", -22.9035, -43.1091, 16, 430, 600)
+  assert v["z"] == 16 and abs(v["size"] - 256) < 1e-6
+  js = "const L = require(" + json.dumps(str(LOGIC)) + ");" + """ const v = L.mapCenter(-22.9035, -43.1091, 16.5, 430, 600);
+  const c = L.mapXY(v, -22.9035, -43.1091); const back = L.mapLatLon(v, c[0], c[1]); const moved = L.mapLatLon(v, c[0] + 100, c[1]);
+  process.stdout.write(JSON.stringify({ c, back, moved }));"""
+  out = json.loads(subprocess.run([NODE, "-e", js], capture_output=True, text=True, timeout=30, check=True).stdout)
+  assert [round(x) for x in out["c"]] == [215, 300]  # the centre is the middle of the box
+  assert out["back"] == [-22.9035, -43.1091] and out["moved"][1] > -43.1091  # dragged right of the middle: further east
+  assert 1100 < run("distanceM", [-22.9035, -43.1091], [-22.9135, -43.1091]) < 1120  # 0.01° of latitude, ~1.1 km
+
+
+def test_a_place_reads_short():
+  # owner's print, 05/11: the whole Nominatim name over the title
+  long = "Estrada Leopoldo Fróes, São Francisco, Região Praias da Baía, Niterói, Rio de Janeiro, Região Sudeste, 24360-022, Brasil"
+  assert run("shortPlace", long) == {"title": "Estrada Leopoldo Fróes", "sub": "São Francisco, Niterói"}
+  assert run("shortPlace", "Praia de Icaraí, Icaraí, Niterói") == {"title": "Praia de Icaraí", "sub": "Icaraí, Niterói"}
+  assert run("shortPlace", "-22.90350, -43.10910") == {"title": "-22.90350, -43.10910", "sub": ""}
+  assert [run("maneuverKind", *a) for a in [("turn", "right"), ("turn", "slight left"), ("arrive", ""), ("turn", "uturn"), ("depart", "")]] == \
+    ["right", "slight-left", "arrive", "uturn", "straight"]
+
+
+def test_the_route_lives_on_the_mapa_and_every_change_asks():
+  # owner, 05/11: the route card had taken Início's top and hid the driver's panel; "toque e segure" doesn't exist on iOS
+  html = (LOGIC.parent / "index.html").read_text()
+  assert 'id="navCard"' not in html and 'id="homeSeg"' in html and 'data-home="mapa"' in html
+  assert "contextmenu" not in html and "prompt(" not in html[html.index("// ----- the route"):html.index("// ----- the road's limit")]
+  js = html[html.index("// ----- the route"):html.index("// ----- the road's limit")]
+  assert js.count("navConfirm(") >= 4  # go, change, end; andando the passenger first (askPassenger inside navConfirm)
+  assert "if (askPassenger(() => navConfirm(title, what, ok, run))) return;" in js
+  assert 'b.addEventListener("click", () => openPick(p));' in js  # a saved place opens "É aqui?", it never goes straight
+  assert 'id="navToken"' in html[html.index('data-subview="comma"'):]  # the Mapbox key went to Ajustes → Comma

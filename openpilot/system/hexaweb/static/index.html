@@ -260,6 +260,33 @@
   body.locked { position: fixed; left: 0; right: 0; overflow: hidden; }
   .cop .cophead { position: sticky; top: calc(-14px - env(safe-area-inset-top)); z-index: 2; background: var(--bg);
                   margin-top: calc(-14px - env(safe-area-inset-top)); padding-top: calc(14px + env(safe-area-inset-top)); padding-bottom: 6px; }
+  /* the Mapa of Início (owner, 05/11): a map that fills the screen under Painel | Mapa, like the phone's own maps */
+  [data-view="inicio"].onmap > #garage, [data-view="inicio"].onmap > #drive { display: none !important; }
+  .mapfull { position: relative; margin: 0 -16px; overflow: hidden; background: #1a2026; touch-action: none; user-select: none; }
+  .mapfull .tiles { position: absolute; inset: 0; } .mapfull .tiles img { position: absolute; max-width: none; pointer-events: none; -webkit-user-drag: none; }
+  .mapfull canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .mtop { position: absolute; left: 12px; right: 12px; top: 10px; display: grid; gap: 8px; z-index: 3; }
+  .qbar { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 6px 0 14px; border-radius: 16px; background: #151B21; border: 1px solid var(--line-2); box-shadow: 0 8px 24px #0009; }
+  .qbar input { flex: 1; min-width: 0; border: 0; background: none; padding: 0; min-height: 50px; font-size: 17px; color: var(--text); }
+  .qbar input:focus { outline: none; } .qbar:focus-within { border-color: var(--accent); }
+  .mchips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; } .mchips::-webkit-scrollbar { display: none; }
+  .mchips .chip { flex: none; background: #151B21ee; box-shadow: 0 4px 14px #0007; }
+  .mside { position: absolute; right: 12px; bottom: 14px; display: grid; gap: 8px; z-index: 3; }
+  .mapfull.card-up .mside { bottom: calc(var(--mcard, 0px) + 14px); }
+  .mbtn { width: 48px; height: 48px; border-radius: 14px; border: 1px solid var(--line-2); background: #151B21ee; color: var(--text); font-size: 24px; font-weight: 700; box-shadow: 0 4px 14px #0007; display: flex; align-items: center; justify-content: center; }
+  .mpin { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -100%); z-index: 2; pointer-events: none; filter: drop-shadow(0 3px 4px #000a); }
+  .mres { position: absolute; left: 0; right: 0; bottom: 0; top: 74px; z-index: 4; background: #151B21; border-radius: 20px 20px 0 0; border-top: 1px solid var(--line-2); overflow-y: auto; overscroll-behavior: contain; padding: 6px 16px 16px; }
+  .mres button { display: flex; gap: 12px; align-items: center; width: 100%; padding: 12px 2px; border: 0; border-bottom: 1px solid var(--line); background: none; color: inherit; font: inherit; text-align: left; }
+  .mres .t { font-weight: 600; font-size: 17px; } .mres .s { color: var(--muted); font-size: 14px; } .mres .d { margin-left: auto; color: var(--dim); font-size: 14px; white-space: nowrap; }
+  .mcard { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; background: #151B21; border-radius: 22px 22px 0 0; border-top: 1px solid var(--line-2); padding: 14px 16px 16px; display: grid; gap: 8px; }
+  .mcard .tag2 { font: 700 12px var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  .mbanner { display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-radius: 18px; background: #0F2219; border: 1.5px solid var(--accent); box-shadow: 0 8px 24px #000a; }
+  .mbanner .arr { width: 48px; height: 48px; border-radius: 13px; background: var(--accent); color: var(--on-accent); display: flex; align-items: center; justify-content: center; flex: none; }
+  .mmsg { position: absolute; left: 12px; right: 12px; bottom: 14px; z-index: 3; padding: 10px 12px; border-radius: 14px; background: #151B21ee; color: var(--muted); font-size: 14px; }
+  .mattr { position: absolute; left: 6px; bottom: 2px; z-index: 1; font-size: 10px; color: #0008; background: #fff8; padding: 0 4px; border-radius: 4px; }
+  .navline { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; color: inherit; font: inherit; padding: 10px 14px; border-color: var(--ok-line); }
+  .navline .arr { width: 40px; height: 40px; border-radius: 12px; background: var(--accent); color: var(--on-accent); display: flex; align-items: center; justify-content: center; flex: none; }
+  .placerow { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
   .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 11; max-height: calc(100% - 64px); overflow-y: auto; background: #151B21; border-top: 1px solid var(--line-2);
            border-radius: 26px 26px 0 0; padding: 10px 18px calc(18px + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto; }
   .sheet .grab { display: block; width: 44px; height: 5px; border-radius: 3px; background: #3A4550; margin: 0 auto 12px; }
@@ -413,30 +440,42 @@
 
     <!-- Início -->
     <div data-view="inicio">
-      <section class="card stack" id="navCard" style="gap:10px">
-        <div class="row"><span class="grow title" data-t>Para onde?</span><span class="small" id="navState"></span></div>
-        <div class="hidden stack" id="navRoute" style="gap:6px">
-          <div class="big" id="navNext"></div>
-          <div class="desc num" id="navLeft"></div>
-          <div class="map hidden" id="navMap" style="height:180px">
-            <div class="tiles" id="navTiles"></div>
-            <canvas id="navCanvas" role="img" data-t-aria="Rota" aria-label="Rota"></canvas>
+      <div class="seg" role="tablist" id="homeSeg" style="margin:4px 0 10px"><button type="button" role="tab" aria-selected="true" data-home="painel" data-t>Painel</button><button type="button" role="tab" aria-selected="false" data-home="mapa" data-t>Mapa</button></div>
+      <div id="mapPane" class="hidden">
+        <div class="mapfull" id="mapBox">
+          <div class="tiles" id="mapTiles"></div>
+          <canvas id="mapCanvas" role="img" data-t-aria="Mapa" aria-label="Mapa"></canvas>
+          <div class="mpin hidden" id="mapPin"><svg width="40" height="52" viewBox="0 0 40 52" aria-hidden="true"><path d="M20 51 C14 37 2 31 2 18 A18 18 0 1 1 38 18 C38 31 26 37 20 51 Z" fill="#FF6B5E" stroke="#fff" stroke-width="2.5"/><circle cx="20" cy="18" r="6.5" fill="#fff"/></svg></div>
+          <div class="mtop">
+            <form class="qbar" id="navForm" autocomplete="off" role="search">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+              <input id="navQuery" type="search" maxlength="200" enterkeyhint="search" data-t-ph="Para onde? Endereço ou link do Maps" placeholder="Para onde? Endereço ou link do Maps" data-t-aria="Para onde?" aria-label="Para onde?">
+              <button class="link hidden" id="navClear" type="button" data-t>Cancelar</button>
+            </form>
+            <div class="mbanner hidden" id="navBanner"><span class="arr" id="navArrow"></span><div style="min-width:0"><div class="big num" id="navIn" style="font-size:24px"></div><div id="navNext" style="font-weight:600"></div></div></div>
+            <div class="mchips" id="navPlaces"></div>
           </div>
-          <div class="chips"><button class="link" id="navStop" type="button" data-t>Encerrar rota</button><button class="link" id="navSave" type="button" data-t>Salvar este destino</button></div>
+          <div class="mside"><button class="mbtn" id="mapPlus" type="button" data-t-aria="Aproximar" aria-label="Aproximar">+</button><button class="mbtn" id="mapMinus" type="button" data-t-aria="Afastar" aria-label="Afastar">−</button>
+            <button class="mbtn" id="mapMe" type="button" data-t-aria="O carro" aria-label="O carro"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--you)" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button></div>
+          <div class="mres hidden" id="navResults"></div>
+          <div class="mcard hidden" id="navPick">
+            <div class="tag2" data-t>É aqui?</div>
+            <div class="big" id="pickTitle" style="font-size:28px;line-height:1.1"></div>
+            <div class="desc" id="pickSub"></div>
+            <div class="small" id="pickDist"></div>
+            <button class="btn" id="pickGo" type="button" data-t>Ir para cá</button>
+            <div class="duo" id="pickActs"><button class="btn dark" id="pickSave" type="button" data-t>★ Salvar lugar</button><button class="btn dark" id="pickBack" type="button" data-t>Voltar</button></div>
+            <div class="hidden stack" id="pickSaveBox" style="gap:8px"><input id="pickName" type="text" maxlength="40" data-t-ph="Nome: Casa, Trabalho…" placeholder="Nome: Casa, Trabalho…"><div class="duo"><button class="btn" id="pickSaveOk" type="button" data-t>Salvar</button><button class="btn dark" id="pickSaveNo" type="button" data-t>Cancelar</button></div></div>
+          </div>
+          <div class="mcard hidden" id="navRouteCard">
+            <div class="row" style="gap:10px;align-items:center"><div class="grow" style="min-width:0"><div class="big num" id="navLeft" style="font-size:28px"></div><div class="desc" id="navTo"></div></div>
+              <button class="btn dark" id="navChange" type="button" style="width:auto;padding:0 16px" data-t>Trocar</button><button class="btn dark" id="navStop" type="button" style="width:auto;padding:0 16px;color:var(--danger)" data-t>Encerrar</button></div>
+            <div class="small" id="navNote" data-t>Virar na esquina é com o motorista: o LizPilot segue a faixa e a velocidade.</div>
+          </div>
+          <div class="mmsg hidden" id="mapMsg"></div>
+          <div class="mattr">© OpenStreetMap</div>
         </div>
-        <form class="row" id="navForm" style="gap:8px" autocomplete="off">
-          <input id="navQuery" type="search" class="grow" maxlength="200" enterkeyhint="search" data-t-ph="Endereço ou link do Maps" placeholder="Endereço ou link do Maps">
-          <button class="btn" id="navSearch" type="submit" style="width:auto;padding:0 16px" data-t>Buscar</button>
-        </form>
-        <div class="stack" id="navResults" style="gap:6px"></div>
-        <div class="chips" id="navPlaces"></div>
-        <div class="small" id="navNote"></div>
-        <details>
-          <summary class="small" data-t>Chave Mapbox (opcional)</summary>
-          <p class="small" data-t>A rota vem da Mapbox. Se o comma não conseguir a rota pela conta da comma, cole aqui uma chave pública sua (começa com pk.). Fica só no comma.</p>
-          <div class="row" style="gap:8px"><input id="navToken" type="text" class="grow" autocomplete="off" spellcheck="false" placeholder="pk...."><button class="btn" id="navTokenSave" type="button" style="width:auto;padding:0 16px" data-t>Salvar</button></div>
-        </details>
-      </section>
+      </div>
       <div id="garage">
         <section class="card att stack hidden" id="addrCard" style="gap:8px">
           <div class="title" data-t>Este atalho usa um número que muda</div>
@@ -465,6 +504,7 @@
           <div class="desc" id="limitText"></div>
           <div class="chips" id="limitActs"></div>
         </section>
+        <button class="card navline hidden" id="navLineG" type="button" data-navline></button>
         <div class="card att row hidden" id="pendingCard">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>
           <span class="grow" id="pendingText"></span>
@@ -559,6 +599,7 @@
           <div class="row"><span class="grow desc" id="laneText"></span><span class="pill hidden" id="bsPill"></span></div>
           <canvas id="road" data-t-aria="Posição do carro na faixa" aria-label="Posição do carro na faixa"></canvas>
         </section>
+        <button class="card navline hidden" id="navLineD" type="button" data-navline style="margin-top:10px"></button>
         <section class="card hidden" id="driveMissions" style="margin-top:10px">
           <div class="label" style="margin:0 0 4px" data-t>Missões desta viagem</div>
           <div class="list" id="driveMissionList"></div>
@@ -676,6 +717,11 @@
         </section>
         <div id="groups"></div><p class="small" style="margin:12px 4px" data-t>Opções de direção e velocidade só mudam com o carro em P ou desligado. Cada uma diz quando passa a valer.</p></div>
       <div data-subview="comma" class="hidden">
+        <div class="label" data-t>Rota</div>
+        <div class="card stack" style="gap:8px">
+          <p class="small" style="margin:0" data-t>A rota vem da Mapbox. Se o comma não conseguir a rota pela conta da comma, cole aqui uma chave pública sua (começa com pk.). Fica só no comma.</p>
+          <div class="row" style="gap:8px"><input id="navToken" type="text" class="grow" autocomplete="off" spellcheck="false" placeholder="pk...."><button class="btn" id="navTokenSave" type="button" style="width:auto;padding:0 16px" data-t>Salvar</button></div>
+        </div>
         <div class="label" data-t>Atualização</div>
         <div class="card stack" style="gap:6px">
           <div class="title" id="updNow">—</div>
@@ -771,6 +817,24 @@
   <label class="field" for="evText" data-t>Observação (opcional)</label>
   <textarea id="evText" rows="2" maxlength="300" data-t-ph="ex.: saiu devagar, demorou uns 3 s" placeholder="ex.: saiu devagar, demorou uns 3 s"></textarea>
   <div class="duo"><button class="btn" id="evSave" type="button" data-t>Salvar</button><button class="btn ghost" id="evCancel" type="button" data-t>Cancelar</button></div>
+</section>
+
+<!-- The route's confirmations (owner, 04/11: "tudo que fizer tem que pedir confirmação"); andando, the passenger first -->
+<div class="scrim hidden" id="navScrim"></div>
+<section class="sheet hidden" id="navSheet" role="dialog" aria-modal="true" aria-labelledby="navAskTitle">
+  <span class="grab"></span>
+  <h2 id="navAskTitle"></h2>
+  <p class="desc" id="navAskWhat"></p>
+  <div class="duo" style="margin-top:12px"><button class="btn" id="navAskOk" type="button"></button><button class="btn dark" id="navAskNo" type="button" data-t>Cancelar</button></div>
+</section>
+<!-- Lugares salvos: Renomear and Tirar, no "toque e segure" (iOS doesn't fire it on a button) -->
+<div class="scrim hidden" id="placesScrim"></div>
+<section class="sheet hidden" id="placesSheet" role="dialog" aria-modal="true" aria-labelledby="placesTitle">
+  <span class="grab"></span>
+  <h2 id="placesTitle" data-t>Lugares salvos</h2>
+  <p class="small" data-t>Ficam no comma, nunca no registro.</p>
+  <div id="placesList"></div>
+  <button class="btn dark" id="placesClose" type="button" style="margin-top:12px" data-t>Fechar</button>
 </section>
 
 <!-- Silenciar ou reativar um tipo de aviso do copiloto (owner, 04/11): always confirmed, Salvar or Cancelar. -->
@@ -1160,7 +1224,7 @@ function showView(name) {
   const tab = name === "missoes" || name === "versoes" ? "viagens" : name;  // Missões lives in Viagens (owner, 03/11)
   document.querySelectorAll("[data-go]").forEach((b) => b.dataset.go === tab ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
   clearInterval(liveTimer); liveTimer = null;
-  if (name === "inicio") { refreshHome(true); liveTimer = setInterval(() => { if ((!driving && !copOpen) || document.hidden) return; if (online) refreshLive(); renderDrive(); }, LIVE_MS); }  // the copilot reads live data parked too
+  if (name === "inicio") { showHome(homePane); refreshHome(true); liveTimer = setInterval(() => { if ((!driving && !copOpen) || document.hidden) return; if (online) refreshLive(); renderDrive(); }, LIVE_MS); }  // the copilot reads live data parked too
   if (name === "viagens") { refreshTrips(true); refreshMarks(); }
   if (name === "pontos") { refreshRadars(); refreshNear(); }
   if (name === "ajustes") showSub(sub);
@@ -1390,8 +1454,12 @@ function auditText(a) {
 }
 
 // ----- Início -----
+let homeWasDriving = null;
 function refreshHome(full) {
   refreshNav();
+  // the car starts moving: Início back on the driver's Painel; the passenger goes to the Mapa with one tap
+  if (driving && homeWasDriving === false && homePane === "mapa") showHome("painel");
+  homeWasDriving = driving;
   if (!driving && (full || ticks % 3 === 0)) refreshLimit();
   $("garage").classList.toggle("hidden", driving);
   $("drive").classList.toggle("hidden", !driving);
@@ -1890,7 +1958,16 @@ $("shareForget").addEventListener("click", async () => {
 });
 // ----- the route (selfdrive/hexa/nav.py): the phone picks where to go, openpilot's navigation does the rest -----
 // openpilot keeps the lane and the speed: turning at a junction stays with the driver. Andando, só o passageiro mexe aqui.
-let navState = null, navAt = 0, navSig = "";
+// The Mapa of Início (owner, 05/11): Painel | Mapa on top; search, "É aqui?" with the pin, the route; the driver's panel stays as it was.
+let navState = null, navAt = 0, homePane = load("lpHome") === "mapa" ? "mapa" : "painel";
+let mv = null, mvMoved = false, navPickP = null, navAsk = null, mapImgs = new Map(), mapRaf = 0;
+const ARROWS = {
+  left: '<path d="M17 20v-7a3 3 0 0 0-3-3H6"/><path d="M10 6l-4 4 4 4"/>', right: '<path d="M7 20v-7a3 3 0 0 1 3-3h8"/><path d="M14 6l4 4-4 4"/>',
+  "slight-left": '<path d="M15 20v-6l-6-6"/><path d="M8 13V8h5"/>', "slight-right": '<path d="M9 20v-6l6-6"/><path d="M16 13V8h-5"/>',
+  straight: '<path d="M12 20V5"/><path d="M7 10l5-5 5 5"/>', uturn: '<path d="M8 20V9a4 4 0 0 1 8 0v4"/><path d="M12 10l4 4 4-4"/>',
+  arrive: '<path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/>',
+};
+const arrowSvg = (kind, size) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ARROWS[kind] || ARROWS.straight}</svg>`;
 async function refreshNav(force) {
   if (!online || (!force && Date.now() - navAt < 2000)) return;
   navAt = Date.now();
@@ -1898,90 +1975,250 @@ async function refreshNav(force) {
   if (r.status === 200) { navState = r.data; renderNav(); }
 }
 function navDistance(m) { return m >= 1000 ? `${num(m / 1000, 1)} km` : `${Math.max(0, Math.round(m / 10) * 10)} m`; }
+function navNear() { return navState && navState.near; }
+function navLeftText(rt) { return [tf("{m} min", { m: Math.round((rt.left_s || 0) / 60) }), navDistance(rt.left_m || 0)].join(" · "); }
+function showHome(pane) {
+  homePane = pane; store("lpHome", pane === "mapa" ? "mapa" : null);
+  document.querySelectorAll("[data-home]").forEach((b) => b.setAttribute("aria-selected", b.dataset.home === pane ? "true" : "false"));
+  document.querySelector('[data-view="inicio"]').classList.toggle("onmap", pane === "mapa");
+  $("mapPane").classList.toggle("hidden", pane !== "mapa");
+  if (pane === "mapa") { refreshNav(true); sizeMap(); mvMoved = false; mv = null; renderNav(); }
+}
+function sizeMap() {  // the map fills what is left above the tab bar: the page itself doesn't scroll on the Mapa
+  const box = $("mapBox"), top = box.getBoundingClientRect().top + window.scrollY, tabs = document.querySelector("nav.tabs");
+  const below = tabs && !tabs.classList.contains("hidden") ? tabs.getBoundingClientRect().height : 0;
+  box.style.height = Math.max(320, window.innerHeight - top - below - 8) + "px";
+  const extra = document.documentElement.scrollHeight - window.innerHeight;  // what the page's own padding still adds
+  if (extra > 0) box.style.height = Math.max(320, box.clientHeight - extra) + "px";
+}
 function renderNav() {
   const s = navState; if (!s) return;
-  const rt = s.route || {}, dest = s.destination;
-  $("navState").textContent = !s.enabled ? t("navegação desligada no comma") : dest ? (dest.place_name || "") : "";
-  $("navRoute").classList.toggle("hidden", !dest);
-  if (dest) {
-    $("navNext").textContent = rt.active ? (rt.next || t("Siga em frente")) : t("Calculando a rota…");
-    $("navLeft").textContent = rt.active ? [tf("em {d}", { d: navDistance(rt.in_m) }), tf("faltam {d}", { d: navDistance(rt.left_m) }), tf("{m} min", { m: Math.round(rt.left_s / 60) })].join(" · ")
-                                         : t("A rota aparece com o carro ligado e o comma na internet.");
-  }
-  $("navNote").textContent = s.enabled ? "" : t("Para usar, ligue \"navegação (alfa)\" na tela do comma: Configurações, Desenvolvedor.");
-  $("navPlaces").replaceChildren(...(s.places || []).map((p) => {
+  const rt = s.route || {}, dest = s.destination, active = !!(dest && rt.active), kind = LPL.maneuverKind(rt.type, rt.modifier);
+  // the line under the driver's panel: only with a route, a tap opens the Mapa
+  document.querySelectorAll("[data-navline]").forEach((b) => {
+    b.classList.toggle("hidden", !dest);
+    if (!dest) return;
+    const g = el("div", "grow"); g.style.minWidth = "0";
+    g.append(el("div", "title", active ? (rt.in_m != null ? tf("em {d}, {o}", { d: navDistance(rt.in_m), o: rt.next || t("siga em frente") }) : rt.next || t("Siga em frente")) : t("Calculando a rota…")),
+             el("div", "small", [LPL.shortPlace(dest.place_name).title, active ? tf("{m} min", { m: Math.round(rt.left_s / 60) }) : ""].filter(Boolean).join(" · ")));
+    const a = el("span", "arr"); a.innerHTML = arrowSvg(active ? kind : "arrive", 26);
+    b.replaceChildren(a, g, el("span", "link", t("Mapa ›")));
+  });
+  const placesSig = JSON.stringify(s.places || []);  // rebuilt only when they change: a tap never lands on a button being replaced
+  if ($("navPlaces").dataset.sig !== placesSig) $("navPlaces").dataset.sig = placesSig, $("navPlaces").replaceChildren(...(s.places || []).map((p) => {
     const b = el("button", "chip", "★ " + p.name); b.type = "button";
-    b.addEventListener("click", () => navGo(p));
-    b.addEventListener("contextmenu", (e) => { e.preventDefault(); navRemovePlace(p); });
+    b.addEventListener("click", () => openPick(p));
     return b;
-  }));
+  }), ...((s.places || []).length ? [(() => { const b = el("button", "chip", "⋯"); b.type = "button"; b.setAttribute("aria-label", t("Lugares salvos")); b.addEventListener("click", openPlaces); return b; })()] : []));
   $("navToken").placeholder = s.token ? t("chave salva") : "pk....";
-  drawNavMap(rt.path || []);
+  if (homePane !== "mapa") return;
+  const picking = !!navPickP;
+  $("navBanner").classList.toggle("hidden", !active || picking);
+  $("navPlaces").classList.toggle("hidden", !!dest && !picking);
+  if (active) { $("navArrow").innerHTML = arrowSvg(kind, 30); $("navIn").textContent = tf("em {d}", { d: navDistance(rt.in_m || 0) }); $("navNext").textContent = rt.next || t("Siga em frente"); }
+  $("navRouteCard").classList.toggle("hidden", !dest || picking || !$("navResults").classList.contains("hidden"));
+  if (dest) {
+    $("navLeft").textContent = active ? navLeftText(rt) : t("Calculando a rota…");
+    $("navTo").textContent = active ? tf("até {lugar}", { lugar: LPL.shortPlace(dest.place_name).title }) : t("A rota aparece com o carro ligado e o comma na internet.");
+  }
+  const msg = !s.enabled ? t("Para seguir uma rota, ligue \"navegação (alfa)\" na tela do comma: Configurações, Desenvolvedor.")
+    : !navNear() && !dest && !picking ? t("Sem a posição do carro ainda: busque um endereço.") : "";
+  $("mapMsg").textContent = msg; $("mapMsg").classList.toggle("hidden", !msg || picking || !!dest);
+  const up = picking ? $("navPick") : !$("navRouteCard").classList.contains("hidden") ? $("navRouteCard") : null;
+  $("mapBox").classList.toggle("card-up", !!up); $("mapBox").style.setProperty("--mcard", up ? up.offsetHeight + "px" : "0px");
+  if (!mv || !mvMoved) mv = mapHome();
+  drawMap();
 }
-function drawNavMap(path) {
-  const box = $("navMap");
-  box.classList.toggle("hidden", path.length < 2);
-  if (path.length < 2) return;
-  const w = box.clientWidth, hgt = box.clientHeight, sig = [w, hgt, streets, path.length, path[0], path[path.length - 1]].join("|");
-  if (sig === navSig || !w) return;
-  navSig = sig;
-  const fit = LPL.mapFit(path, w, hgt, MAP_PAD); if (!fit) return;
-  const tiles = streets ? LPL.mapTiles(fit, w, hgt) : [];  // the street map only if turned on on this phone, as in Viagens
-  $("navTiles").replaceChildren(...tiles.map((tl) => {
-    const im = new Image(); im.alt = ""; im.referrerPolicy = "strict-origin";
-    im.style.cssText = `left:${tl.left}px;top:${tl.top}px;width:${tl.size + .5}px;height:${tl.size + .5}px`;
-    im.onerror = () => im.remove();
-    im.src = `https://tile.openstreetmap.org/${tl.z}/${tl.x}/${tl.y}.png`;
-    return im;
-  }));
-  const c = $("navCanvas"), ratio = window.devicePixelRatio || 1;
-  c.width = Math.round(w * ratio); c.height = Math.round(hgt * ratio);
-  const g = c.getContext("2d"); g.setTransform(ratio, 0, 0, ratio, 0, 0); g.clearRect(0, 0, w, hgt);
-  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-  g.lineCap = "round"; g.lineJoin = "round";
-  g.strokeStyle = "rgba(5, 7, 9, .8)"; g.lineWidth = 9; g.beginPath(); fit.xy.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
-  g.strokeStyle = css("--accent"); g.lineWidth = 5; g.beginPath(); fit.xy.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
-  const dot = ([x, y], fill, ring) => { g.beginPath(); g.arc(x, y, 7, 0, 7); g.fillStyle = fill; g.fill(); g.lineWidth = 3; g.strokeStyle = ring; g.stroke(); };
-  dot(fit.xy[0], css("--bg"), css("--text")); dot(fit.xy[fit.xy.length - 1], css("--text"), css("--bg"));
+// where the map looks when nobody moved it: the pin, else the route, else the car, else the destination
+function mapHome() {
+  const box = $("mapBox"), w = box.clientWidth || 400, h = box.clientHeight || 600, s = navState || {}, rt = s.route || {};
+  if (navPickP) return { lat: navPickP.latitude, lon: navPickP.longitude, zf: 16.5 };
+  const path = rt.path || [];
+  if (path.length > 1) {
+    const fit = LPL.mapFit(path, w, h - 300, MAP_PAD);  // the whole route above the card at the bottom
+    if (fit) {
+      const zf = fit.z + Math.log2(fit.size / LPL.TILE), c = LPL.mapLatLon({ k: Math.pow(2, zf), ox: fit.ox, oy: fit.oy - 150 }, w / 2, h / 2);
+      return { lat: c[0], lon: c[1], zf };
+    }
+  }
+  const near = navNear(); if (near) return { lat: near[0], lon: near[1], zf: 15.5 };
+  if (s.destination) return { lat: s.destination.latitude, lon: s.destination.longitude, zf: 15 };
+  return { lat: -15.8, lon: -47.9, zf: 4 };
 }
+function drawMap() {
+  cancelAnimationFrame(mapRaf);
+  mapRaf = requestAnimationFrame(() => {
+    const box = $("mapBox"), w = box.clientWidth, h = box.clientHeight; if (!w || !h || !mv) return;
+    const v = LPL.mapCenter(mv.lat, mv.lon, mv.zf, w, h), keep = new Set();
+    for (const tl of LPL.mapTiles(v, w, h)) {  // the same images as the drag goes: moved, never rebuilt
+      const key = `${tl.z}/${tl.x}/${tl.y}`; keep.add(key);
+      let im = mapImgs.get(key);
+      if (!im) { im = new Image(); im.alt = ""; im.referrerPolicy = "strict-origin"; im.onerror = () => im.remove(); im.src = `https://tile.openstreetmap.org/${key}.png`; mapImgs.set(key, im); $("mapTiles").append(im); }
+      im.style.cssText = `left:${tl.left}px;top:${tl.top}px;width:${tl.size + .5}px;height:${tl.size + .5}px`;
+    }
+    for (const [key, im] of mapImgs) if (!keep.has(key)) { im.remove(); mapImgs.delete(key); }
+    const c = $("mapCanvas"), ratio = window.devicePixelRatio || 1, s = navState || {}, rt = s.route || {};
+    c.width = Math.round(w * ratio); c.height = Math.round(h * ratio);
+    const g = c.getContext("2d"); g.setTransform(ratio, 0, 0, ratio, 0, 0); g.clearRect(0, 0, w, h);
+    const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+    const path = (rt.path || []).map((p) => LPL.mapXY(v, p[0], p[1]));
+    if (path.length > 1 && !navPickP) {
+      g.lineCap = "round"; g.lineJoin = "round";
+      g.strokeStyle = "rgba(5, 7, 9, .8)"; g.lineWidth = 10; g.beginPath(); path.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
+      g.strokeStyle = css("--accent"); g.lineWidth = 6; g.beginPath(); path.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
+    }
+    if (s.destination && !navPickP) {
+      const [x, y] = LPL.mapXY(v, s.destination.latitude, s.destination.longitude);
+      g.fillStyle = "#FF6B5E"; g.strokeStyle = "#fff"; g.lineWidth = 2.5;
+      g.beginPath(); g.moveTo(x, y); g.bezierCurveTo(x - 6, y - 14, x - 16, y - 18, x - 16, y - 30); g.arc(x, y - 30, 16, Math.PI, 0); g.bezierCurveTo(x + 16, y - 18, x + 6, y - 14, x, y); g.fill(); g.stroke();
+      g.fillStyle = "#fff"; g.beginPath(); g.arc(x, y - 30, 6, 0, 7); g.fill();
+    }
+    const near = navNear();
+    if (near) {
+      const [x, y] = LPL.mapXY(v, near[0], near[1]), you = css("--you");
+      g.fillStyle = you + "33"; g.beginPath(); g.arc(x, y, 22, 0, 7); g.fill();
+      g.fillStyle = you; g.strokeStyle = "#fff"; g.lineWidth = 3; g.beginPath(); g.arc(x, y, 9, 0, 7); g.fill(); g.stroke();
+    }
+    $("mapPin").classList.toggle("hidden", !navPickP);
+    if (navPickP) {  // the pin is the middle of the map: dragging the map moves the place
+      const at = [mv.lat, mv.lon], d = LPL.distanceM(navNear(), at);
+      navPickP.latitude = at[0]; navPickP.longitude = at[1];
+      $("pickDist").textContent = [d != null ? tf("{d} do carro em linha reta", { d: navDistance(d) }) : "", t("arraste o mapa para acertar o pino")].filter(Boolean).join(" · ");
+    }
+  });
+}
+// one finger moves the map; + and − zoom; ◎ goes back to the car
+let mapDrag = null;
+$("mapBox").addEventListener("pointerdown", (e) => {
+  if (e.target.closest(".mtop, .mside, .mres, .mcard, .mmsg") || !mv) return;
+  mapDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, mv: { ...mv } }; $("mapBox").setPointerCapture(e.pointerId);
+});
+$("mapBox").addEventListener("pointermove", (e) => {
+  if (!mapDrag || e.pointerId !== mapDrag.id) return;
+  const box = $("mapBox"), w = box.clientWidth, h = box.clientHeight, v = LPL.mapCenter(mapDrag.mv.lat, mapDrag.mv.lon, mapDrag.mv.zf, w, h);
+  const c = LPL.mapLatLon(v, w / 2 - (e.clientX - mapDrag.x), h / 2 - (e.clientY - mapDrag.y));
+  mv = { lat: c[0], lon: c[1], zf: mapDrag.mv.zf }; mvMoved = true; drawMap();
+});
+["pointerup", "pointercancel"].forEach((n) => $("mapBox").addEventListener(n, () => { mapDrag = null; }));
+$("mapPlus").addEventListener("click", () => { if (mv) { mv = { ...mv, zf: Math.min(18, mv.zf + 1) }; mvMoved = true; drawMap(); } });
+$("mapMinus").addEventListener("click", () => { if (mv) { mv = { ...mv, zf: Math.max(3, mv.zf - 1) }; mvMoved = true; drawMap(); } });
+$("mapMe").addEventListener("click", () => {
+  const near = navNear(); if (!near) { toast(t("Sem a posição do carro ainda.")); return; }
+  mv = { lat: near[0], lon: near[1], zf: Math.max(mv ? mv.zf : 15.5, 15) }; mvMoved = true; drawMap();
+});
+document.querySelectorAll("[data-home]").forEach((b) => b.addEventListener("click", () => showHome(b.dataset.home)));
+document.querySelectorAll("[data-navline]").forEach((b) => b.addEventListener("click", () => { showHome("mapa"); window.scrollTo(0, 0); }));
+window.addEventListener("resize", () => { if (homePane === "mapa") { sizeMap(); drawMap(); } });
+// the search: andando, the passenger's
 async function navSearch() {
   const q = $("navQuery").value.trim();
   if (!q) return;
   if (askPassenger(() => navSearch())) return;
-  $("navSearch").disabled = true;
+  $("navQuery").blur();
   const r = await api("/api/nav/search", { q });
-  $("navSearch").disabled = false;
   if (r.status !== 200) { toast(r.data.error || t("Não foi possível.")); return; }
-  const res = r.data.results || [];
-  $("navResults").replaceChildren(...(res.length ? res : [null]).map((x) => {
-    if (!x) return el("div", "desc", t("Nada encontrado. Tente com o bairro e a cidade."));
-    const b = el("button", "card row", ""); b.type = "button"; b.style.cssText = "text-align:left;margin:0;padding:10px 12px;color:inherit;font:inherit";
-    b.append(el("span", "grow", x.name), el("b", "", t("Ir")));
-    b.addEventListener("click", () => navGo(x));
+  const res = r.data.results || [], near = navNear();
+  const head = el("div", "small", res.length ? t("PERTO DO CARRO PRIMEIRO") : t("Nada encontrado. Tente com o bairro e a cidade.")); head.style.margin = "8px 2px 2px";
+  $("navResults").replaceChildren(head, ...res.map((x) => {
+    const b = el("button", ""), sp = LPL.shortPlace(x.name), d = LPL.distanceM(near, [x.latitude, x.longitude]); b.type = "button";
+    const txt = el("div", ""); txt.style.minWidth = "0"; txt.append(el("div", "t", sp.title), el("div", "s", sp.sub));
+    b.append(txt, el("span", "d", d != null ? navDistance(d) : ""));
+    b.addEventListener("click", () => openPick(x));
     return b;
   }));
+  $("navResults").classList.remove("hidden"); $("navClear").classList.remove("hidden"); renderNav();
 }
+function closeResults() { $("navResults").classList.add("hidden"); $("navClear").classList.add("hidden"); $("navQuery").value = ""; renderNav(); }
+function openPick(p) {
+  navPickP = { name: p.name, latitude: p.latitude, longitude: p.longitude };
+  const sp = LPL.shortPlace(p.name);
+  $("pickTitle").textContent = sp.title; $("pickSub").textContent = sp.sub;
+  $("pickSaveBox").classList.add("hidden"); $("pickActs").classList.remove("hidden"); $("pickGo").classList.remove("hidden");
+  $("navResults").classList.add("hidden"); $("navPick").classList.remove("hidden");
+  mv = { lat: p.latitude, lon: p.longitude, zf: 16.5 }; mvMoved = true; renderNav();
+}
+function closePick() { navPickP = null; $("navPick").classList.add("hidden"); $("navClear").classList.add("hidden"); $("navQuery").value = ""; mvMoved = false; mv = null; renderNav(); }
+// every change of the route asks first; andando, the passenger first (owner, 05/11: "passageiro andando pode trocar destino")
+function navConfirm(title, what, ok, run) {
+  if (askPassenger(() => navConfirm(title, what, ok, run))) return;
+  navAsk = run;
+  $("navAskTitle").textContent = title; $("navAskWhat").textContent = what; $("navAskOk").textContent = ok;
+  $("navScrim").classList.remove("hidden"); $("navSheet").classList.remove("hidden");
+}
+function closeNavAsk() { navAsk = null; $("navScrim").classList.add("hidden"); $("navSheet").classList.add("hidden"); }
+$("navAskOk").addEventListener("click", () => { const run = navAsk; closeNavAsk(); if (run) run(); });
+$("navAskNo").addEventListener("click", closeNavAsk);
+$("navScrim").addEventListener("click", closeNavAsk);
 async function navGo(p) {
   const r = await api("/api/nav/go", { latitude: p.latitude, longitude: p.longitude, name: p.name });
-  toast(r.status === 200 ? tf("Rota para {lugar}.", { lugar: p.name }) : (r.data.error || t("Não foi possível.")));
-  if (r.status === 200) { $("navResults").replaceChildren(); $("navQuery").value = ""; }
+  toast(r.status === 200 ? tf("Rota para {lugar}.", { lugar: LPL.shortPlace(p.name).title }) : (r.data.error || t("Não foi possível.")));
+  if (r.status === 200) closePick();
   refreshNav(true);
 }
-async function navRemovePlace(p) {
-  if (!confirm(tf("Tirar \"{lugar}\" dos lugares salvos?", { lugar: p.name }))) return;
-  const r = await api("/api/nav/place/remove", { name: p.name });
-  if (r.status !== 200) toast(r.data.error || t("Não foi possível."));
-  refreshNav(true);
-}
-$("navForm").addEventListener("submit", (e) => { e.preventDefault(); navSearch(); });
-$("navStop").addEventListener("click", async () => { await api("/api/nav/stop", {}); refreshNav(true); });
-$("navSave").addEventListener("click", async () => {
-  const d = navState && navState.destination; if (!d) return;
-  const name = prompt(t("Nome deste lugar (ex.: Casa, Trabalho):"), ""); if (!name) return;
-  const r = await api("/api/nav/place", { name, latitude: d.latitude, longitude: d.longitude });
-  toast(r.status === 200 ? t("Lugar salvo. Toque e segure para tirar.") : (r.data.error || t("Não foi possível.")));
+$("pickGo").addEventListener("click", () => {
+  const p = { ...navPickP }, dest = navState && navState.destination, to = LPL.shortPlace(p.name).title;
+  if (dest) navConfirm(t("Trocar o destino?"), tf("De {de} para {para}. O comma refaz a rota.", { de: LPL.shortPlace(dest.place_name).title, para: to }), t("Trocar"), () => navGo(p));
+  else navConfirm(tf("Ir para {lugar}?", { lugar: to }), t("O comma calcula a rota; virar nas esquinas continua com o motorista."), t("Ir"), () => navGo(p));
+});
+$("pickBack").addEventListener("click", closePick);
+$("pickSave").addEventListener("click", () => { $("pickActs").classList.add("hidden"); $("pickGo").classList.add("hidden"); $("pickSaveBox").classList.remove("hidden"); $("pickName").value = ""; $("pickName").focus(); renderNav(); });
+$("pickSaveNo").addEventListener("click", () => { $("pickSaveBox").classList.add("hidden"); $("pickActs").classList.remove("hidden"); $("pickGo").classList.remove("hidden"); renderNav(); });
+$("pickSaveOk").addEventListener("click", async () => {
+  const name = $("pickName").value.trim(); if (!name || !navPickP) return;
+  const r = await api("/api/nav/place", { name, latitude: navPickP.latitude, longitude: navPickP.longitude });
+  toast(r.status === 200 ? tf("Lugar salvo: {nome}.", { nome: name }) : (r.data.error || t("Não foi possível.")));
+  if (r.status === 200) $("pickSaveNo").click();
   refreshNav(true);
 });
+$("navForm").addEventListener("submit", (e) => { e.preventDefault(); navSearch(); });
+$("navClear").addEventListener("click", () => { if (navPickP) closePick(); else closeResults(); });
+$("navStop").addEventListener("click", () => {
+  const dest = navState && navState.destination; if (!dest) return;
+  navConfirm(t("Encerrar a rota?"), tf("Para {lugar}. Dá para escolher outro destino depois.", { lugar: LPL.shortPlace(dest.place_name).title }), t("Encerrar"),
+    async () => { const r = await api("/api/nav/stop", {}); if (r.status !== 200) toast(r.data.error || t("Não foi possível.")); refreshNav(true); });
+});
+$("navChange").addEventListener("click", () => { if (askPassenger(() => $("navQuery").focus())) return; $("navQuery").focus(); });
+// Lugares salvos: Renomear and Tirar, each confirmed in the box itself
+let placeEdit = null;  // {name, mode: "rename" | "remove"}
+function openPlaces() { placeEdit = null; drawPlaces(); $("placesScrim").classList.remove("hidden"); $("placesSheet").classList.remove("hidden"); }
+function closePlaces() { placeEdit = null; $("placesScrim").classList.add("hidden"); $("placesSheet").classList.add("hidden"); }
+function drawPlaces() {
+  const list = (navState && navState.places) || [];
+  $("placesList").replaceChildren(...(list.length ? list : [null]).map((p) => {
+    if (!p) return el("div", "desc", t("Nenhum lugar salvo."));
+    const row = el("div", "placerow"), info = el("div", "grow"); info.style.minWidth = "0";
+    info.append(el("div", "title", "★ " + p.name));
+    if (placeEdit && placeEdit.name === p.name && placeEdit.mode === "rename") {
+      const inp = el("input", ""); inp.type = "text"; inp.maxLength = 40; inp.value = p.name; inp.style.marginTop = "6px";
+      const ok = el("button", "btn", t("Salvar")), no = el("button", "btn dark", t("Cancelar")); ok.type = no.type = "button";
+      ok.addEventListener("click", async () => {
+        const name = inp.value.trim(); if (!name || name === p.name) { placeEdit = null; drawPlaces(); return; }
+        const r = await api("/api/nav/place", { name, latitude: p.latitude, longitude: p.longitude });  // the new name first: nothing is lost if the second call fails
+        if (r.status === 200) await api("/api/nav/place/remove", { name: p.name });
+        else toast(r.data.error || t("Não foi possível."));
+        placeEdit = null; await refreshNav(true); drawPlaces();
+      });
+      no.addEventListener("click", () => { placeEdit = null; drawPlaces(); });
+      const duo = el("div", "duo"); duo.style.marginTop = "8px"; duo.append(ok, no); info.append(inp, duo);
+      row.append(info); setTimeout(() => inp.focus(), 0); return row;
+    }
+    if (placeEdit && placeEdit.name === p.name && placeEdit.mode === "remove") {
+      info.append(el("div", "desc", t("Tirar este lugar? Some da lista e dos atalhos do mapa.")));
+      const ok = el("button", "btn", t("Tirar")), no = el("button", "btn dark", t("Cancelar")); ok.type = no.type = "button";
+      ok.style.background = "var(--danger)"; ok.style.color = "#2a0705";
+      ok.addEventListener("click", async () => { const r = await api("/api/nav/place/remove", { name: p.name }); if (r.status !== 200) toast(r.data.error || t("Não foi possível.")); placeEdit = null; await refreshNav(true); drawPlaces(); });
+      no.addEventListener("click", () => { placeEdit = null; drawPlaces(); });
+      const duo = el("div", "duo"); duo.style.marginTop = "8px"; duo.append(ok, no); info.append(duo);
+      row.append(info); return row;
+    }
+    const rn = el("button", "link", t("Renomear")), rm = el("button", "link", t("Tirar")); rn.type = rm.type = "button"; rm.style.color = "var(--danger)";
+    rn.addEventListener("click", () => { placeEdit = { name: p.name, mode: "rename" }; drawPlaces(); });
+    rm.addEventListener("click", () => { placeEdit = { name: p.name, mode: "remove" }; drawPlaces(); });
+    row.append(info, rn, rm); return row;
+  }));
+}
+$("placesClose").addEventListener("click", closePlaces);
+$("placesScrim").addEventListener("click", closePlaces);
 $("navTokenSave").addEventListener("click", async () => {
   const r = await api("/api/nav/token", { token: $("navToken").value.trim() });
   toast(r.status === 200 ? (r.data.token ? t("Chave salva no comma.") : t("Chave removida.")) : (r.data.error || t("Não foi possível.")));
