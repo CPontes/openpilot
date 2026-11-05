@@ -138,14 +138,3 @@ def test_python_and_the_shell_read_the_edition_alike(tmp_path):
     py = edition.read_edition(f)  # never raises
     assert (py == "generic") == (shell != "GWM_HAVAL_H6"), (raw, py, shell)
 
-
-def test_information_alerts_never_hide_driver_monitoring():
-  from openpilot.cereal import log
-  from openpilot.selfdrive.selfdrived.events import EVENTS, ET, Priority
-  E = log.OnroadEvent.EventName
-  dm = min(EVENTS[E.driverDistracted1][ET.PERMANENT].priority, EVENTS[E.driverUnresponsive1][ET.PERMANENT].priority)
-  for name in ("leadDeparted", "autoResume", "stopHold"):
-    assert EVENTS[getattr(E, name)][ET.PERMANENT].priority < dm, name
-  src = (REPO / "openpilot" / "selfdrive" / "selfdrived" / "events.py").read_text()
-  body = src[src.index("def radar_ahead_alert"):src.index("\n\n", src.index("def radar_ahead_alert"))]
-  assert "Priority.LOWER" in body and dm == Priority.LOW

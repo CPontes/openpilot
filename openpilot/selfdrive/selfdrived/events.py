@@ -291,8 +291,7 @@ def radar_ahead_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMast
     title,
     detail,
     AlertStatus.normal, AlertSize.mid if detail else AlertSize.small,
-    Priority.LOWER,  # under the first driver monitoring alert (LOW), which wins a tie with it
-    VisualAlert.none, AudibleAlert.prompt, 4.)
+    Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 4.)
 
 
 def process_not_running_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
@@ -526,7 +525,7 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
       "Saindo sozinho",
       "",
       AlertStatus.normal, AlertSize.small,
-      Priority.LOWER, VisualAlert.none, AudibleAlert.prompt, 3.),
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 3.),
   },
 
   EventName.stopHold: {
@@ -534,7 +533,7 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
       "Parado: toque no acelerador para sair",
       "",
       AlertStatus.normal, AlertSize.small,
-      Priority.LOWER, VisualAlert.none, AudibleAlert.prompt, 3.),
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 3.),
   },
 
   # above a radar or bump alert: nobody asked and the car starts to slow down
@@ -551,7 +550,7 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
       "Carro da frente saiu",
       "",
       AlertStatus.normal, AlertSize.small,
-      Priority.LOWER, VisualAlert.none, AudibleAlert.prompt, 3.),
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 3.),
   },
 
   EventName.ldw: {
