@@ -1469,5 +1469,12 @@
  "Últimos 30 s": "Últimos 30 s",
  "últimos {n} s": "últimos {n} s",
  "··· mais {n}": "··· {n} más",
- "menos": "menos"
+ "menos": "menos",
+ "Copiloto com Pular, Marcar sem rolar e 10 celulares": "Copiloto con Saltar, Marcar sin desplazar y 10 celulares",
+ "Copiloto: «Pular» tira o aviso sem marcar, com Desfazer; «Não mostrar mais este tipo» pede confirmação e o tipo segue registrado": "Copiloto: «Saltar» quita el aviso sin marcar, con Deshacer; «No mostrar más este tipo» pide confirmación y el tipo sigue registrado",
+ "Copiloto: o próximo radar a confirmar, até 1 km, aparece embaixo do cartão com Confirmar e Não existe": "Copiloto: el próximo radar por confirmar, hasta 1 km, aparece debajo del cuadro con Confirmar y No existe",
+ "Copiloto: «A conferir» mostra os 3 mais novos e «··· mais N» abre o resto": "Copiloto: «Por revisar» muestra los 3 más nuevos y «··· N más» abre el resto",
+ "Marcar em dois passos, sem rolar: o motivo, depois «Quando» (na hora, últimos 10 ou 30 s, próximos 30 s), o texto e Salvar": "Marcar en dos pasos, sin desplazar: el motivo, luego «Cuándo» (en el momento, últimos 10 o 30 s, próximos 30 s), el texto y Guardar",
+ "Até 10 celulares pareados; com a lista cheia sai o que está há mais tempo sem uso, e não o primeiro pareado": "Hasta 10 celulares vinculados; con la lista llena sale el que lleva más tiempo sin uso, y no el primero vinculado",
+ "Início avisa quando o atalho foi salvo pelo número, que muda, e leva a salvar por lizpilot.local": "Inicio avisa cuando el acceso directo se guardó por el número, que cambia, y lleva a guardarlo por lizpilot.local"
 }

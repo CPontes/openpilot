@@ -1469,5 +1469,12 @@
  "Últimos 30 s": "Last 30 s",
  "últimos {n} s": "last {n} s",
  "··· mais {n}": "··· {n} more",
- "menos": "less"
+ "menos": "less",
+ "Copiloto com Pular, Marcar sem rolar e 10 celulares": "Copilot with Skip, Mark without scrolling and 10 phones",
+ "Copiloto: «Pular» tira o aviso sem marcar, com Desfazer; «Não mostrar mais este tipo» pede confirmação e o tipo segue registrado": "Copilot: «Skip» takes the alert off without a mark, with Undo; «Stop showing this kind» asks first and the kind is still recorded",
+ "Copiloto: o próximo radar a confirmar, até 1 km, aparece embaixo do cartão com Confirmar e Não existe": "Copilot: the next camera to confirm, up to 1 km, shows under the card with Confirm and Not there",
+ "Copiloto: «A conferir» mostra os 3 mais novos e «··· mais N» abre o resto": "Copilot: «To review» shows the 3 newest and «··· N more» opens the rest",
+ "Marcar em dois passos, sem rolar: o motivo, depois «Quando» (na hora, últimos 10 ou 30 s, próximos 30 s), o texto e Salvar": "Mark in two steps, without scrolling: the reason, then «When» (right then, last 10 or 30 s, next 30 s), the text and Save",
+ "Até 10 celulares pareados; com a lista cheia sai o que está há mais tempo sem uso, e não o primeiro pareado": "Up to 10 paired phones; with the list full, the one unused the longest leaves, not the first one paired",
+ "Início avisa quando o atalho foi salvo pelo número, que muda, e leva a salvar por lizpilot.local": "Home says when the shortcut was saved by the number, which changes, and takes you to save it by lizpilot.local"
 }
