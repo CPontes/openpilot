@@ -253,6 +253,12 @@
   body.driving nav.tabs .fab svg { width: 20px; height: 20px; }
   body.driving nav.tabs .fab .lbl { font-size: 19px; }
   .scrim { position: fixed; inset: 0; background: rgba(5, 7, 9, .66); z-index: 10; }
+  /* a layer over the page (the copilot, every box): the page behind stays put. iOS scrolls the document under a fixed
+     layer whose content doesn't scroll, and its bar on the right moved (owner, 05/11): body.locked holds it, see syncLock */
+  .cop, .sheet { overscroll-behavior: contain; }
+  body.locked { position: fixed; left: 0; right: 0; overflow: hidden; }
+  .cop .cophead { position: sticky; top: calc(-14px - env(safe-area-inset-top)); z-index: 2; background: var(--bg);
+                  margin-top: calc(-14px - env(safe-area-inset-top)); padding-top: calc(14px + env(safe-area-inset-top)); padding-bottom: 6px; }
   .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 11; max-height: calc(100% - 64px); overflow-y: auto; background: #151B21; border-top: 1px solid var(--line-2);
            border-radius: 26px 26px 0 0; padding: 10px 18px calc(18px + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto; }
   .sheet .grab { display: block; width: 44px; height: 5px; border-radius: 3px; background: #3A4550; margin: 0 auto 12px; }
@@ -739,7 +745,7 @@
 
 <!-- Copiloto: the passenger leads the missions while driving (owner, 03/11). Behind the passenger question; changes nothing in the car. -->
 <section class="cop hidden" id="copSheet" role="dialog" aria-modal="true" aria-labelledby="copTitle">
-  <div class="row" style="justify-content:space-between"><span class="mlevel" id="copTitle" data-t>Copiloto</span>
+  <div class="row cophead" style="justify-content:space-between"><span class="mlevel" id="copTitle" data-t>Copiloto</span>
     <button class="link" id="copClose" type="button" data-t>Fechar</button></div>
   <div class="small" id="copNow" style="min-height:2.9em"></div>
   <div id="copMain"></div>
@@ -4028,6 +4034,20 @@ $("segToMissions").addEventListener("click", () => openMissions());
 $("marksJump").addEventListener("click", () => { $("marksLabel").scrollIntoView({ behavior: "smooth", block: "start" }); $("marksLabel").focus({ preventScroll: true }); });
 $("segToTrips").addEventListener("click", () => showView("viagens"));
 $("copClose").addEventListener("click", () => closeCop());
+
+// One lock for every layer, present and future: whatever opens a .cop or a .sheet, the page behind it stops where it is
+// and comes back to the same place when the last one closes. Watching the layers leaves every opener as it is.
+let lockY = null;
+function syncLock() {
+  const open = [...document.querySelectorAll(".cop, .sheet")].some((x) => !x.classList.contains("hidden"));
+  if (open && lockY === null) {
+    lockY = window.scrollY; document.body.style.top = `${-lockY}px`; document.body.classList.add("locked");
+  } else if (!open && lockY !== null) {
+    const y = lockY; lockY = null; document.body.classList.remove("locked"); document.body.style.top = ""; window.scrollTo(0, y);
+  }
+}
+const layerWatch = new MutationObserver(syncLock);
+document.querySelectorAll(".cop, .sheet").forEach((x) => layerWatch.observe(x, { attributes: true, attributeFilter: ["class"] }));
 $("copMark").addEventListener("click", () => openMark(null));
 $("copNote").addEventListener("click", () => openMark(null, "nota"));
 $("evSave").addEventListener("click", saveEv);

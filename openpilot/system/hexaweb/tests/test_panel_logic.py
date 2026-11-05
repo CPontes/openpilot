@@ -1,6 +1,7 @@
 """The phone panel's decisions (static/lp-logic.js), run in node: what the band says, what the comma card claims,
 the speed bump messages and the passenger question. Skipped where node isn't installed (the comma itself)."""
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -1161,3 +1162,15 @@ def test_200_km_in_one_week_whatever_the_versions():
   week = [trip(km=70, commit=c) for c in ("a1", "b2", "c3")]  # 210 km, three versions, one day
   assert run("missionProgress", m, {}, week)["km"]["full"]
   assert not run("missionProgress", m, {}, week[:2])["km"]["full"]
+
+
+def test_the_page_behind_a_layer_stays_put():
+  # owner, 05/11: in the copilot the page behind scrolled (iOS moves the document under a fixed layer whose content doesn't scroll)
+  html = (LOGIC.parent / "index.html").read_text()
+  assert ".cop, .sheet { overscroll-behavior: contain; }" in html and "body.locked { position: fixed;" in html
+  lock = html[html.index("function syncLock()"):]
+  lock = lock[:lock.index("layerWatch.observe")]
+  assert 'document.querySelectorAll(".cop, .sheet")' in lock and "window.scrollTo(0, y)" in lock  # every layer; back to the same place
+  layers = re.findall(r'<section class="(?:sheet|cop)[^"]*" id="(\w+)"', html)
+  assert len(layers) >= 8 and "copSheet" in layers and "markSheet" in layers  # the observer watches them all, present and future, by class
+  assert 'class="row cophead"' in html  # the copilot's title and Fechar stay on top while its list scrolls
