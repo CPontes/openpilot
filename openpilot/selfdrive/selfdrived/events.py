@@ -11,7 +11,7 @@ import openpilot.cereal.messaging as messaging
 from openpilot.common.constants import CV
 from openpilot.common.git import get_short_branch
 from openpilot.common.realtime import DT_CTRL
-from openpilot.selfdrive.hexa import radars
+from openpilot.selfdrive.hexa import radars, speed_limit
 from openpilot.selfdrive.locationd.calibrationd import MIN_SPEED_FILTER
 from openpilot.common.hardware import HARDWARE
 
@@ -294,6 +294,14 @@ def radar_ahead_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMast
     Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 4.)
 
 
+def speed_limit_over_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
+  return Alert(
+    f"Acima do limite: {speed_limit.last_limit_kph} km/h",
+    "",
+    AlertStatus.normal, AlertSize.small,
+    Priority.LOWEST, VisualAlert.none, AudibleAlert.prompt, 3.)  # under the radar's: a radar ahead says more
+
+
 def process_not_running_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
   not_running = [p.name for p in sm['managerState'].processes if not p.running and p.shouldBeRunning]
   msg = ', '.join(not_running)
@@ -543,6 +551,11 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
       "A velocidade é sua",
       AlertStatus.userPrompt, AlertSize.mid,
       Priority.MID, VisualAlert.none, AudibleAlert.prompt, 4.),
+  },
+
+  # the road's limit from the map (HexaSpeedLimit "avisar"): once per overshoot, never while a louder alert is up
+  EventName.speedLimitOver: {
+    ET.PERMANENT: speed_limit_over_alert,
   },
 
   EventName.leadDeparted: {

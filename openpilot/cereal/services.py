@@ -54,6 +54,12 @@ _services: dict[str, tuple] = {
   "gpsLocation": (True, 1., 1),
   "navInstruction": (True, 1., 10),
   "navRoute": (True, 0.),
+  # mapd (selfdrive/hexa/speed_limit.py): the road's speed limit from OpenStreetMap, offline
+  # mapdOut in the rlog only (the street's name; tools/lizpilot/cobertura_limite.py), never in the qlog. mapdExtendedOut carries the
+  # position and the path ahead: not logged, the phone only reads its download progress
+  "mapdOut": (True, 20., None, QueueSize.MEDIUM),
+  "mapdExtendedOut": (False, 1., None, QueueSize.MEDIUM),
+  "mapdIn": (False, 0., None, QueueSize.MEDIUM),
   "ubloxGnss": (True, 10.),
   "qcomGnss": (True, 2.),
   "clocks": (True, 0.1, 1),

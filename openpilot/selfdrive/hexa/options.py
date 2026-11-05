@@ -135,6 +135,19 @@ OPTIONS: tuple[HexaOption, ...] = (
     restart_needed=True,
   ),
   HexaOption(
+    key="HexaSpeedLimit",
+    group="velocidade",
+    title="limite da via pelo mapa",
+    description="Lê o limite da rua no mapa do OpenStreetMap, sem internet, e mostra no celular.\n" +
+                "Avisar: um som quando passar do limite com a tolerância da lei (7 km/h até 100, 7% acima). Não muda a velocidade.\n" +
+                "Precisa do mapa da região baixado pelo celular. O aviso vale a partir da próxima partida.",
+    kind="enum",
+    choices=("desligado", "mostrar", "avisar"),
+    default=0,
+    driving=False,
+    testing=True,
+  ),
+  HexaOption(
     key="AutoResume",
     brands=edition.GWM_ONLY,
     group="velocidade",

@@ -28,6 +28,7 @@ from openpilot.selfdrive.hexa import missions as hexa_missions
 from openpilot.selfdrive.hexa import nav as hexa_nav
 from openpilot.selfdrive.hexa import radars
 from openpilot.selfdrive.hexa import share as hexa_share
+from openpilot.selfdrive.hexa import speed_limit
 from openpilot.selfdrive.hexa import phone
 from openpilot.selfdrive.hexa import timeline
 from openpilot.selfdrive.hexa import updates
@@ -98,6 +99,7 @@ MAX_PROFILE_NAME = 20
 GZIP_MIN_BYTES = 16 * 1024  # segments kept in memory
 SERVE_RETRY = 5.  # s between tries when the port can't be opened
 SHARE_EVERY_S = 20.  # the share worker's turn: one cut or one send
+LIMIT_EVERY_S = 2.  # a map download stops this soon after the car turns on
 SECURITY_HEADERS = {
   "Cache-Control": "no-store",
   "X-Content-Type-Options": "nosniff",
@@ -119,7 +121,10 @@ class PanelBackend:
                health_state: Callable[[], dict] | None = None,
                summarize: Callable[[dict], dict] = timeline.trip_summary, spawn: Callable[[Callable[[], None]], None] | None = None,
                sharer: hexa_share.Sharer | None = None,
-               navigator: hexa_nav.Navigator | None = None, route_state: Callable[[], dict] | None = None):
+               navigator: hexa_nav.Navigator | None = None, route_state: Callable[[], dict] | None = None,
+               limit_state: Callable[[], dict] | None = None, send_mapd: Callable[[object], None] | None = None,
+               install_mapd: Callable[[], str] = speed_limit.install, network_ok: Callable[[], bool] | None = None,
+               free_bytes: Callable[[], int] | None = None):
     self.store = store  # Params, or anything with get/put/get_bool/put_bool/remove
     self._vehicle_state = vehicle_state
     self.clock = clock  # wall clock: token, audit and mark dates
@@ -163,6 +168,14 @@ class PanelBackend:
     self.sharer = sharer  # sending a mark's moment to the developers (selfdrive/hexa/share.py)
     self.navigator = navigator or hexa_nav.Navigator(store)  # where to go: openpilot's own navigation takes it from there
     self._route_state = route_state or (lambda: {"active": False})
+    # the road's limit from the map (selfdrive/hexa/speed_limit.py): what mapd says, and asking it for a region's maps
+    self._limit_state = limit_state or (lambda: speed_limit.view(None, 1e9, speed_limit.option(self.store), speed_limit.installed()))
+    self._send_mapd = send_mapd or (lambda msg: None)
+    self._install_mapd = install_mapd
+    self._network_ok = network_ok or (lambda: False)  # an unmetered network (deviceState)
+    self._free_bytes = free_bytes or (lambda: 0)  # free space under /data
+    self._limit_job = {"busy": False, "error": "", "ok": False}
+    self._download_guard = speed_limit.DownloadGuard()
 
   def vehicle_state(self) -> VehicleState:
     with self._vs_lock:
@@ -1285,6 +1298,62 @@ class PanelBackend:
     if self.vehicle_state().onroad:
       return 409, {"error": "Só com o carro desligado."}
     return self._nav(lambda: {"token": self.navigator.set_token(token)})
+  # *** the road's limit from the map: installing mapd and its maps, car off only ***
+
+  def limit_state(self) -> dict:
+    try:
+      state = self._limit_state()
+    except Exception:
+      state = {"fresh": False}
+    return {**state, "job": dict(self._limit_job), "areas": [{"key": k, "name": n} for k, n, _ in speed_limit.AREAS]}
+
+  def _limit_ready(self, need_bytes: int) -> None:
+    speed_limit.check_conditions(not self.vehicle_state().onroad, self._network_ok(), self._free_bytes(), need_bytes)
+
+  def limit_install(self, who: dict) -> tuple[int, dict]:
+    try:
+      self._limit_ready(speed_limit.INSTALL_FREE_BYTES)
+    except speed_limit.InstallError as e:
+      return 409, {"error": str(e)}
+    with self.lock:
+      if self._limit_job["busy"]:
+        return 200, {"ok": True, "busy": True}
+      self._limit_job = {"busy": True, "error": "", "ok": False}
+
+    def job():
+      try:
+        self._install_mapd()
+        self._limit_job = {"busy": False, "error": "", "ok": True}
+      except speed_limit.InstallError as e:
+        self._limit_job = {"busy": False, "error": str(e), "ok": False}
+      except Exception:
+        self._limit_job = {"busy": False, "error": "Não foi possível instalar o mapd.", "ok": False}
+    self._audit({"event": "mapd_install", "who": who.get("name", "")})
+    self._spawn(job)
+    return 200, {"ok": True, "busy": True}
+
+  def limit_download(self, who: dict, area: str) -> tuple[int, dict]:
+    if speed_limit.option(self.store) == speed_limit.OFF or not self.limit_state().get("installed"):
+      return 409, {"error": "Ligue \"limite da via pelo mapa\" e instale o mapd antes."}
+    try:
+      need = speed_limit.area_need(area)
+    except speed_limit.InstallError as e:
+      return 400, {"error": str(e)}
+    try:
+      self._limit_ready(need)
+      msg = speed_limit.download_message(area)
+    except speed_limit.InstallError as e:
+      return 409, {"error": str(e)}
+    self._send_mapd(msg)
+    return 200, {"ok": True}
+
+  def limit_tick(self) -> bool:
+    """The worker's turn: a map download stops when the car turns on (mapd downloads only parked). True if it asked."""
+    download = self.limit_state().get("download") or {}
+    if self._download_guard.update(self.vehicle_state().onroad, bool(download.get("active"))):
+      self._send_mapd(speed_limit.mapd_in("cancelDownload"))
+      return True
+    return False
 
   def logout(self, who: dict) -> tuple[int, dict]:
     with self.lock:
@@ -1470,6 +1539,10 @@ def make_handler(backend: PanelBackend):
         who = self._who()
         if who is not None:
           self._json(200, backend.nav_state())
+      elif path == "/api/limit":
+        who = self._who()
+        if who is not None:
+          self._json(200, backend.limit_state())
       elif path == "/api/phones":
         who = self._who()
         if who is not None:
@@ -1519,6 +1592,8 @@ def make_handler(backend: PanelBackend):
         "/api/nav/place": lambda who, b: backend.nav_place(who, b),
         "/api/nav/place/remove": lambda who, b: backend.nav_place_remove(who, str(b.get("name", ""))),
         "/api/nav/token": lambda who, b: backend.nav_token(who, b.get("token", "")),
+        "/api/limit/install": lambda who, b: backend.limit_install(who),
+        "/api/limit/download": lambda who, b: backend.limit_download(who, str(b.get("area", ""))),
       }
       if path not in routes and path != "/api/logout":
         self._json(404, {"error": "Não encontrado."})
@@ -1579,6 +1654,35 @@ def main():
     return VehicleState(onroad=True, parked=cs.gearShifter == "park", standstill=cs.standstill,
                         engaged=sm["selfdriveState"].enabled)
 
+  # mapd's messages on their own sockets, decoded from raw bytes: never in the SubMaster, where a mapd of another schema would
+  # raise inside sm.update and take the phone panel down (CTO review of codeweb-09)
+  mapd_socks = {s: messaging.sub_sock(s, conflate=True) for s in ("mapdOut", "mapdExtendedOut")}
+  mapd_last: dict = {"mapdOut": (None, -1e9), "mapdExtendedOut": (None, -1e9)}
+  mapd_lock = threading.Lock()
+
+  def limit_view() -> dict:
+    with mapd_lock:
+      now = time.monotonic()
+      for name, sock in mapd_socks.items():
+        got = speed_limit.decode(sock.receive(non_blocking=True), name)
+        if got is not None:
+          mapd_last[name] = (got, now)
+      out, at = mapd_last["mapdOut"]
+      progress, p_at = mapd_last["mapdExtendedOut"]
+      return speed_limit.view(out, now - at, speed_limit.option(params), speed_limit.installed(), progress if now - p_at < 10 else None)
+
+  def unmetered() -> bool:
+    sm.update(0)
+    ds = sm["deviceState"]
+    return sm.recv_frame["deviceState"] > 0 and str(ds.networkType) != "none" and not ds.networkMetered
+
+  def free_bytes() -> int:
+    import shutil
+    try:
+      return shutil.disk_usage("/data").free
+    except OSError:
+      return 0
+
   def live_state() -> dict:
     sm.update(0)
     now = time.monotonic()
@@ -1586,7 +1690,8 @@ def main():
                               sm["gpsLocationExternal"], now - sm.recv_time["gpsLocationExternal"], sm["deviceState"],
                               now - sm.recv_time["carState"] < 2., events=sm["onroadEvents"], model=sm["drivingModelData"],
                               monitoring=sm["driverMonitoringState"] if params.get_bool("AutoResume") else None,
-                              peripheral=sm["peripheralState"] if sm.recv_frame["peripheralState"] > 0 else None)
+                              peripheral=sm["peripheralState"] if sm.recv_frame["peripheralState"] > 0 else None) | \
+      ({"limit": limit_view()} if speed_limit.option(params) != speed_limit.OFF else {})
 
   errors_at: list = [-ERRORS_EVERY_S, []]
 
@@ -1623,13 +1728,20 @@ def main():
     return (fix[0], fix[1]) if fix is not None else None
 
   nav_lock = threading.Lock()
+  mapd_pm = messaging.PubMaster(["mapdIn"])
+  mapd_pm_lock = threading.Lock()  # sent from the request threads and from the limit worker
+
+  def send_mapd(msg) -> None:
+    with mapd_pm_lock:
+      mapd_pm.send("mapdIn", msg)
   from openpilot.common.hardware.hw import Paths
   from openpilot.selfdrive.hexa import edition
   backend = PanelBackend(params, vehicle_state, log_event=lambda fields: cloudlog.event("hexa_mark", **fields),
                          log_root=Paths.log_root(), live_state=live_state, radar_path=radars.updated_path(), gps_fix=gps_fix,
                          health_state=health_state, navigator=hexa_nav.Navigator(params, position=car_position), route_state=route_state,
                          sharer=hexa_share.Sharer(params, Paths.log_root(), edition=edition.EDITION,
-                                                  offroad=lambda: not backend.vehicle_state().onroad))  # the car on stops a cut
+                                                  offroad=lambda: not backend.vehicle_state().onroad),  # the car on stops a cut
+                         limit_state=limit_view, send_mapd=send_mapd, network_ok=unmetered, free_bytes=free_bytes)
 
   def share_worker():
     # one cut or one send at a time, car off for the cut, a network that isn't metered for the send
@@ -1646,6 +1758,15 @@ def main():
       except Exception:
         cloudlog.exception("hexaweb: share worker")
 
+  def limit_worker():
+    while True:
+      time.sleep(LIMIT_EVERY_S)
+      try:
+        if speed_limit.option(params) != speed_limit.OFF and backend.limit_tick():
+          cloudlog.info("hexaweb: map download stopped, the car turned on")
+      except Exception:
+        cloudlog.exception("hexaweb: limit worker")
+
   def watch_bookmarks():
     # every bookmark in the log becomes a mark: with the reason from the phone, or "sem motivo" to classify later
     watched = messaging.SubMaster(["userBookmark", "selfdriveState", "onroadEvents"], poll="userBookmark")
@@ -1657,6 +1778,7 @@ def main():
 
   threading.Thread(target=watch_bookmarks, daemon=True).start()
   threading.Thread(target=share_worker, daemon=True).start()
+  threading.Thread(target=limit_worker, daemon=True).start()
   threading.Thread(target=hexa_mdns.serve, daemon=True).start()  # lizpilot.local on the local network
   serve(backend)
 

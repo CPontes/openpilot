@@ -453,6 +453,11 @@
             <button class="btn dark" id="readyMissionsBtn" type="button" data-t>Missões</button>
           </div>
         </section>
+        <section class="card stack hidden" id="limitCard" style="gap:8px">
+          <div class="row"><span class="grow title" data-t>Limite da via pelo mapa</span><span class="pill" data-t>em teste</span></div>
+          <div class="desc" id="limitText"></div>
+          <div class="chips" id="limitActs"></div>
+        </section>
         <div class="card att row hidden" id="pendingCard">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>
           <span class="grow" id="pendingText"></span>
@@ -1374,6 +1379,7 @@ function auditText(a) {
 // ----- Início -----
 function refreshHome(full) {
   refreshNav();
+  if (!driving && (full || ticks % 3 === 0)) refreshLimit();
   $("garage").classList.toggle("hidden", driving);
   $("drive").classList.toggle("hidden", !driving);
   document.body.classList.toggle("driving", driving && view === "inicio");
@@ -1502,8 +1508,15 @@ function renderDrive() {
   $("liveAlert").classList.toggle("crit", b.cls === "fail");
   if (b.stale || !l || !l.driving) return;  // the rest stays as it was, dimmed: nothing old passes as now
   const tileOf = (value, unit, label) => { const d = el("div", "tile"); const v = el("b", "", String(value)); if (unit) { v.append(" "); const u = el("small", "", unit); u.style.cssText = "font-size:16px;color:var(--muted);font-family:var(--font)"; v.append(u); } d.append(v, el("span", "", label)); return d; };
+  const lim = l.limit && l.limit.fresh && l.limit.limit ? l.limit : null;  // the road's limit from the map (HexaSpeedLimit)
+  const limTile = lim ? (() => {
+    const d = tileOf(lim.limit, "km/h", lim.road ? tf("limite: {rua}", { rua: lim.road }) : t("limite da via"));
+    if (l.v > lim.limit) d.style.borderColor = "var(--warn)";
+    return d;
+  })() : null;
   $("driveTiles").replaceChildren(
     tileOf(l.v, "km/h", t("velocidade")),
+    ...(limTile ? [limTile] : []),
     !l.lead ? tileOf("—", "", t("nenhum carro à frente"))
       : l.lead.gap != null ? tileOf(Number(l.lead.gap).toLocaleString(L(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }), "s",
                                     tf("até o carro à frente: {d} m, ele a {v} km/h", { d: l.lead.d, v: l.lead.v }).replace(/(\d) (m|km\/h)/g, "$1\u00a0$2"))
@@ -1961,6 +1974,43 @@ $("navTokenSave").addEventListener("click", async () => {
   toast(r.status === 200 ? (r.data.token ? t("Chave salva no comma.") : t("Chave removida.")) : (r.data.error || t("Não foi possível.")));
   $("navToken").value = ""; refreshNav(true);
 });
+// ----- the road's limit from the map (selfdrive/hexa/speed_limit.py): installing mapd and the region's maps, parked -----
+let limitState = null;
+async function refreshLimit() {
+  if (!online) return;
+  const r = await api("/api/limit");
+  if (r.status === 200) { limitState = r.data; renderLimit(); }
+}
+function renderLimit() {
+  const s = limitState, card = $("limitCard");
+  card.classList.toggle("hidden", !s || !s.option);
+  if (!s || !s.option) return;
+  const job = s.job || {}, dl = s.download;
+  const lines = [];
+  if (job.busy) lines.push(t("Instalando o mapd…"));
+  else if (job.error) lines.push(t(job.error));
+  if (!s.installed) lines.push(t("Falta instalar o mapd, o programa que lê o mapa (uma vez, num Wi-Fi)."));
+  else if (dl && dl.active) lines.push(tf("Baixando o mapa: {f} de {n} partes.", { f: dl.done, n: dl.total }));
+  else if (s.fresh && s.tile) lines.push(s.limit ? tf("Aqui: {v} km/h.", { v: s.limit }) : t("Mapa carregado. Esta rua não tem limite no mapa."));
+  else lines.push(t("Baixe o mapa da sua região. Depois, o limite aparece na tela de dirigir."));
+  $("limitText").textContent = lines.join(" ");
+  const acts = [];
+  if (!s.installed && !job.busy) {
+    const b = el("button", "link", t("Instalar o mapd")); b.type = "button";
+    b.addEventListener("click", async () => { const r = await api("/api/limit/install", {}); if (r.status !== 200) toast(r.data.error || t("Não foi possível.")); setTimeout(refreshLimit, 1500); });
+    acts.push(b);
+  }
+  if (s.installed && !(dl && dl.active)) for (const a of s.areas || []) {
+    const b = el("button", "link", tf("Baixar: {regiao}", { regiao: t(a.name) })); b.type = "button";
+    b.addEventListener("click", async () => {
+      const r = await api("/api/limit/download", { area: a.key });
+      toast(r.status === 200 ? t("Baixando o mapa. Deixe o comma no Wi-Fi.") : (r.data.error || t("Não foi possível.")));
+      setTimeout(refreshLimit, 2000);
+    });
+    acts.push(b);
+  }
+  $("limitActs").replaceChildren(...acts);
+}
 
 // ----- the video of a mark: a short-lived link from the comma, played by the phone's own player -----
 async function openClip(mark) {

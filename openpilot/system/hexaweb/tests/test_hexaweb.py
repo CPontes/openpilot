@@ -1785,3 +1785,93 @@ def test_nav_errors_are_the_phones(panel):
   status, body = panel.json("/api/nav/go", {"latitude": -22.9, "longitude": -43.1}, token)
   assert status == 400 and "navegação" in body["error"]
   assert panel.json("/api/nav/search", {"q": "a"}, token)[0] == 400
+# *** the road's limit from the map (selfdrive/hexa/speed_limit.py) ***
+
+def _limit_panel(panel, installed=True, install=None, wifi=True, free=50 * 1024 ** 3, download=None):
+  from openpilot.selfdrive.hexa import speed_limit
+  sent = []
+  panel.limit = {"wifi": wifi, "free": free, "download": download}
+  panel.backend._limit_state = lambda: speed_limit.view(None, 1e9, speed_limit.option(panel.store), installed, panel.limit["download"])
+  panel.backend._send_mapd = sent.append
+  panel.backend._network_ok = lambda: panel.limit["wifi"]
+  panel.backend._free_bytes = lambda: panel.limit["free"]
+  panel.backend._spawn = lambda job: job()
+  if install is not None:
+    panel.backend._install_mapd = install
+  panel.store.put("HexaSpeedLimit", 1)
+  return sent
+
+
+def test_limit_needs_a_paired_phone(panel):
+  _limit_panel(panel)
+  assert panel.json("/api/limit")[0] == 401
+  assert panel.json("/api/limit/install", {})[0] == 401
+
+
+def test_limit_state_and_download(panel):
+  sent = _limit_panel(panel)
+  token = panel.pair()
+  state = panel.json("/api/limit", token=token)[1]
+  assert state["option"] == 1 and state["installed"] and {a["key"] for a in state["areas"]} == {"br_state.RJ", "nation.BR"}
+  assert panel.json("/api/limit/download", {"area": "br_state.RJ"}, token) == (200, {"ok": True})
+  assert sent[-1].mapdIn.str == "br_state.RJ"
+  assert panel.json("/api/limit/download", {"area": "nation.US"}, token)[0] == 400
+  panel.vs = VehicleState(onroad=True)
+  assert panel.json("/api/limit/download", {"area": "br_state.RJ"}, token)[0] == 409  # parked only
+
+
+def test_limit_download_needs_the_option_and_mapd(panel):
+  _limit_panel(panel, installed=False)
+  token = panel.pair()
+  assert panel.json("/api/limit/download", {"area": "br_state.RJ"}, token)[0] == 409
+
+
+def test_limit_install(panel):
+  from openpilot.selfdrive.hexa import speed_limit
+  calls = []
+  _limit_panel(panel, installed=False, install=lambda: calls.append(1) or "abc")
+  token = panel.pair()
+  assert panel.json("/api/limit/install", {}, token)[1]["busy"] is True
+  assert calls == [1] and panel.json("/api/limit", token=token)[1]["job"] == {"busy": False, "error": "", "ok": True}
+
+  def no_pin():
+    raise speed_limit.InstallError("Esta versão ainda não traz o mapd: falta a revisão do CTO.")
+  panel.backend._install_mapd = no_pin
+  panel.json("/api/limit/install", {}, token)
+  assert "falta a revisão" in panel.json("/api/limit", token=token)[1]["job"]["error"]
+  panel.vs = VehicleState(onroad=True)
+  assert panel.json("/api/limit/install", {}, token)[0] == 409
+
+
+def test_limit_downloads_only_on_wifi_with_room(panel):
+  sent = _limit_panel(panel, wifi=False)
+  token = panel.pair()
+  status, body = panel.json("/api/limit/download", {"area": "br_state.RJ"}, token)
+  assert status == 409 and "Wi-Fi" in body["error"] and sent == []
+  status, body = panel.json("/api/limit/install", {}, token)
+  assert status == 409 and "Wi-Fi" in body["error"]
+  panel.limit.update(wifi=True, free=5 * 1024 ** 3)  # room for Rio, not for Brazil
+  assert panel.json("/api/limit/download", {"area": "br_state.RJ"}, token)[0] == 200
+  status, body = panel.json("/api/limit/download", {"area": "nation.BR"}, token)
+  assert status == 409 and "espaço" in body["error"] and len(sent) == 1
+  panel.limit["free"] = 10 * 1024 ** 2
+  assert "espaço" in panel.json("/api/limit/install", {}, token)[1]["error"]
+
+
+def test_the_car_turning_on_stops_a_map_download(panel):
+  sent = _limit_panel(panel, download={"active": True, "done": 1, "total": 6})
+  assert panel.backend.limit_tick() is False and sent == []  # parked: it goes on
+  panel.vs = VehicleState(onroad=True)
+  assert panel.backend.limit_tick() is True
+  assert str(sent[-1].mapdIn.type) == "cancelDownload"
+  assert panel.backend.limit_tick() is False and len(sent) == 1  # asked once per start
+  panel.limit["download"] = None
+  panel.vs = VehicleState(onroad=False)
+  assert panel.backend.limit_tick() is False and len(sent) == 1
+
+
+def test_the_panel_never_puts_mapd_in_its_submaster():
+  src = (Path(hexaweb.__file__)).read_text()
+  sub = src.split("sm = messaging.SubMaster(")[1].split("])")[0]
+  assert "mapd" not in sub
+  assert 'messaging.sub_sock(s, conflate=True) for s in ("mapdOut", "mapdExtendedOut")' in src

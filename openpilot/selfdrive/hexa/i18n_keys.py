@@ -16,6 +16,7 @@ ROOT = HEXA.parents[1]  # openpilot/openpilot
 PY_SOURCES = [ROOT / "system/hexaweb/hexaweb.py", HEXA / "phone.py", HEXA / "updates.py", HEXA / "marks.py", HEXA / "comma_ctl.py", HEXA / "missions.py",
               HEXA / "share.py",
               HEXA / "nav.py",
+              HEXA / "speed_limit.py",
               ROOT / "selfdrive/ui/mici/layouts/settings/hexa.py", ROOT / "selfdrive/ui/layouts/settings/hexa.py"]
 PAGES = [ROOT / "system/hexaweb/static" / n for n in ("index.html", "viagens.html", "replay.html", "lp-logic.js")]
 # objects in the pages whose values are passed through t() by name
@@ -59,7 +60,7 @@ def python_texts() -> set[str]:
         name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
         if name in ("tr",) and node.args and (txt := _text(node.args[0])):  # comma screen
           out.add(txt)
-        if name in ("ValueError", "ShareError", "NavError") and node.args and (txt := _text(node.args[0])) and PT.search(txt) and " " in txt:
+        if name in ("ValueError", "ShareError", "NavError", "InstallError") and node.args and (txt := _text(node.args[0])) and PT.search(txt) and " " in txt:
           out.add(txt)
         for kw in node.keywords:  # share.py: a queue item's error=, shown on the phone
           if kw.arg == "error" and (txt := _text(kw.value)) and " " in txt and PT.search(txt):

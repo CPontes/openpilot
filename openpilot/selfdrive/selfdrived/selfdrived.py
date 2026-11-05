@@ -23,7 +23,7 @@ from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
 from openpilot.selfdrive.selfdrived.always_on_lateral import LongitudinalPause, reverse_is_parking
 from openpilot.selfdrive.selfdrived.traffic_alerts import AccLostAlert, AutoResume, BumpSlowdown, LeadDepartAlert, StopHoldAlert, driver_attentive
-from openpilot.selfdrive.hexa import radars
+from openpilot.selfdrive.hexa import radars, speed_limit
 from opendbc.car.gwm.values import GwmSafetyFlags
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
 
@@ -48,7 +48,7 @@ AlertLevel = log.DriverMonitoringState.AlertLevel
 MonitoringPolicy = log.DriverMonitoringState.MonitoringPolicy
 
 IGNORED_SAFETY_MODES = (SafetyModel.silent, SafetyModel.noOutput)
-NON_DRIVING_PROCESSES = {"hexaweb"}  # nothing restarts a dead process: the phone panel going down must never stop openpilot
+NON_DRIVING_PROCESSES = {"hexaweb", "mapd"}  # nothing restarts a dead process: the phone panel or the map going down must never stop openpilot
 
 
 class SelfdriveD:
@@ -122,6 +122,13 @@ class SelfdriveD:
                          bool(self.CP.safetyConfigs[-1].safetyParam & GwmSafetyFlags.ACC_MINUS) else None
     self.acc_lost_alert = AccLostAlert() if self.CP.brand == 'gwm' and not self.CP.openpilotLongitudinalControl and \
                           self.params.get_bool("AccLostAlert") else None
+    # the road's limit from the map: mapd's own socket, never in the SubMaster (a mapd of another schema must not reach
+    # data_sample()), read and decoded inside check_speed_limit's try. Only when the option is "avisar"
+    self.speed_limit_watch = None
+    if speed_limit.option(self.params) == speed_limit.WARN:
+      self.speed_limit_watch = speed_limit.SpeedLimitWatch(DT_CTRL)
+      self.mapd_sock = messaging.sub_sock('mapdOut', conflate=True)
+      self.mapd_limit = (0., -1e9)  # (m/s, monotonic time it came)
     self.radar_watch = None
     if self.params.get_bool("RadarAlert"):
       try:
@@ -228,6 +235,9 @@ class SelfdriveD:
 
     if self.radar_watch is not None and self.sm.updated[self.gps_location_service]:
       self.check_radars()
+
+    if self.speed_limit_watch is not None:
+      self.check_speed_limit(CS)
 
     if self.lead_depart_alert is not None:
       lead = self.sm['radarState'].leadOne
@@ -632,6 +642,21 @@ class SelfdriveD:
       self.events.add(EventName.radarAhead)
       if self.bump_slowdown is not None and hit["kind"] == radars.BUMP and hit["limit"] is not None:
         self.bump_slowdown.start(hit["limit"], gps.speed * 3.6)
+
+  def check_speed_limit(self, CS):
+    # the road's limit from the map (mapd): a warning is never worth taking selfdrived down
+    try:
+      out = speed_limit.decode(self.mapd_sock.receive(non_blocking=True), 'mapdOut')
+      if out is not None:
+        self.mapd_limit = (out['speedLimit'], time.monotonic())
+      limit, at = self.mapd_limit
+      fresh = time.monotonic() - at < speed_limit.STALE_S
+      if self.speed_limit_watch.update(CS.vEgoCluster, limit, fresh):
+        speed_limit.last_limit_kph = round(limit * speed_limit.KPH)
+        self.events.add(EventName.speedLimitOver)
+    except Exception:
+      cloudlog.exception("speed limit check failed")
+      self.speed_limit_watch = None
 
   def params_thread(self, evt):
     while not evt.is_set():
