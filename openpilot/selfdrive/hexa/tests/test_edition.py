@@ -74,19 +74,43 @@ def test_the_haval_build_is_unchanged_by_the_brand_rule():
   assert all(supported(o, {}) for o in OPTIONS if not o.blocked)
 
 
-def test_launch_env_forces_no_car(tmp_path):
+def launch_env_fingerprint(tmp_path, edition, fp_content):
+  """FINGERPRINT after sourcing a copy of launch_env.sh next to an edition.txt, as in the repository."""
   text = (REPO / "launch_env.sh").read_text()
-  assert "export FINGERPRINT=GWM_HAVAL_H6" not in text
-  # the opt-in file: only capitals, digits and "_" reach FINGERPRINT, and nothing in it runs
   fp = tmp_path / "fingerprint"
-  script = text.replace("/data/lizpilot/fingerprint", str(fp))
-  (tmp_path / "env.sh").write_text(script)
+  (tmp_path / "launch_env.sh").write_text(text.replace("/data/lizpilot/fingerprint", str(fp)))
+  hexa = tmp_path / "openpilot" / "selfdrive" / "hexa"
+  hexa.mkdir(parents=True, exist_ok=True)
+  if edition is None:
+    (hexa / "edition.txt").unlink(missing_ok=True)
+  else:
+    (hexa / "edition.txt").write_text(edition)
+  if fp_content is None:
+    fp.unlink(missing_ok=True)
+  else:
+    fp.write_text(fp_content)
+  out = subprocess.run(["bash", "-c", f'unset FINGERPRINT; source "{tmp_path / "launch_env.sh"}" >/dev/null 2>&1; printf "%s" "$FINGERPRINT"'],
+                       cwd=tmp_path, capture_output=True, text=True, timeout=30)
+  return out.stdout
+
+
+def test_launch_env_the_haval_build_is_always_the_haval(tmp_path):
+  for edition in ("h6gt\n", None, "something else"):  # missing or unknown: the canal, as it always was
+    for fp in (None, "TOYOTA_RAV4\n"):  # the opt-in file doesn't change the Haval build
+      assert launch_env_fingerprint(tmp_path, edition, fp) == "GWM_HAVAL_H6", (edition, fp)
+
+
+def test_launch_env_generic_recognizes_the_car(tmp_path):
+  # the opt-in file: only capitals, digits and "_" reach FINGERPRINT, and nothing in it runs
   for content, expected in (("GWM_HAVAL_H6\n", "GWM_HAVAL_H6"), ("X; touch PWNED $(id)", "XPWNED"), (None, "")):
-    if content is None:
-      fp.unlink(missing_ok=True)
-    else:
-      fp.write_text(content)
-    out = subprocess.run(["bash", "-c", f'unset FINGERPRINT; source "{tmp_path / "env.sh"}" >/dev/null 2>&1; printf "%s" "$FINGERPRINT"'],
-                         cwd=tmp_path, capture_output=True, text=True, timeout=30)
-    assert out.stdout == expected, (content, out.stdout)
+    assert launch_env_fingerprint(tmp_path, "generic\n", content) == expected, content
     assert not (tmp_path / "PWNED").exists()
+
+
+def test_the_edition_file(tmp_path):
+  from openpilot.selfdrive.hexa import edition
+  f = tmp_path / "edition.txt"
+  for content, expected in (("generic\n", "generic"), ("h6gt", "h6gt"), ("GENERIC", "h6gt"), ("", "h6gt")):
+    f.write_text(content)
+    assert edition.read_edition(f) == expected, content
+  assert edition.read_edition(tmp_path / "missing.txt") == "h6gt"
