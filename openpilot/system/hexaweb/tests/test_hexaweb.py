@@ -1644,7 +1644,8 @@ def _sharing_panel(panel, tmp_path, enabled=True):
     sent.append(url)
     return 201, {"id": "s1"}
   panel.backend.sharer = share.Sharer(panel.store, str(tmp_path / "realdata"), url="https://r.example", post=post, clock=lambda: panel.now,
-                                      cutter=lambda *a, **k: (b"cut", {"services": {"carState": 1}}), share_dir=tmp_path / "share")
+                                      cutter=lambda *a, **k: (b"cut", {"services": {"carState": 1}}), share_dir=tmp_path / "share",
+                                      send_jitter_s=0.)
   panel.store.put(share.ENABLED_PARAM, enabled)
   return sent
 

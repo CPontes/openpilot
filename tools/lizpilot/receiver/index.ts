@@ -51,7 +51,12 @@ const store: Store = {
   async forgetDevice(id) {
     const rows = check(await db.from("lizpilot_shares").select("object").eq("device", id));
     // by the rows, and by the folder too: a package whose row was never written (a forget in the middle of a send) goes as well
-    const listed = check(await db.storage.from(BUCKET).list(id, { limit: 1000 })).map((f: { name: string }) => `${id}/${f.name}`);
+    const listed: string[] = [];
+    for (let offset = 0; ; offset += 1000) {
+      const page = check(await db.storage.from(BUCKET).list(id, { limit: 1000, offset }));
+      listed.push(...page.map((f: { name: string }) => `${id}/${f.name}`));
+      if (page.length < 1000) break;
+    }
     const objects = [...new Set([...rows.map((r: { object: string }) => r.object), ...listed])];
     if (objects.length) check(await db.storage.from(BUCKET).remove(objects));
     check(await db.from("lizpilot_devices").delete().eq("id", id)); // the rows go with it (on delete cascade)

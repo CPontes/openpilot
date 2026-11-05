@@ -47,7 +47,7 @@ def held(url) -> dict:
 def test_a_real_cut_reaches_the_receiver_and_can_be_forgotten(tmp_path, receiver):
   write_segments(tmp_path / "realdata")
   w = World(tmp_path)
-  w.sharer = share.Sharer(w.store, str(tmp_path / "realdata"), url=receiver, share_dir=tmp_path / "share")  # real clock, real HTTP
+  w.sharer = share.Sharer(w.store, str(tmp_path / "realdata"), url=receiver, share_dir=tmp_path / "share", send_jitter_s=0.)  # real clock, real HTTP
   mark = {**MARK, "t": 10_000 + 60 + 30, "mono_ns": T0 + 90 * NS, "delay_s": 0.}
   assert w.sharer.enqueue(mark)[0] == 200
   assert w.sharer.step(True, True, [mark]) == "cortado"
@@ -76,7 +76,7 @@ def test_a_real_cut_reaches_the_receiver_and_can_be_forgotten(tmp_path, receiver
 
 def test_a_comma_with_its_clock_off_still_gets_through(tmp_path, receiver):
   w = World(tmp_path)
-  w.sharer = share.Sharer(w.store, str(tmp_path / "realdata"), url=receiver, share_dir=tmp_path / "share",
+  w.sharer = share.Sharer(w.store, str(tmp_path / "realdata"), url=receiver, share_dir=tmp_path / "share", send_jitter_s=0.,
                           clock=lambda: share.wall_time() - 7200, cutter=w.cutter)
   w.sharer.enqueue(MARK)
   w.sharer.step(True, True, [MARK])
@@ -93,7 +93,7 @@ def test_the_package_on_the_receiver_is_the_comma_s(tmp_path, receiver):
   def post(url, body, hdrs):
     got[url.rsplit("/v1/", 1)[1]] = body
     return share.http_post(url, body, hdrs)
-  w.sharer = share.Sharer(w.store, str(tmp_path / "realdata"), url=receiver, post=post, share_dir=tmp_path / "share")
+  w.sharer = share.Sharer(w.store, str(tmp_path / "realdata"), url=receiver, post=post, share_dir=tmp_path / "share", send_jitter_s=0.)
   mark = {**MARK, "t": 10_000 + 60 + 30, "mono_ns": T0 + 90 * NS, "delay_s": 0.}
   w.sharer.enqueue(mark)
   w.sharer.step(True, True, [mark])

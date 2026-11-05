@@ -12,7 +12,8 @@ celular (marca → enviar) → comma: corta, limpa, assina, espera Wi-Fi → rec
 |---|---|
 | 30 s antes e 15 s depois da marca | O resto da viagem |
 | `carState`, `carControl`, `carOutput`, `carParams` (sem VIN), `controlsState`, `selfdriveState`, `onroadEvents`, `longitudinalPlan`, `radarState`, `drivingModelData`, parâmetros aprendidos, `driverMonitoringState` (só o estado), `accelerometer`, `pandaStates` | GPS do comma (`gpsLocation*`, `ubloxGnss`, `qcomGnss`), câmeras, áudio, `initData` (dongle id, parâmetros), `logMessage`, `deviceState` e todo serviço que não está na lista |
-| Da CAN, só os endereços que o DBC **deste carro** descreve (o que o openpilot lê dele) | Endereços fora do DBC; mensagens do DBC com sinal de posição, hora, data, odômetro, VIN, nome, telefone ou Bluetooth (`share.private_signal`); a CAN de diagnóstico (0x700–0x7FF e 0x18DA/DBxxxx); todo endereço que carrega um pedaço do VIN; todo endereço cujos quadros são na maior parte texto. **Carro sem DBC conhecido: nenhuma CAN** |
+| Da CAN, só os endereços que o DBC **deste carro** descreve (o que o openpilot lê dele) | Endereços fora do DBC; mensagens cujo nome é de posição, hora, odômetro ou VIN (`LOCAL_TIME`, `VIN_PART_1`, `APIMGPS_…`); a CAN de diagnóstico (0x700–0x7FF e 0x18DA/DBxxxx); todo endereço que carrega um pedaço do VIN; todo endereço cujos quadros são na maior parte texto. **Carro sem DBC conhecido: nenhuma CAN** |
+| Mensagens com um sinal pessoal no meio (o `CRUISE` do Honda tem o odômetro) | Esse sinal, **zerado** no quadro (`share.masked`, com o `set_value` do opendbc). O checksum desse quadro deixa de bater, de propósito |
 | Marca e modelo do carro, edição, branch, commit e versão do LizPilot | VIN, dongle id, serial do comma, nome do celular, dia e hora (só vai o mês). O receptor guarda só o dia da chegada |
 | Motivo e anotação da marca | |
 
@@ -30,15 +31,25 @@ celular (marca → enviar) → comma: corta, limpa, assina, espera Wi-Fi → rec
 
 Um CRC às vezes parece texto: `WHEEL_SPEEDS` chega a 11% dos quadros. Por isso um endereço só sai como texto com metade dos quadros ou mais.
 
+**Em todos os carros do opendbc** [teste], `test_no_car_lets_a_clock_a_position_or_a_name_through`: nenhuma mensagem que sai tem, aberto, um sinal com nome de hora, posição, distância ou pessoa. Exemplos:
+- Haval: as 29 mensagens saem; `REQ_REVIEW_ODOMETER` sai zerado;
+- RAV4: saem 90 de 94 (ficam de fora `TIME` e `VIN_PART_1..3`);
+- Civic 2022: saem 52 de 53 (fica de fora `ODOMETER`);
+- Kona EV: saem 86 de 88 (ficam de fora `LOCAL_TIME`);
+- Bronco Sport: saem 395 de 405 (ficam de fora GPS, relógio e local de recarga), 26 delas com sinais zerados.
+
 **Limites conhecidos:**
 - Um DBC pode ter mensagem com dado pessoal e nome inocente. A lista de palavras (`PRIVATE_TOKENS`) cobre os nomes comuns; um carro novo merece uma olhada no DBC antes.
+- A lista é por endereço, não por barramento: um endereço do DBC de um barramento também passa nos outros (com os mesmos sinais zerados).
 - A Supabase registra o IP de quem chama a função, nos logs da plataforma. O receptor não guarda IP.
+- A hora em que o pacote chega fica nos metadados do bucket e na issue. Por isso o comma espera um tempo aleatório de até 2 h depois do corte (`SEND_JITTER_S`): a chegada não diz quando o carro foi estacionado.
+- Uma só pessoa pode ocupar os limites do dia (100 commas novos, 500 envios). Isso só fecha com limite por IP na borda ou com um segredo da build no cadastro: está nos pontos para o CTO.
 
 ## O comma
 
 - Opção **enviar trechos aos desenvolvedores** (`HexaShareEnabled`, desligada por padrão), em Ajustes → Celular. Ela é o consentimento.
 - No celular, cada marca ganha **enviar**. A confirmação diz o que vai. Os estados são: na fila → esperando Wi-Fi → enviado.
-- Corta só com o carro desligado, num processo à parte com prioridade mínima (`nice 19`). Se o carro ligar no meio, o corte para e é refeito depois.
+- Corta só com o carro desligado, num processo à parte com prioridade mínima (`nice 19`). Se o carro ligar no meio, o corte para e é refeito depois. Um corte que passa de 180 s conta como tentativa.
 - Envia só em rede que não é medida (`deviceState.networkMetered`).
 - Um log que não abre (minuto cortado quando a energia caiu) é tentado 3 vezes e não segura os outros da fila.
 - A fila tem no máximo 20 trechos e 8 tentativas por trecho, com espera crescente. Cada trecho tem no máximo 8 MB (um Haval dá algumas centenas de KB).

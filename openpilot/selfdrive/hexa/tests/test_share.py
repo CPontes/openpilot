@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import re
 
 import pytest
 
@@ -293,7 +294,7 @@ class World:
     self.receiver = Receiver(lambda: self.t)
     self.cuts: list[dict] = []
     self.sharer = share.Sharer(self.store, str(tmp_path / "realdata"), url="https://r.example", post=self.receiver, clock=lambda: self.t,
-                               cutter=self.cutter, share_dir=tmp_path / "share")
+                               cutter=self.cutter, share_dir=tmp_path / "share", send_jitter_s=0.)
     self.cut_error: str | None = None
 
   def cutter(self, log_root, mark, vin="", hide=(), model=None):
@@ -514,8 +515,8 @@ def can_event(t, frames):
 
 def test_only_the_cars_own_dbc_addresses_leave_without_the_private_ones():
   allow = share.can_allowlist("GWM_HAVAL_H6")
-  assert allow and 0x13B in allow and 0x245 in allow  # WHEEL_SPEEDS, STEER_SENSOR
-  assert 0x27F not in allow  # REQ_REVIEW_ODOMETER: how far the car went
+  assert allow and allow[0x13B] == [] and allow[0x245] == []  # WHEEL_SPEEDS, STEER_SENSOR, whole
+  assert [sig.name for sig in allow[0x27F]] == ["REQ_REVIEW_ODOMETER"]  # kept, with how far the car went zeroed
   assert share.can_allowlist("NOT_A_CAR") is None and share.can_allowlist(None) is None
   for name in ("GPS_LAT", "NaviLatitude", "ODOMETER", "Odo_Km", "CLOCK_HOUR", "PHONE_NAME", "VIN_PART1", "BT_DEVICE", "RadioStationText"):
     assert share.private_signal(name), name
@@ -688,3 +689,84 @@ def test_the_cut_runs_in_a_low_priority_child_and_stops_when_the_car_turns_on(tm
     share.cut_in_child(str(root), mark, vin=VIN, offroad=lambda: False)
   with pytest.raises(share.ShareError, match="não está mais"):
     share.cut_in_child(str(root), {**mark, "t": 99_999})
+
+
+# *** the second pass of the review (79b5c1d) ***
+
+AUDIT = re.compile("|".join(("HOUR", "MINUTE", "LOCAL_?TIME", "LATIT", "LONGIT", "LATT", "LOCAT", "GPS", "GNSS", "ODOMET", "MILEAGE",
+                              "(?<![A-Za-z])VIN(?![A-Za-z])", "PHONE", "BLUETOOTH", "CLOCK", "CALENDAR", "ARTIST")), re.I)
+
+
+def test_no_car_lets_a_clock_a_position_or_a_name_through():
+  """Every car in opendbc: no message the allowlist keeps has a signal whose name looks like time, place, distance or a person."""
+  from opendbc.can.dbc import DBC
+  from opendbc.car.values import PLATFORMS
+  leaks = []
+  for model, platform in PLATFORMS.items():
+    allow = share.can_allowlist(model) or set()
+    for name in platform.config.dbc_dict.values():
+      for addr, msg in DBC(name).msgs.items():
+        if addr not in allow:
+          continue
+        zeroed = {sig.name for sig in allow[addr]}
+        open_ = [sig for sig in msg.sigs if AUDIT.search(sig) and sig not in zeroed]
+        if AUDIT.search(msg.name) or open_:
+          leaks.append((model, msg.name, open_[:3]))
+  assert leaks == []
+
+
+def test_the_review_cases_and_lateral_stays():
+  for name in ("LOCAL_TIME2", "HOURS", "MINUTES", "SECONDS", "Saved_Charge_Location_FD1", "ChrgLocLattPostv", "ChrgLocLongDeg_An_Sav",
+               "LocationServices_Data1_FD1", "OffPeakTime_Hr", "DayOfWeek_D_Stat"):
+    assert share.private_signal(name), name
+  for name in ("LAT_ACCEL", "LAT_DIST", "TRACK_A_0", "KINEMATICS", "VEHICLE_DYNAMICS", "ESP12", "LONG_ACCEL", "STEER_TORQUE"):
+    assert not share.private_signal(name), name
+
+
+def test_a_cut_that_takes_too_long_counts_as_a_try(tmp_path):
+  w = World(tmp_path)
+  w.sharer.enqueue(MARK)
+
+  def too_long(*a, **k):
+    raise share.CutTimeout()
+  w.sharer.cutter = too_long
+  for _ in range(3):
+    w.t += 10_000
+    w.sharer.step(True, False, [MARK])
+  assert w.sharer.state()["items"][0]["state"] == "erro"
+
+
+def test_a_cut_waits_a_random_moment_before_it_goes(tmp_path):
+  w = World(tmp_path)
+  w.sharer.send_jitter_s = 7200.
+  w.sharer.enqueue(MARK)
+  w.sharer.step(True, True, [MARK])
+  wait = w.store.get(share.QUEUE_PARAM)[0]["next_at"] - w.t
+  assert 0 <= wait <= 7200
+  w.t += 7201
+  w.receiver.now = lambda: w.t
+  assert w.sharer.step(True, True, [MARK]) == "enviado"
+
+
+def test_a_taken_id_starts_a_new_identity_when_nothing_was_sent_with_it(tmp_path):
+  w = World(tmp_path)
+  w.sharer.enqueue(MARK)
+  w.sharer.step(True, False, [MARK])
+  first = share.device(w.store)["id"]
+  w.receiver.devices[first] = "33" * 32  # someone else's key
+  assert w.sharer.step(True, True, [MARK]) == "tentar depois"
+  assert w.store.get(share.DEVICE_PARAM) is None
+  w.t += 100
+  assert w.sharer.step(True, True, [MARK]) == "enviado" and share.device(w.store)["id"] != first
+
+
+def test_a_private_signal_is_zeroed_and_the_rest_of_the_frame_stays():
+  allow = share.can_allowlist("GWM_HAVAL_H6")
+  sig = allow[0x27F][0]
+  frames = [can_event(T0 + i * NS // 10, [(0x27F, b"\xff" * 8, 0)]) for i in range(10)]
+  base = events(drive(seconds=1., vin_on_can=False))
+  payload, stats = share.cut(base + frames, T0 + NS // 2, can_allow=allow, before_s=1., after_s=1.)
+  _, evs = decode(payload)
+  out = [bytes(c.dat) for e in evs if e.which() == "can" for c in e.can if c.address == 0x27F]
+  assert out and all(sig.get_raw_value(d) == 0 for d in out) and all(d != bytes(8) for d in out)  # only that signal
+  assert stats["can_signals_zeroed"] == ["REQ_REVIEW_ODOMETER"]

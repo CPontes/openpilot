@@ -20,6 +20,7 @@ import hashlib
 import hmac
 import json
 import os
+import random
 import re
 import secrets
 import struct
@@ -68,11 +69,16 @@ VIN_PIECE = 6  # a CAN address whose bytes hold 6 characters in a row of the VIN
 MIN_SECRET = 8  # shorter identifiers would match by chance
 TEXT_RUN = re.compile(rb"[A-Za-z0-9 .,:/@+-]{6,}")  # 6 printable characters in a row, 3 letters, 4 different: text
 # DBC messages and signals that say where, when, how far or who (whole words of the name, then parts anywhere in it)
-PRIVATE_TOKENS = frozenset({"LAT", "LON", "LNG", "GPS", "GNSS", "NAV", "NAVI", "ODO", "ODOMETER", "MILEAGE", "TRIP", "DATE", "YEAR",
-                            "MONTH", "HOUR", "MINUTE", "CLOCK", "RTC", "UTC", "VIN", "NAME", "PHONE", "CALL", "CONTACT", "TEXT", "ASCII",
-                            "CHAR", "STRING", "BT", "BLUETOOTH", "SERIAL", "ID3", "SONG", "ARTIST", "STATION", "ADDRESS"})
-PRIVATE_PARTS = ("LATITUDE", "LONGITUDE", "GPS", "GNSS", "ODOMET", "MILEAGE", "VIN_", "PHONE", "BLUETOOTH")
+PRIVATE_TOKENS = frozenset({
+  "GPS", "GNSS", "NAV", "NAVI", "LOC", "LOCATION", "LATT", "LON", "LNG", "ALTITUDE",  # where
+  "ODO", "ODOMETER", "MILEAGE", "TRIP",  # how far
+  "TIME", "DATE", "YEAR", "MONTH", "DAY", "WEEKDAY", "DOW", "HOUR", "HOURS", "HR", "MINUTE", "MINUTES", "SECONDS", "CLOCK", "RTC", "UTC",  # when
+  "VIN", "SERIAL", "NAME", "PHONE", "CALL", "CONTACT", "TEXT", "ASCII", "CHAR", "STRING", "BT", "BLUETOOTH",  # who
+  "ID3", "SONG", "ARTIST", "STATION", "ADDRESS",
+})
+PRIVATE_PARTS = ("LATITUD", "LONGITUD", "LATT", "LOCAT", "GPS", "GNSS", "ODOMET", "MILEAGE", "VIN_", "PHONE", "BLUETOOTH", "LONGDEG", "LATDEG")
 CUT_TIMEOUT_S = 180.
+SEND_JITTER_S = 2 * 3600.  # a cut waits a random time up to this before it is sent
 TEXT_SHARE = 0.5  # an address with text in half of its frames or more is text
 
 STATES = ("fila", "pronto", "enviado", "erro")  # queued, cut and waiting for the network, sent, failed for good
@@ -178,36 +184,56 @@ def text_addresses(events: Iterable) -> set[tuple[int, int]]:
 
 
 def private_signal(name: str) -> bool:
-  """A DBC message or signal that says where, when, how far or who: GPS, clock, odometer, VIN, names, phone."""
+  """A DBC message or signal that says where, when, how far or who: GPS, clock, odometer, VIN, names, phone. Whole words of
+  the name (CamelCase split too), then parts anywhere in it. "LAT" alone is lateral (LAT_ACCEL), not latitude: only with "LON"."""
+  name = re.sub(r"(?i)time_?gap", "GAP", name)  # the ACC's distance setting, not a clock
   up = name.upper()
-  tokens = set(re.split(r"[^A-Z0-9]+", re.sub(r"([a-z])([A-Z])", r"\1_\2", name).upper()))
+  words = re.split(r"[^A-Z0-9]+", re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name).upper())
+  tokens = {re.sub(r"\d+$", "", w) for w in words}  # LOCAL_TIME2 is a TIME
   return bool(tokens & PRIVATE_TOKENS) or any(p in up for p in PRIVATE_PARTS)
 
 
-_ALLOW_CACHE: dict[str, set[int] | None] = {}
+_ALLOW_CACHE: dict[str, dict | None] = {}
 
 
-def can_allowlist(model: str | None) -> set[int] | None:
-  """The CAN addresses this car's DBC files describe, without the private ones. None: no DBC known, no CAN leaves."""
+def can_allowlist(model: str | None) -> dict | None:
+  """{address: [signals to zero]} for this car: the addresses its DBC files describe. A message whose name is private goes
+  whole; one with only some private signals stays, with those signals zeroed (Honda's CRUISE keeps the cruise and loses the
+  odometer). None: no DBC known, no CAN leaves. The checksum of a masked frame no longer matches, on purpose."""
   if not model:
     return None
   if model in _ALLOW_CACHE:
     return _ALLOW_CACHE[model]
-  out: set[int] | None = None
+  out: dict | None = None
   try:
     from opendbc.can.dbc import DBC
     from opendbc.car.values import PLATFORMS
     platform = PLATFORMS.get(model)
     if platform is not None:
-      out = set()
+      out = {}
+      dropped: set[int] = set()
       for name in platform.config.dbc_dict.values():
         for addr, msg in DBC(name).msgs.items():
-          if not private_signal(msg.name) and not any(private_signal(sig) for sig in msg.sigs):
-            out.add(addr)
+          if private_signal(msg.name):
+            dropped.add(addr)  # the same address in another of the car's DBC files can't bring it back
+            continue
+          out.setdefault(addr, []).extend(sig for sig_name, sig in msg.sigs.items() if private_signal(sig_name))
+      out = {a: sigs for a, sigs in out.items() if a not in dropped}
   except Exception:
     out = None
   _ALLOW_CACHE[model] = out
   return out
+
+
+def masked(dat: bytes, signals: list) -> bytes:
+  """The frame with these DBC signals set to zero."""
+  if not signals:
+    return dat
+  from opendbc.can.packer import set_value
+  out = bytearray(dat)
+  for sig in signals:
+    set_value(out, sig, 0)
+  return bytes(out)
 
 
 def scrubbed(raw: bytes, hide: Iterable[str]) -> list[str]:
@@ -216,17 +242,17 @@ def scrubbed(raw: bytes, hide: Iterable[str]) -> list[str]:
   return [s for s in hide if len(s) >= MIN_SECRET and set(s) != {"0"} and s.upper().encode("utf-8", "ignore") in up]
 
 
-def _copy_can(ev, which: str, keep: Callable[[int, int], bool]):
+def _copy_can(ev, which: str, keep: Callable[[int, int], bool], mask: dict):
   from openpilot.cereal import log
   kept = [c for c in getattr(ev, which) if keep(c.src, c.address)]
   out = log.Event.new_message(logMonoTime=ev.logMonoTime, valid=ev.valid)
   lst = out.init(which, len(kept))
   for dst, c in zip(lst, kept, strict=True):
-    dst.address, dst.dat, dst.src = c.address, bytes(c.dat), c.src
+    dst.address, dst.dat, dst.src = c.address, masked(bytes(c.dat), mask.get(c.address, [])), c.src
   return out, len(getattr(ev, which)) - len(kept)
 
 
-def cut(events: Iterable, center_ns: int, vin: str = "", hide: Iterable[str] = (), can_allow: set[int] | None = None,
+def cut(events: Iterable, center_ns: int, vin: str = "", hide: Iterable[str] = (), can_allow: dict | set | None = None,
         before_s: float = BEFORE_S, after_s: float = AFTER_S) -> tuple[bytes, dict]:
   """The events from before_s before center_ns to after_s after it, only SERVICES, scrubbed. Returns (zstd of the events,
   stats for the manifest). Raises ShareError when nothing is left or an identifier is still in it.
@@ -238,7 +264,7 @@ def cut(events: Iterable, center_ns: int, vin: str = "", hide: Iterable[str] = (
   window = [ev for ev in events if lo <= ev.logMonoTime <= hi]
   kept = [ev for ev in window if ev.which() in SERVICES]
   vins = {v.strip() for v in [vin, *(ev.carParams.carVin for ev in kept if ev.which() == "carParams")] if valid_vin(v)}
-  allow = can_allow or set()
+  allow = can_allow if isinstance(can_allow, dict) else dict.fromkeys(can_allow or (), [])
   candidates = [ev for ev in kept if ev.which() in CAN_SERVICES]
   drop = vin_addresses(candidates, vins) | text_addresses(candidates)
 
@@ -252,7 +278,7 @@ def cut(events: Iterable, center_ns: int, vin: str = "", hide: Iterable[str] = (
   for ev in kept:
     which = ev.which()
     if which in CAN_SERVICES:
-      b, n = _copy_can(ev, which, keep)
+      b, n = _copy_can(ev, which, keep, allow)
       can_dropped += n
       can_kept |= {(c.src, c.address) for c in getattr(b, which)}
     else:
@@ -272,6 +298,7 @@ def cut(events: Iterable, center_ns: int, vin: str = "", hide: Iterable[str] = (
     "left_out": sorted({ev.which() for ev in window if ev.which() not in SERVICES}),
     "can": "dbc" if can_allow else "none",
     "can_addresses": len(can_kept),
+    "can_signals_zeroed": sorted({sig.name for addr in {a for _, a in can_kept} for sig in allow.get(addr, [])}),
     "can_frames_dropped": can_dropped,
     "can_addresses_with_vin": sorted(f"{bus}:{hex(addr)}" for bus, addr in vin_addresses(candidates, vins)),
     "can_addresses_with_text": sorted(f"{bus}:{hex(addr)}" for bus, addr in text_addresses(candidates)),
@@ -353,6 +380,10 @@ class CutInterrupted(Exception):
   """The car was turned on while cutting: the cut stops and is done again later."""
 
 
+class CutTimeout(Exception):
+  """The cut took longer than CUT_TIMEOUT_S: counted as a try, like a log that can't be read."""
+
+
 def cut_in_child(log_root: str, mark: dict, vin: str = "", hide: Iterable[str] = (), model: str | None = None,
                  offroad: Callable[[], bool] = lambda: True, timeout: float = CUT_TIMEOUT_S) -> tuple[bytes, dict]:
   """cut_mark in a separate process at the lowest priority (_child_cut): reading the logs never holds up the phone panel, and it stops
@@ -373,7 +404,7 @@ def cut_in_child(log_root: str, mark: dict, vin: str = "", hide: Iterable[str] =
       if not offroad() or time.monotonic() - start > timeout:
         p.kill()
         p.wait()
-        raise CutInterrupted()
+        raise CutInterrupted() if not offroad() else CutTimeout()
       time.sleep(0.2)
     answer = json.loads(p.stdout.read() or "{}")
     if "error" in answer:
@@ -467,7 +498,7 @@ class Sharer:
   def __init__(self, store, log_root: str, edition: str = "h6gt", url: str | None = None,
                post: Callable[[str, bytes, dict], tuple[int, dict]] = http_post, clock: Callable[[], float] = wall_time,
                cutter: Callable[..., tuple[bytes, dict]] | None = None, share_dir: Path | None = None,
-               offroad: Callable[[], bool] = lambda: True):
+               offroad: Callable[[], bool] = lambda: True, send_jitter_s: float = SEND_JITTER_S):
     self.store = store
     self.log_root = log_root
     self.edition = edition
@@ -475,6 +506,7 @@ class Sharer:
     self.post = post
     self.clock = clock
     self.offroad = offroad  # asked during the cut: the car turned on stops it
+    self.send_jitter_s = send_jitter_s
     self.cutter = cutter or (lambda log_root, mark, **kw: cut_in_child(log_root, mark, offroad=self.offroad, **kw))
     self.dir = share_dir or (Path(log_root).parent / SHARE_DIR)
     self.skew = 0.  # the receiver's clock minus ours, learned when it says ours is off (a comma without GPS or NTP yet)
@@ -668,26 +700,31 @@ class Sharer:
       tmp = self._file(todo["id"]).with_suffix(".tmp")
       tmp.write_bytes(data)
       os.replace(tmp, self._file(todo["id"]))
-      self._update(todo["id"], state="pronto", bytes=len(data), error=None, tries=0, next_at=0.)
+      # sent at a random moment within SEND_JITTER_S: when it reaches the receiver doesn't say when the car was parked
+      self._update(todo["id"], state="pronto", bytes=len(data), error=None, tries=0, next_at=self.clock() + random.uniform(0., self.send_jitter_s))
     return "cortado"
 
   def _send(self, ready: dict) -> str:
-    with self.lock:  # right before: still asked for, still the same identity
+    try:
+      data = self._file(ready["id"]).read_bytes()
+    except OSError:
+      self._update(ready["id"], state="fila", error=None)  # the cut is gone: cut it again
+      return "recortar"
+    with self.lock:  # right before: still asked for
       still = self._item(ready["id"])
       if still is None or still.get("state") != "pronto":
         return "cancelado"
-      try:
-        data = self._file(ready["id"]).read_bytes()
-      except OSError:
-        self._update(ready["id"], state="fila", error=None)  # the cut is gone: cut it again
-        return "recortar"
       dev = device(self.store)
-      self.store.put(DEVICE_PARAM, dev := dict(dev, used=True))  # from here on, a forget must ask the receiver
-      self._sending = ready["id"]
+      self._sending = ready["id"]  # from here on, a forget asks the receiver
     try:
       if not self._register(dev):
         self._retry(ready, error="O receptor não respondeu.")
         return "tentar depois"
+      with self.lock:  # registered: still the same identity, no forget asked meanwhile
+        if not self._same_device(dev):
+          return "cancelado"
+        dev = dict(self.store.get(DEVICE_PARAM), used=True)
+        self.store.put(DEVICE_PARAM, dev)
       status, out = self._signed_post(dev, "/v1/share", data)
     finally:
       with self.lock:

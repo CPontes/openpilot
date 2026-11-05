@@ -1654,7 +1654,7 @@ async function saveMark() {
 
 // ----- sending a mark's moment to the developers (selfdrive/hexa/share.py): only the marks the owner picks, one by one -----
 let shareState = { enabled: false, receiver: false, items: [], forgetting: false, sent: 0 }, shareAt = 0;
-const SHARE_TEXT = { fila: "na fila", pronto: "esperando Wi-Fi", enviado: "enviado", erro: "não enviado" };
+const SHARE_TEXT = { fila: "na fila", pronto: "pronto para enviar", enviado: "enviado", erro: "não enviado" };  // pronto: the next Wi-Fi, within 2 h
 async function refreshShare() {
   if (!online || Date.now() - shareAt < 2000) return;
   shareAt = Date.now();
