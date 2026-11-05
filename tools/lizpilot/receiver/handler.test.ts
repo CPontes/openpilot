@@ -262,3 +262,93 @@ test("the developers read with their own word: list and download, never the devi
   const post = await handle(new Request("https://x/v1/shares", { method: "POST", headers: { "X-LizPilot-Reader": "reader-word" } }), w.store, w.cfg);
   assert.equal(post.status, 403); // read only
 });
+
+// *** the error reports (ERR-01, openpilot/selfdrive/hexa/report.py) ***
+
+const REPORT = {
+  format: 1, software: { edition: "h6gt", branch: "h6gt", commit: "0123456789ab", version: "0.10.1" }, car: { brand: "gwm", model: "GWM_HAVAL_H6" },
+  errors: [
+    { ago_min: 2, clock_ok: true, known: "limpeza", process: "uploader", msg: "uploader failed", error: "FileNotFoundError: '<rota>'" },
+    { ago_min: null, clock_ok: false, known: "relogio", process: "athenad", msg: "", error: "certificate is not yet valid" },
+    // what a comma of another version could let through: cleaned here again
+    { ago_min: 1, clock_ok: true, known: "bogus", process: "selfdrived", msg: "vin LGWEF4A59RH123456 at -22.90680, -43.17290 id 0123456789abcdef",
+      error: "in /data/media/0/realdata/0000000a--47fe527e33--12/rlog.zst", extra: "dropped" },
+  ],
+  last_off: { ago_min: 5, why: ["steerOverride"] }, down: ["mapd"], device: { dongle: "0123456789abcdef" },
+};
+const reportBody = (over: Record<string, unknown> = {}) => enc.encode(JSON.stringify({ ...REPORT, ...over }));
+
+test("a signed report is kept, cleaned again, without the device", async () => {
+  const w = world();
+  await register(w);
+  const r = await call(w, "/v1/report", reportBody());
+  assert.equal(r.status, 201);
+  assert.equal(r.body.id, "id1");
+  const row = w.store.reports[0];
+  assert.equal(row.device, DEVICE);
+  assert.equal(row.errors, 3);
+  assert.equal(row.created_at % 86400, 0); // the day only
+  const text = JSON.stringify(row.report);
+  for (const secret of ["LGWEF4A59RH123456", "-22.9068", "0123456789abcdef", "realdata", "47fe527e33", "dongle", "extra", "bogus"]) {
+    assert.ok(!text.includes(secret), secret);
+  }
+  assert.deepEqual(Object.keys(row.report).sort(), ["car", "down", "errors", "format", "last_off", "software"]);
+  assert.equal((row.report.errors as Record<string, unknown>[])[0].known, "limpeza");
+});
+
+test("a report needs a registered key and its signature", async () => {
+  const w = world();
+  assert.equal((await call(w, "/v1/report", reportBody())).status, 401); // never registered
+  await register(w);
+  assert.equal((await call(w, "/v1/report", reportBody(), { key: "22".repeat(32) })).status, 401);
+  assert.equal((await call(w, "/v1/report", reportBody(), { ts: w.now() - 1000 })).status, 401);
+  assert.equal((await call(w, "/v1/report", enc.encode("not json"))).status, 400);
+  assert.equal((await call(w, "/v1/report", reportBody({ format: 2 }))).status, 400);
+  assert.equal((await call(w, "/v1/report", new Uint8Array(40 * 1024))).status, 413);
+  assert.equal(w.store.reports.length, 0);
+});
+
+test("reports have limits per comma and for everyone", async () => {
+  const w = world({ reportsPerDevicePerDay: 2, reportsPerDayAll: 3 });
+  await register(w);
+  assert.equal((await call(w, "/v1/report", reportBody())).status, 201);
+  assert.equal((await call(w, "/v1/report", reportBody())).status, 201);
+  assert.equal((await call(w, "/v1/report", reportBody())).status, 429);
+  const other = "cd".repeat(16);
+  await register(w, other);
+  assert.equal((await call(w, "/v1/report", reportBody(), { device: other })).status, 201);
+  assert.equal((await call(w, "/v1/report", reportBody(), { device: other })).status, 429); // everyone's 3
+  w.tick(86400);
+  assert.equal((await call(w, "/v1/report", reportBody())).status, 201);
+});
+
+test("forget and the 12 months take the reports too", async () => {
+  const w = world();
+  await register(w);
+  await call(w, "/v1/report", reportBody());
+  w.tick(366 * 86400);
+  const purge = await handle(new Request("https://x/v1/purge", { method: "POST", headers: { "X-LizPilot-Purge": "purge-word" } }), w.store, w.cfg);
+  assert.equal(purge.status, 200);
+  assert.equal(w.store.reports.length, 0);
+  await call(w, "/v1/report", reportBody());
+  assert.equal((await call(w, "/v1/forget", new Uint8Array())).status, 200);
+  assert.equal(w.store.reports.length, 0);
+  assert.equal(w.store.devices.size, 0);
+});
+
+test("the developers read the reports with the reader word, never the device", async () => {
+  const w = world();
+  await register(w);
+  await call(w, "/v1/report", reportBody());
+  const get = (path: string, word?: string) =>
+    handle(new Request(`https://x/functions/v1/lizpilot-share${path}`, { headers: word ? { "X-LizPilot-Reader": word } : {} }), w.store, w.cfg);
+  assert.equal((await get("/v1/reports")).status, 403);
+  assert.equal((await get("/v1/reports", "purge-word")).status, 403);
+  const list = await (await get("/v1/reports?brand=gwm", "reader-word")).json();
+  assert.equal(list.reports.length, 1);
+  assert.ok(!JSON.stringify(list).includes(DEVICE));
+  assert.match(list.reports[0].created_at, /^\d{4}-\d{2}-\d{2}$/);
+  const one = await (await get("/v1/reports/id1", "reader-word")).json();
+  assert.equal(one.errors, 3);
+  assert.equal((await get("/v1/reports/nope", "reader-word")).status, 404);
+});

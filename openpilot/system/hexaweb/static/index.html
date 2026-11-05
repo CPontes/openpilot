@@ -31,6 +31,7 @@
   .title { font-weight: 700; font-size: 17px; }
   .desc { color: var(--muted); font-size: 15px; white-space: pre-line; }
   .small { color: var(--dim); font-size: 13px; }
+  .errtext { overflow-wrap: anywhere; word-break: break-word; max-width: 100%; }
   .big { font-family: var(--font-display); font-weight: 700; font-size: 28px; line-height: 1.05; }
   .big small { font-family: var(--font); font-size: 15px; font-weight: 400; color: var(--muted); }
   .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -685,8 +686,12 @@
         </div>
         <div class="label" data-t>Erros</div>
         <div class="card" id="errorsCard"><div class="list" id="errorsList"></div>
+          <button class="link hidden" id="errorsAll" type="button"></button>
+          <div class="list hidden" id="errorsKnown"></div>
           <button class="link" id="errorsSend" type="button" data-t>Enviar para análise</button>
-          <div class="small" data-t>Gera um arquivo com os erros e a versão, para você mandar. Nada sai do comma sozinho.</div></div>
+          <div class="small hidden errtext" id="errorsSent"></div>
+          <button class="link hidden" id="errorsForget" type="button" data-t>apagar meus envios</button>
+          <div class="small" data-t>Manda ao LizPilot os erros, a versão e o carro, depois de você confirmar. Sem GPS, VIN, rota nem o número do comma. Nada sai do comma sozinho.</div></div>
         <div class="label" data-t>Saúde do comma</div>
         <div class="card"><div class="title" id="healthTitle">—</div><div class="desc" id="healthDesc"></div></div>
         <div class="grid2" id="healthTiles"></div>
@@ -904,6 +909,7 @@ let trips = null, tripsAt = 0, update = null, health = null, near = null, live =
 let passengerOk = false, passNext = null;  // the passenger question: page memory only, never stored
 let copOpen = false, stopSince = null;  // the copilot: page memory, for this drive only
 const API_TIMEOUT_MS = 8000;
+const SEND_TIMEOUT_MS = 30000;  // share.REPORT_TIMEOUT: up to 4 requests of 6 s to the receiver
 
 // ----- helpers -----
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
@@ -1094,7 +1100,7 @@ const RO_CMDS = '#fab, #tripHide, #addRadar, #addSignal, #addBump, #radarUpdate,
   '[data-subview="opcoes"] :is(button, select, .switch, input:not(#optSearch)), [data-subview="comma"] :is(button, select, input)';
 
 // ----- network: nothing old passes as current, and nothing can be touched that wouldn't reach the comma -----
-async function api(path, body) {
+async function api(path, body, waitMs) {  // waitMs: a request the comma answers only after the internet (ERR-01)
   if (body !== undefined && path !== "/api/pair" && path !== "/api/logout" && LPL.readOnly(online, fromBase)) {  // read only: nothing is sent
     failures = 0; refresh();
     toast(roReason()); return { status: 0, data: { error: roReason() } };
@@ -1103,7 +1109,7 @@ async function api(path, body) {
   if (token) opts.headers.Authorization = "Bearer " + token;
   if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
   let r;
-  const ctl = typeof AbortController === "function" ? new AbortController() : null, timer = ctl && setTimeout(() => ctl.abort(), API_TIMEOUT_MS);
+  const ctl = typeof AbortController === "function" ? new AbortController() : null, timer = ctl && setTimeout(() => ctl.abort(), waitMs || API_TIMEOUT_MS);
   if (ctl) opts.signal = ctl.signal;
   try { r = await fetch(path, opts); } catch (e) { setOnline(false); return { status: 0, data: { error: t("Sem conexão com o comma: nada foi salvo.") } }; }
   finally { clearTimeout(timer); }
@@ -1360,7 +1366,8 @@ async function setOption(key, value, e, undo) {
 
 const UPDATE_ACTIONS = { radars: "atualizou a lista de radares", check: "verificou", download: "baixou", install: "instalou", branch: "escolheu", reboot: "reiniciou" };
 const EVENTS = { trip_hidden: "ocultou uma viagem", trip_shown: "mostrou uma viagem de novo", paired: "pareou", logout: "desconectou", phone_revoked: "desconectou outro celular", pin_locked: "código bloqueado por tentativas erradas", reason_added: "adicionou motivo", reason_removed: "removeu motivo",
-                 profile_saved: "salvou um perfil", profile_removed: "apagou um perfil", profiles_restored: "restaurou perfis" };
+                 profile_saved: "salvou um perfil", profile_removed: "apagou um perfil", profiles_restored: "restaurou perfis",
+                 errors_sent: "enviou os erros para análise" };
 const RADAR_ACTIONS = { edit: "conferiu", removed: "tirou", add: "adicionou", delete: "apagou", import: "restaurou pontos" };
 const COMMA_ACTIONS = { reboot: "reiniciou o comma", poweroff: "desligou o comma", recalibrate: "recalibrou o comma" };
 function auditText(a) {
@@ -3785,13 +3792,18 @@ async function refreshHealth() {
   if (n.wheel) tiles.push(tileOf(t("volante reto em"), wheelText(n.wheel.offset)), tileOf(t("relação de direção"), num(n.wheel.ratio, 1)));
   if (n.delay) tiles.push(tileOf(t("atraso da direção"), `${num(n.delay.s, 2)} s (${n.delay.percent}%)`));
   $("learnedTiles").replaceChildren(...tiles);
-  const errs = h.errors || [];
-  $("errorsList").replaceChildren(...(errs.length ? errs.map((e) => {
-    const row = el("div", "line"); row.style.cssText = "flex-direction:column;align-items:flex-start;gap:2px;padding:8px 0";
-    row.append(el("span", "small num", `${when(e.t)} · ${e.process || "—"}`), el("span", "desc", e.error || e.msg));
-    return row;
-  }) : [el("div", "line desc", t("Nenhum erro recente."))]));
+  const errs = h.errors || [], real = errs.filter((e) => !e.known), normal = errs.filter((e) => e.known);
+  $("errorsList").replaceChildren(...(real.length ? real.map(errorRow)
+    : [el("div", "line desc", normal.length ? t("Só erros normais, que não pedem nada de você.") : t("Nenhum erro recente."))]));
+  $("errorsAll").textContent = errorsOpen ? t("esconder os normais") : tf("ver todos ({n} normais, sem ação)", { n: normal.length });
+  $("errorsAll").classList.toggle("hidden", !normal.length);
+  $("errorsKnown").replaceChildren(...normal.map(errorRow));
+  $("errorsKnown").classList.toggle("hidden", !errorsOpen || !normal.length);
   $("errorsSend").classList.toggle("hidden", !errs.length);
+  const rep = h.reports || {};
+  $("errorsSent").textContent = rep.sent ? tf("Enviados: {n}. Último código: {codigo}", { n: rep.sent, codigo: rep.receipt || "—" }) : "";
+  $("errorsSent").classList.toggle("hidden", !rep.sent);
+  $("errorsForget").classList.toggle("hidden", !rep.sent);
   $("learnedEmpty").classList.toggle("hidden", tiles.length > 0);
   if (view === "inicio" && !driving) renderGarage();
 }
@@ -3831,6 +3843,31 @@ async function refreshPhones() {
     : plan === "fixed" ? t("Endereço fixo: funciona mesmo se o comma mudar de rede.")
     : plan === "offer" ? t("Endereço que você está usando agora. Muda quando o comma troca de rede.")
     : t("Se o comma mudar de rede, este endereço muda: leia o QR de novo no comma, em Configurações → LizPilot → parear celular.");
+}
+
+// errors the comma always logs and that ask nothing of anyone (selfdrive/hexa/report.py KNOWN): said so, behind "ver todos"
+const KNOWN_TEXT = {
+  limpeza: "Normal, sem ação: o comma apagou um trecho antigo enquanto o envio passava por ele.",
+  conexao: "Normal, sem ação: a conexão com a comma caiu (troca de rede ou desligar) e volta sozinha.",
+  relogio: "Normal, sem ação: o relógio do comma ainda não tinha acertado depois de ligar.",
+};
+let errorsOpen = false;
+function errorRow(e) {
+  const row = el("div", "line"); row.style.cssText = "flex-direction:column;align-items:flex-start;gap:2px;padding:8px 0;min-width:0";
+  const at = e.clock_ok === false ? t("antes de o relógio acertar") : when(e.t);
+  row.append(el("span", "small num errtext", `${at} · ${e.process || "—"}`), el("span", "desc errtext", e.error || e.msg));
+  if (e.known && KNOWN_TEXT[e.known]) row.append(el("span", "small errtext", t(KNOWN_TEXT[e.known])));
+  return row;
+}
+$("errorsAll").addEventListener("click", () => { errorsOpen = !errorsOpen; refreshHealth(); });
+
+// iPhone, above all from the home screen, ignores a download: hand the file to the share sheet when it can take one
+async function shareFile(name, data) {
+  const file = new File([JSON.stringify(data, null, 1)], name, { type: "application/json" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  saveFile(name, data);
 }
 
 function saveFile(name, data) {
@@ -4075,10 +4112,27 @@ $("optExport").addEventListener("click", async () => {
   if (r.status === 200) saveFile(`lizpilot-ajustes-${new Date().toISOString().slice(0, 10)}.json`, r.data);
 });
 $("optImport").addEventListener("click", () => $("optFile").click());
-$("errorsSend").addEventListener("click", () => {  // a file the owner sends himself: versions, errors, the last disengagement
-  const h = health || {};
-  saveFile(`lizpilot-erros-${new Date().toISOString().slice(0, 10)}.json`,
-           { exported_at: Math.round(Date.now() / 1000), device: state && state.device, errors: h.errors || [], last_off: h.last_off || null, down: h.down || null });
+$("errorsSend").addEventListener("click", async () => {  // the owner sees what goes, confirms, and the comma sends it (ERR-01)
+  const name = `lizpilot-erros-${new Date().toISOString().slice(0, 10)}.json`;
+  const p = await api("/api/errors/preview", {});
+  if (p.status !== 200) { toast(p.data.error || t("Não foi possível.")); return; }
+  const rep = p.data, sw = rep.software || {}, car = rep.car || {};
+  const lines = (rep.errors || []).slice(0, 6).map((e) => `• ${e.process || "—"}: ${e.error || e.msg}`.slice(0, 90));
+  if (!confirm(tf("Enviar aos desenvolvedores do LizPilot?\n{n} erro(s), a versão {versao}, o carro ({carro}), o último desengate e o que estava parado.\nSem GPS, VIN, rota nem o número do comma.", {
+    n: (rep.errors || []).length, versao: `${sw.branch || "?"} ${sw.commit || ""}`.trim(), carro: [car.brand, car.model].filter(Boolean).join(" ") || "?" })
+    + (lines.length ? "\n\n" + lines.join("\n") : ""))) return;
+  $("errorsSend").disabled = true; $("errorsSend").textContent = t("Enviando…");
+  const r = await api("/api/errors/send", {}, SEND_TIMEOUT_MS);
+  $("errorsSend").disabled = false; $("errorsSend").textContent = t("Enviar para análise");
+  if (r.status === 200) { toast(tf("Enviado. Código do envio: {codigo}", { codigo: r.data.receipt || "—" })); refreshHealth(); return; }
+  // it didn't go: the same report as a file, for him to send
+  if (confirm(tf("Não foi possível enviar: {motivo}\nSalvar como arquivo para você mandar?", { motivo: t(r.data.error || "sem resposta do comma") }))) shareFile(name, rep);
+});
+$("errorsForget").addEventListener("click", async () => {
+  if (!confirm(t("Pedir ao receptor que apague o que este comma enviou (erros e trechos)?\nOs próximos envios saem com uma chave nova."))) return;
+  const r = await api("/api/share/forget", {});
+  toast(r.status === 200 ? t("Pedido feito: apaga no próximo Wi-Fi.") : (r.data.error || t("Não foi possível.")));
+  refreshHealth();
 });
 $("optFile").addEventListener("change", async (e) => {
   const f = e.target.files[0]; e.target.value = "";

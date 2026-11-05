@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from openpilot.selfdrive.hexa import share
+from openpilot.selfdrive.hexa import report, share
 from openpilot.selfdrive.hexa.tests.test_share import DONGLE, MARK, NS, SERIAL, T0, VIN, World, decode, write_segments
 
 RECEIVER = Path(__file__).resolve().parents[4] / "tools/lizpilot/receiver"
@@ -73,7 +73,7 @@ def test_a_real_cut_reaches_the_receiver_and_can_be_forgotten(tmp_path, receiver
 
   w.sharer.forget()
   assert w.sharer.step(True, True, [mark]) == "apagado"
-  assert held(receiver) == {"devices": [], "shares": []}
+  assert held(receiver) == {"devices": [], "shares": [], "reports": []}
 
 
 def test_a_comma_with_its_clock_off_still_gets_through(tmp_path, receiver):
@@ -129,3 +129,21 @@ def test_the_reader_lists_and_downloads_what_arrived(tmp_path, receiver):
     assert "403" in str(e)
   else:
     raise AssertionError("read without the word")
+
+
+def test_an_error_report_reaches_the_receiver_clean_and_can_be_forgotten(tmp_path, receiver):
+  from openpilot.selfdrive.hexa.tests.test_report import PRINTS, health
+  w = World(tmp_path)
+  w.sharer = share.Sharer(w.store, str(tmp_path / "realdata"), url=receiver, share_dir=tmp_path / "share")  # real clock, real HTTP
+  data = report.encode(report.build(w.store, health(PRINTS), "h6gt"))
+  status, out = w.sharer.report(data)
+  assert status == 200 and out["receipt"].startswith("dev-")
+  state = held(receiver)
+  row = state["reports"][0]
+  assert row["id"] == out["receipt"] and row["brand"] == "gwm" and row["errors"] == len(PRINTS)
+  text = json.dumps(state["reports"])
+  for secret in (VIN, DONGLE, SERIAL, "realdata", "47fe527e33", "-22.9068"):
+    assert secret not in text
+  w.sharer.forget()
+  assert w.sharer.step(True, True, []) == "apagado"
+  assert held(receiver) == {"devices": [], "shares": [], "reports": []}

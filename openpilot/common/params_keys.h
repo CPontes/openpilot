@@ -73,6 +73,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"HexaShareDevice", {PERSISTENT | DONT_LOG, JSON}},
     {"HexaShareEnabled", {PERSISTENT, BOOL, "0"}},
     {"HexaShareQueue", {PERSISTENT | DONT_LOG, JSON}},
+    {"HexaShareReports", {PERSISTENT | DONT_LOG, JSON}},
     {"HexaSpeedLimit", {PERSISTENT, INT, "0"}},
     {"HexaTripSummaries", {PERSISTENT | DONT_LOG, JSON}},
     {"HexaTripsHidden", {PERSISTENT | DONT_LOG, JSON}},

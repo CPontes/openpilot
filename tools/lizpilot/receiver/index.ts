@@ -1,7 +1,7 @@
 // Supabase Edge Function "lizpilot-share": handler.ts on Supabase, packages in a private bucket, rows in two tables (schema.sql).
 // Deploy: README.md. It runs with the service role, which only this function has: the tables and the bucket have no public policy.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
-import { DEFAULTS, githubNotifier, handle, type ShareRow, type Store } from "./handler.ts";
+import { DEFAULTS, githubNotifier, handle, type ReportRow, type ShareRow, type Store } from "./handler.ts";
 
 const BUCKET = "lizpilot-shares";
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
@@ -49,7 +49,8 @@ const store: Store = {
     }
   },
   async purgeBefore(before) {
-    let n = 0;
+    const gone = check(await db.from("lizpilot_reports").delete().lt("created_at", iso(before)).select("id"));
+    let n = gone.length;
     for (;;) { // in pages: storage removes up to 1000 at a time
       const rows = check(await db.from("lizpilot_shares").select("id,object").lt("created_at", iso(before)).limit(500));
       if (!rows.length) return n;
@@ -82,6 +83,26 @@ const store: Store = {
     if (objects.length) check(await db.storage.from(BUCKET).remove(objects));
     check(await db.from("lizpilot_devices").delete().eq("id", id)); // the rows go with it (on delete cascade)
     return rows.length;
+  },
+  // the error reports (ERR-01, schema_reports.sql); forgetDevice takes them with the device (on delete cascade)
+  async putReport(row: ReportRow) {
+    check(await db.from("lizpilot_reports").insert({ ...row, created_at: iso(row.created_at) }));
+  },
+  async reportsSince(device: string | null, since: number) {
+    let q = db.from("lizpilot_reports").select("id", { count: "exact", head: true }).gte("created_at", iso(since));
+    if (device !== null) q = q.eq("device", device);
+    const r = await q;
+    if (r.error) throw r.error;
+    return r.count ?? 0;
+  },
+  async listReports(brand: string | null, limit: number) {
+    let q = db.from("lizpilot_reports").select("*").order("created_at", { ascending: false }).limit(limit);
+    if (brand !== null) q = q.eq("brand", brand);
+    return check(await q).map((r: Record<string, unknown>) => ({ ...r, created_at: Date.parse(String(r.created_at)) / 1000 }) as ReportRow);
+  },
+  async getReport(id: string) {
+    const rows = check(await db.from("lizpilot_reports").select("*").eq("id", id).limit(1));
+    return rows.length ? { ...rows[0], created_at: Date.parse(String(rows[0].created_at)) / 1000 } as ReportRow : null;
   },
 };
 

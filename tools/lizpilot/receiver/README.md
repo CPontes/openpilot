@@ -92,6 +92,31 @@ Quem cria o projeto é o dono:
 
 **Pedido de exclusão sem o comma** (o comma foi resetado e a chave se perdeu): o dono mostra o **código do envio** que o celular exibiu. Quem administra apaga a linha e o pacote pelo painel da Supabase. Os dados são pseudonimizados (chave aleatória), não anônimos. Por isso há retenção e exclusão.
 
+## Relatórios de erros (ERR-01, "Enviar para análise")
+
+No cartão **Erros** (Ajustes → Comma), o dono toca em **Enviar para análise**. O celular mostra o que vai e pede confirmação; o comma manda na hora um JSON pequeno para `/v1/report`, assinado com a mesma chave aleatória dos trechos. Não espera Wi-Fi nem o carro desligado. O celular mostra o **código do envio**. Se não sair, oferece o mesmo JSON como arquivo (no iPhone, pela folha de compartilhar).
+
+| Vai | Não vai |
+|---|---|
+| Até 20 erros do cartão: processo, mensagem e a última linha da exceção, limpos (`report.clean`) | Dongle id, serial, VIN (procurados pelo valor e pelo formato), GPS ou coordenadas, IP, e-mail, rota (`/data/media/0/realdata/<rota>` vira `<rota>`), ids hex longos, o resto das URLs |
+| Há quantos minutos cada erro aconteceu, só quando o relógio do comma estava certo | A data e a hora; erros de antes de o relógio acertar vão sem tempo |
+| Se o erro é conhecido e inofensivo (`limpeza`, `conexao`, `relogio`) | |
+| Versão, edição, marca e modelo, o último desengate (motivos e há quantos minutos) e os processos parados | Temperatura, disco, aprendizado, bateria |
+
+- O comma recusa o envio se o dongle id, o serial ou o VIN ainda estiverem em qualquer lugar do JSON (`report.check`). O receptor limpa de novo (`handler.ts` `scrub`, `cleanReport`).
+- **Limites:** 5 por dia no comma; no receptor, 10 por comma e 1000 no total, por dia.
+- **Todos os carros** (`report.BRANDS = ()`), proposta do CTO. Para só o Haval: `BRANDS = edition.GWM_ONLY`.
+- **"apagar meus envios"** (no cartão Erros e no de trechos) apaga também os relatórios: a tabela tem `on delete cascade` no device. A retenção de 12 meses (`/v1/purge`) também os apaga.
+
+**Para pôr no ar, nesta ordem:**
+1. No SQL Editor do projeto `lizpilot`, rode `schema_reports.sql` (tabela `lizpilot_reports`, RLS sem política, acesso só do `service_role`).
+2. Deploy da função com o `index.ts` e o `handler.ts` novos. Antes do passo 1, a exclusão diária falharia: ela apaga também em `lizpilot_reports`.
+
+```bash
+python tools/lizpilot/envios.py erros listar [--carro gwm]
+python tools/lizpilot/envios.py erros baixar <id>|novos     # ~/lizpilot-envios/erros/<id>.json
+```
+
 ## Os desenvolvedores
 
 ```bash

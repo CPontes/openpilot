@@ -27,6 +27,7 @@ from openpilot.selfdrive.hexa import mdns as hexa_mdns
 from openpilot.selfdrive.hexa import missions as hexa_missions
 from openpilot.selfdrive.hexa import nav as hexa_nav
 from openpilot.selfdrive.hexa import radars
+from openpilot.selfdrive.hexa import report as hexa_report
 from openpilot.selfdrive.hexa import share as hexa_share
 from openpilot.selfdrive.hexa import speed_limit
 from openpilot.selfdrive.hexa import phone
@@ -212,7 +213,11 @@ class PanelBackend:
         data = self._health_state()
       except Exception:
         data = {}
-    return {**data, "last_off": self._last_off}
+    now = self.clock()
+    errors = hexa_report.annotate(list(data.get("errors") or []), hexa_report.clock_floor(self.store, now), now)
+    sent = self.sharer.reports() if self.sharer is not None else []
+    return {**data, "errors": errors, "last_off": self._last_off,
+            "reports": {"sent": len(sent), "receipt": sent[-1].get("receipt", "") if sent else ""}}
 
   def on_drive_state(self, engaged: bool, events) -> None:
     """Notes why openpilot dropped out, even with no phone looking."""
@@ -1262,6 +1267,35 @@ class PanelBackend:
       marks = [dict(m) for m in self._marks()]
     return self.sharer.step(offroad=not self.vehicle_state().onroad, network_ok=network_ok, marks=marks)
 
+  # *** the errors of the "Erros" card, sent to the developers when the owner confirms (selfdrive/hexa/report.py, ERR-01) ***
+
+  def _report(self) -> tuple[dict | None, str]:
+    from openpilot.selfdrive.hexa import edition
+    if self.sharer is None:
+      return None, "Este comma não envia relatórios."
+    if not edition.allows(hexa_report.BRANDS, self.store):
+      return None, "Por enquanto, o envio de erros é só do Haval."
+    return hexa_report.build(self.store, self.health(), self.sharer.edition, self.clock()), ""
+
+  def errors_preview(self, who: dict) -> tuple[int, dict]:
+    rep, why = self._report()
+    return (409, {"error": why}) if rep is None else (200, rep)
+
+  def errors_send(self, who: dict) -> tuple[int, dict]:
+    rep, why = self._report()
+    if rep is None:
+      return 409, {"error": why}
+    data = hexa_report.encode(rep)
+    try:
+      hexa_report.check(self.store, data)
+    except hexa_share.ShareError as e:
+      return 409, {"error": str(e)}
+    status, out = self.sharer.report(data)
+    if status == 200:
+      with self.lock:
+        self._audit({"event": "errors_sent", "who": who.get("name", ""), "new": out.get("receipt", "")})
+    return status, out
+
   # *** the route: the phone picks the destination, openpilot's navigation (navd) does the rest. It never changes the driving ***
 
   def nav_state(self) -> dict:
@@ -1586,6 +1620,8 @@ def make_handler(backend: PanelBackend):
         "/api/share": lambda who, b: backend.share_add(who, str(b.get("id", "")), b.get("with_note") is True),
         "/api/share/cancel": lambda who, b: backend.share_cancel(who, str(b.get("id", ""))),
         "/api/share/forget": lambda who, b: backend.share_forget(who),
+        "/api/errors/preview": lambda who, b: backend.errors_preview(who),
+        "/api/errors/send": lambda who, b: backend.errors_send(who),
         "/api/nav/search": lambda who, b: backend.nav_search(who, str(b.get("q", ""))),
         "/api/nav/go": lambda who, b: backend.nav_go(who, b),
         "/api/nav/stop": lambda who, b: backend.nav_stop(who),
@@ -1704,7 +1740,7 @@ def main():
     manager = seen("managerState")
     now = time.monotonic()
     if now - errors_at[0] >= ERRORS_EVERY_S:  # the log is read at most every 30 s
-      errors_at[0], errors_at[1] = now, hexa_live.recent_errors(Paths.swaglog_root())
+      errors_at[0], errors_at[1] = now, hexa_live.recent_errors(Paths.swaglog_root(), limit=hexa_report.REPORT_ERRORS)
     return {"device": hexa_live.device_state(sm["deviceState"]), "down": hexa_live.processes_down(manager) if manager is not None else None,
             "learned": hexa_live.learned(seen("lateralTorqueParameters"), seen("vehicleParameters"), seen("lateralDelay")),
             "errors": errors_at[1], "v12": round(sm["peripheralState"].voltage / 1000., 1) if sm.recv_frame["peripheralState"] > 0 else None}

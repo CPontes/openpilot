@@ -5,7 +5,8 @@
 //
 // Every request is signed with the comma's share key (HMAC-SHA256 of "time\nMETHOD\npath\nsha256(body)"). The key is random,
 // made on the comma, and is not the dongle id: nothing here says whose comma it is. A comma registers its key once
-// (/v1/register); sends a package (/v1/share); and can ask for everything it sent to be deleted (/v1/forget).
+// (/v1/register); sends a package (/v1/share) or an error report (/v1/report, ERR-01); and can ask for everything it sent to be
+// deleted (/v1/forget).
 
 export const FORMAT = "LZS1";
 export const MAX_SKEW_S = 300;
@@ -31,6 +32,21 @@ export interface ShareRow {
   manifest: Record<string, unknown>;
 }
 
+// One error report (openpilot/selfdrive/hexa/report.py): what the owner confirmed on the phone, cleaned again here.
+export interface ReportRow {
+  id: string;
+  device: string;
+  created_at: number; // s, the day only, as the shares
+  brand: string | null;
+  model: string | null;
+  edition: string | null;
+  branch: string | null;
+  git_commit: string | null;
+  version: string | null;
+  errors: number;
+  report: Record<string, unknown>;
+}
+
 export interface Store {
   getDevice(id: string): Promise<Device | null>;
   addDevice(id: string, key: string, now: number): Promise<void>;
@@ -43,6 +59,11 @@ export interface Store {
   purgeBefore(before: number): Promise<number>; // packages and rows that arrived before this day; returns how many
   listShares(brand: string | null, limit: number): Promise<ShareRow[]>; // newest first
   getPackage(id: string): Promise<Uint8Array | null>;
+  putReport(row: ReportRow): Promise<void>;
+  reportsSince(device: string | null, since: number): Promise<number>; // null: every device
+  listReports(brand: string | null, limit: number): Promise<ReportRow[]>; // newest first
+  getReport(id: string): Promise<ReportRow | null>;
+  // forgetDevice and purgeBefore take the reports too
 }
 
 export interface Config {
@@ -54,6 +75,8 @@ export interface Config {
   bytesPerDayAll: number;
   newDevicesPerDay: number;
   retentionDays: number;
+  reportsPerDevicePerDay: number;
+  reportsPerDayAll: number;
   buildSecrets: string[]; // the words a LizPilot build registers with (share.BUILD_SECRET); empty: nobody registers
   purgeSecret?: string; // the daily retention job (schema.sql) calls /v1/purge with it
   readerSecret?: string; // the developers read (envios.py) with it: list and download, nothing else
@@ -63,7 +86,8 @@ export interface Config {
 // Only a LizPilot build registers (its BUILD_SECRET, owner 05/11). The secret is in a public repository, so the limits stay: per
 // comma, and for everyone per day (UTC days). Packages are kept 12 months, then deleted (owner, 05/11).
 export const DEFAULTS = { maxBytes: 8 * 1024 * 1024, perDevicePerDay: 30, perDayAll: 500, bytesPerDayAll: 1024 * 1024 * 1024, newDevicesPerDay: 100,
-                          retentionDays: 365 };
+                          retentionDays: 365, reportsPerDevicePerDay: 10, reportsPerDayAll: 1000 };
+export const MAX_REPORT = 32 * 1024; // share.REPORT_MAX_BYTES
 
 function secretOk(given: string | null, expected: string | undefined): boolean {
   if (!expected || !given || given.length !== expected.length) return false;
@@ -75,6 +99,10 @@ function secretOk(given: string | null, expected: string | undefined): boolean {
 // What the developers see of a row: never the device.
 function publicRow(r: ShareRow) {
   const { device: _device, object: _object, ...rest } = r;
+  return { ...rest, created_at: new Date(r.created_at * 1000).toISOString().slice(0, 10) };
+}
+function publicReport(r: ReportRow) {
+  const { device: _device, ...rest } = r;
   return { ...rest, created_at: new Date(r.created_at * 1000).toISOString().slice(0, 10) };
 }
 export const day = (s: number) => Math.floor(s / 86400) * 86400;
@@ -177,6 +205,47 @@ export async function cleanManifest(m: Record<string, unknown>, payload: Uint8Ar
   };
 }
 
+// The same cleaning as report.py, again here: a comma of another version (or someone with the build word) can't leave a route, an
+// id, a VIN or a position in the table.
+export function scrub(v: unknown, max: number): string {
+  return plain(v, 4 * max)
+    .replace(/\/data\/media\/0\/realdata\/[^\s'",)\]]*/g, "<rota>")
+    .replace(/\b[0-9a-f]{8}--[0-9a-f]{10}(?:--\d+)?\b|\b\d{4}-\d{2}-\d{2}--\d{2}-\d{2}-\d{2}(?:--\d+)?\b/g, "<rota>")
+    .replace(/\b((?:https?|wss?):\/\/[A-Za-z0-9.-]+)[^\s'"]*/g, "$1/…")
+    .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, "<email>")
+    .replace(/-?\d{1,3}\.\d{3,}\s*[,; /]\s*-?\d{1,3}\.\d{3,}/g, "<posição>")
+    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g, "<ip>")
+    .replace(/\b(?=[A-HJ-NPR-Z0-9]*\d)(?=[A-HJ-NPR-Z0-9]*[A-HJ-NPR-Z])[A-HJ-NPR-Z0-9]{17}\b/g, "<vin>")
+    .replace(/\b[0-9a-fA-F]{16,}\b/g, "<id>")
+    .slice(0, max);
+}
+
+const KNOWN_CODES = ["limpeza", "conexao", "relogio"];
+
+// Only what report.py sends, field by field.
+export function cleanReport(m: Record<string, unknown>): Record<string, unknown> {
+  const obj = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {});
+  if (m.format !== 1) throw new Error("format version");
+  const sw = obj(m.software), car = obj(m.car);
+  if (!Array.isArray(m.errors)) throw new Error("errors");
+  const ago = (v: unknown) => (typeof v === "number" && Number.isInteger(v) && v >= 0 && v < 10 * 525600 ? v : null);
+  const errors = m.errors.slice(0, 20).map((e) => {
+    const x = obj(e);
+    return { ago_min: ago(x.ago_min), clock_ok: x.clock_ok === true, known: KNOWN_CODES.includes(x.known as string) ? x.known : null,
+             process: scrub(x.process, 40), msg: scrub(x.msg, 200), error: scrub(x.error, 200) };
+  });
+  const off = m.last_off && typeof m.last_off === "object" ? obj(m.last_off) : null;
+  return {
+    format: 1,
+    software: { edition: str(sw.edition, 20, CODE), branch: str(sw.branch, 40, CODE), commit: str(sw.commit, 12, /^[0-9a-f]{1,12}$/),
+                version: str(sw.version, 20, CODE) },
+    car: { brand: str(car.brand, 40, CODE), model: str(car.model, 60, CODE) },
+    errors,
+    last_off: off ? { ago_min: ago(off.ago_min), why: Array.isArray(off.why) ? off.why.slice(0, 10).map((w) => scrub(w, 40)) : [] } : null,
+    down: Array.isArray(m.down) ? m.down.slice(0, 30).map((p) => scrub(p, 40)) : null,
+  };
+}
+
 // Reads at most max bytes, and stops there: a body without Content-Length (chunked) is never read whole before the check.
 async function readBody(req: Request, max: number): Promise<Uint8Array | null> {
   const declared = Number(req.headers.get("Content-Length") ?? "0");
@@ -212,6 +281,18 @@ export async function handle(req: Request, store: Store, cfg: Config): Promise<R
     const n = await store.purgeBefore(day(cfg.now()) - cfg.retentionDays * 86400);
     return json(200, { ok: true, deleted: n });
   }
+  if (path === "/v1/reports" || path.startsWith("/v1/reports/")) { // the developers, read only: the error reports
+    if (req.method !== "GET" || !secretOk(req.headers.get("X-LizPilot-Reader"), cfg.readerSecret)) return json(403, { error: "reader" });
+    if (path === "/v1/reports") {
+      const brand = url.searchParams.get("brand");
+      const limit = Math.max(1, Math.min(200, Number(url.searchParams.get("limit") ?? "30") || 30));
+      return json(200, { reports: (await store.listReports(brand && CODE.test(brand) ? brand : null, limit)).map(publicReport) });
+    }
+    const id = path.slice("/v1/reports/".length);
+    if (!/^[A-Za-z0-9-]{1,64}$/.test(id)) return json(404, { error: "not found" });
+    const row = await store.getReport(id);
+    return row ? json(200, publicReport(row)) : json(404, { error: "not found" });
+  }
   if (path === "/v1/shares" || path.startsWith("/v1/shares/")) { // the developers, read only
     if (req.method !== "GET" || !secretOk(req.headers.get("X-LizPilot-Reader"), cfg.readerSecret)) return json(403, { error: "reader" });
     if (path === "/v1/shares") {
@@ -225,7 +306,7 @@ export async function handle(req: Request, store: Store, cfg: Config): Promise<R
     return data ? new Response(data, { status: 200, headers: { "Content-Type": "application/octet-stream", "Cache-Control": "no-store" } })
                 : json(404, { error: "not found" });
   }
-  if (req.method !== "POST" || !["/v1/register", "/v1/share", "/v1/forget"].includes(path)) return json(404, { error: "not found" });
+  if (req.method !== "POST" || !["/v1/register", "/v1/share", "/v1/forget", "/v1/report"].includes(path)) return json(404, { error: "not found" });
 
   const now = cfg.now();
   const ts = Number(req.headers.get("X-LizPilot-Time"));
@@ -234,7 +315,7 @@ export async function handle(req: Request, store: Store, cfg: Config): Promise<R
   if (!HEX32.test(device) || !HEX64.test(sig) || !Number.isInteger(ts)) return json(401, { error: "headers" });
   if (Math.abs(ts - now) > MAX_SKEW_S) return json(401, { error: "clock", now: Math.floor(now) }); // the comma corrects its clock
 
-  const body = await readBody(req, path === "/v1/share" ? cfg.maxBytes : 4096);
+  const body = await readBody(req, path === "/v1/share" ? cfg.maxBytes : path === "/v1/report" ? MAX_REPORT : 4096);
   if (body === null) return json(413, { error: "too big" });
 
   if (path === "/v1/register") {
@@ -262,6 +343,24 @@ export async function handle(req: Request, store: Store, cfg: Config): Promise<R
   if (path === "/v1/forget") {
     const n = await store.forgetDevice(device);
     return json(200, { ok: true, deleted: n });
+  }
+
+  if (path === "/v1/report") {
+    let report: Record<string, unknown>;
+    try {
+      const raw = JSON.parse(new TextDecoder().decode(body));
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("report");
+      report = cleanReport(raw);
+    } catch (e) {
+      return json(400, { error: `report: ${(e as Error).message}` });
+    }
+    if (await store.reportsSince(device, day(now)) >= cfg.reportsPerDevicePerDay) return json(429, { error: "per device" });
+    if (await store.reportsSince(null, day(now)) >= cfg.reportsPerDayAll) return json(429, { error: "busy" });
+    const car = report.car as Record<string, string | null>, sw = report.software as Record<string, string | null>;
+    const id = cfg.newId();
+    await store.putReport({ id, device, created_at: day(now), brand: car.brand, model: car.model, edition: sw.edition, branch: sw.branch,
+                            git_commit: sw.commit, version: sw.version, errors: (report.errors as unknown[]).length, report });
+    return json(201, { ok: true, id });
   }
 
   let manifest: Record<string, unknown>, payload: Uint8Array;
@@ -327,6 +426,7 @@ export function githubNotifier(token: string, repo: string, fetchFn: typeof fetc
 export class MemoryStore implements Store {
   devices = new Map<string, { key: string; at: number }>();
   shares: ShareRow[] = [];
+  reports: ReportRow[] = [];
   objects = new Map<string, Uint8Array>();
   async getDevice(id: string) { const d = this.devices.get(id); return d ? { key: d.key } : null; }
   async addDevice(id: string, key: string, now: number) { this.devices.set(id, { key, at: now }); }
@@ -341,8 +441,18 @@ export class MemoryStore implements Store {
     const old = this.shares.filter((s) => s.created_at < before);
     for (const s of old) this.objects.delete(s.object);
     this.shares = this.shares.filter((s) => s.created_at >= before);
-    return old.length;
+    const oldReports = this.reports.filter((r) => r.created_at < before).length;
+    this.reports = this.reports.filter((r) => r.created_at >= before);
+    return old.length + oldReports;
   }
+  async putReport(row: ReportRow) { this.reports.push(row); }
+  async reportsSince(device: string | null, since: number) {
+    return this.reports.filter((r) => (device === null || r.device === device) && r.created_at >= since).length;
+  }
+  async listReports(brand: string | null, limit: number) {
+    return this.reports.filter((r) => brand === null || r.brand === brand).sort((a, b) => b.created_at - a.created_at).slice(0, limit);
+  }
+  async getReport(id: string) { return this.reports.find((r) => r.id === id) ?? null; }
   async listShares(brand: string | null, limit: number) {
     return this.shares.filter((s) => brand === null || s.brand === brand).sort((a, b) => b.created_at - a.created_at).slice(0, limit);
   }
@@ -351,7 +461,9 @@ export class MemoryStore implements Store {
     const mine = this.shares.filter((s) => s.device === id);
     for (const s of mine) this.objects.delete(s.object);
     this.shares = this.shares.filter((s) => s.device !== id);
+    const reports = this.reports.filter((r) => r.device === id).length;
+    this.reports = this.reports.filter((r) => r.device !== id);
     this.devices.delete(id);
-    return mine.length;
+    return mine.length + reports;
   }
 }

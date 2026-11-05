@@ -101,3 +101,31 @@ def test_a_package_that_unpacks_into_too_much_is_refused(tmp_path, monkeypatch):
   else:
     raise AssertionError("opened a bomb")
   assert not (tmp_path / "out").exists()
+
+
+def test_error_reports_list_and_download(tmp_path, monkeypatch):
+  envios = tool()
+  base = "https://p.supabase.co/functions/v1/lizpilot-share"
+  row = {"id": "r1", "created_at": "2026-11-05", "brand": "toyota", "model": "TOYOTA_RAV4", "edition": "generic", "branch": "lizpilot",
+         "git_commit": "0123456789ab", "errors": 2,
+         "report": {"errors": [{"known": "conexao", "error": "socket is already closed"}, {"known": None, "error": "ValueError: \x1b[31mboom"}]}}
+  op = Opener({f"{base}/v1/reports?": json.dumps({"reports": [row]}).encode(), f"{base}/v1/reports/r1": json.dumps(row).encode()})
+  assert envios.reports(base, "svc", brand="toyota", opener=op) == [row]
+  assert "brand=toyota" in op.asked[0][0] and op.asked[0][1]["X-lizpilot-reader"] == "svc"
+  line = envios.describe_report(row)
+  assert "toyota/TOYOTA_RAV4" in line and "2 erro(s), 1 fora dos normais" in line and "\x1b" not in line and "ValueError" in line
+  dest = envios.download_report(base, "svc", "r1", tmp_path, opener=op)
+  assert dest == tmp_path / "erros" / "r1.json" and json.loads(dest.read_text())["errors"] == 2
+  import pytest
+  with pytest.raises(SystemExit):
+    envios.download_report(base, "svc", "../x", tmp_path, opener=op)
+
+  # from the command line
+  monkeypatch.setenv("LIZPILOT_SHARE_URL", base)
+  monkeypatch.setenv("LIZPILOT_READER_KEY", "svc")
+  real_reports, real_download = envios.reports, envios.download_report
+  monkeypatch.setattr(envios, "reports", lambda *a, **k: real_reports(*a, **k, opener=op))
+  monkeypatch.setattr(envios, "download_report", lambda *a, **k: real_download(*a, **k, opener=op))
+  envios.main(["erros", "listar", "--carro", "toyota"])
+  envios.main(["erros", "baixar", "novos", "--pasta", str(tmp_path)])  # already there: nothing new
+  assert (tmp_path / "erros" / "r1.json").is_file()

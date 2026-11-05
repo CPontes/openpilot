@@ -836,7 +836,7 @@ def test_health_needs_pairing_and_survives_a_failure(panel):
   def fail():
     raise RuntimeError("no data")
   panel.backend._health_state = fail
-  assert panel.json("/api/health", token=token) == (200, {"last_off": None})
+  assert panel.json("/api/health", token=token) == (200, {"errors": [], "last_off": None, "reports": {"sent": 0, "receipt": ""}})
 
 
 def test_phones_show_no_secret_and_mark_this_one(panel):
@@ -1875,3 +1875,65 @@ def test_the_panel_never_puts_mapd_in_its_submaster():
   sub = src.split("sm = messaging.SubMaster(")[1].split("])")[0]
   assert "mapd" not in sub
   assert 'messaging.sub_sock(s, conflate=True) for s in ("mapdOut", "mapdExtendedOut")' in src
+
+
+# *** the errors card: "Enviar para análise" straight to the receiver (selfdrive/hexa/report.py, ERR-01) ***
+
+def _errors_panel(panel, tmp_path, brand="toyota"):
+  from opendbc.car.structs import car
+  from openpilot.selfdrive.hexa import share
+  sent = []
+
+  def post(url, body, hdrs):
+    sent.append((url.rsplit("/v1/", 1)[1], body))
+    return 201, {"id": "r1"} if url.endswith("/v1/report") else {}
+  panel.backend.sharer = share.Sharer(panel.store, str(tmp_path / "realdata"), url="https://r.example", post=post, clock=lambda: panel.now)
+  panel.now = 1_793_000_000.
+  panel.store.put("CarParamsPersistent", car.CarParams.new_message(brand=brand, carFingerprint="TOYOTA_RAV4", carVin="2T3ZFREV4JW123456").to_bytes())
+  panel.store.put("DongleId", b"0123456789abcdef")
+  panel.backend._health_state = lambda: {"errors": [
+    {"t": panel.now - 60, "process": "uploader", "msg": "", "error": "FileNotFoundError: /data/media/0/realdata/0000000a--47fe527e33--43/qlog"},
+    {"t": 1_790_000_000, "process": "athenad", "msg": "Failed to fetch pairing provider: System time is not valid", "error": ""},
+    {"t": panel.now - 30, "process": "selfdrived", "msg": "dongle 0123456789abcdef", "error": "ValueError: boom"}],
+    "down": [], "device": {"temp": 51}}
+  return sent
+
+
+def test_the_errors_card_says_which_are_normal_and_which_date_is_false(panel, tmp_path):
+  _errors_panel(panel, tmp_path)
+  token = panel.pair()
+  h = panel.json("/api/health", token=token)[1]
+  assert [(e["known"], e["clock_ok"]) for e in h["errors"]] == [("limpeza", True), ("relogio", False), (None, True)]
+  assert h["reports"] == {"sent": 0, "receipt": ""}
+
+
+def test_errors_preview_is_what_goes_and_send_returns_the_code(panel, tmp_path):
+  sent = _errors_panel(panel, tmp_path)
+  token = panel.pair()
+  assert panel.json("/api/errors/preview", {})[0] == 401
+  status, rep = panel.json("/api/errors/preview", {}, token)
+  assert status == 200 and sent == []  # the preview sends nothing
+  assert rep["car"] == {"brand": "toyota", "model": "TOYOTA_RAV4"}  # every car (ERR-01)
+  assert "0123456789abcdef" not in json.dumps(rep) and "2T3ZFREV4JW123456" not in json.dumps(rep) and "realdata" not in json.dumps(rep)
+  assert panel.json("/api/errors/send", {}, token) == (200, {"ok": True, "receipt": "r1"})
+  assert [p for p, _ in sent] == ["register", "report"]
+  assert json.loads(sent[-1][1]) == rep  # exactly what the phone showed
+  assert panel.store.get(phone.AUDIT_PARAM)[-1]["event"] == "errors_sent"
+  assert panel.json("/api/health", token=token)[1]["reports"] == {"sent": 1, "receipt": "r1"}
+
+
+def test_errors_send_can_be_kept_to_the_haval(panel, tmp_path, monkeypatch):
+  from openpilot.selfdrive.hexa import report
+  sent = _errors_panel(panel, tmp_path)
+  monkeypatch.setattr(report, "BRANDS", ("gwm",))
+  token = panel.pair()
+  status, body = panel.json("/api/errors/send", {}, token)
+  assert status == 409 and "Haval" in body["error"] and sent == []
+
+
+def test_errors_send_says_why_it_failed(panel, tmp_path):
+  _errors_panel(panel, tmp_path)
+  panel.backend.sharer.post = panel.backend.sharer.report_post = lambda url, body, hdrs: (503, {})
+  token = panel.pair()
+  status, body = panel.json("/api/errors/send", {}, token)
+  assert status == 502 and "não respondeu" in body["error"]

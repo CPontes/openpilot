@@ -36,6 +36,10 @@ from openpilot.selfdrive.hexa.phone import wall_time
 ENABLED_PARAM = "HexaShareEnabled"
 DEVICE_PARAM = "HexaShareDevice"  # {"id", "key", "registered"}: random, never the dongle id. DONT_LOG
 QUEUE_PARAM = "HexaShareQueue"  # [item]: what the owner asked to send, and how it went. DONT_LOG
+REPORTS_PARAM = "HexaShareReports"  # [{"t", "receipt"}]: the error reports sent (report.py), for the daily limit and the phone. DONT_LOG
+REPORTS_PER_DAY = 5  # the receiver allows a few more: a phone that taps twice is never the one refused
+REPORT_MAX_BYTES = 32 * 1024
+REPORT_TIMEOUT = 6.  # the phone waits for it (index.html SEND_TIMEOUT_MS: up to 4 requests)
 SHARE_DIR = "lizpilot_share"  # next to the log folder: the cuts waiting for a network
 
 # The receiver (tools/lizpilot/receiver/README.md): the owner's own Supabase project "lizpilot", in São Paulo. Empty (by the
@@ -522,12 +526,15 @@ class Sharer:
   def __init__(self, store, log_root: str, edition: str = "h6gt", url: str | None = None,
                post: Callable[[str, bytes, dict], tuple[int, dict]] = http_post, clock: Callable[[], float] = wall_time,
                cutter: Callable[..., tuple[bytes, dict]] | None = None, share_dir: Path | None = None,
-               offroad: Callable[[], bool] = lambda: True, send_jitter_s: float = SEND_JITTER_S):
+               offroad: Callable[[], bool] = lambda: True, send_jitter_s: float = SEND_JITTER_S,
+               report_post: Callable[[str, bytes, dict], tuple[int, dict]] | None = None):
     self.store = store
     self.log_root = log_root
     self.edition = edition
     self.url = RECEIVER_URL if url is None else url
     self.post = post
+    # the error report runs in the phone's request: a shorter wait (the tests give one post for both)
+    self.report_post = report_post or (post if post is not http_post else lambda u, b, h: http_post(u, b, h, REPORT_TIMEOUT))
     self.clock = clock
     self.offroad = offroad  # asked during the cut: the car turned on stops it
     self.send_jitter_s = send_jitter_s
@@ -592,12 +599,54 @@ class Sharer:
       for i in _queue(self.store):
         self._drop_file(i["id"])
       self.store.put(QUEUE_PARAM, [])
+      self.store.remove(REPORTS_PARAM)
       dev = self.store.get(DEVICE_PARAM)
       if isinstance(dev, dict) and (dev.get("used") or dev.get("registered") or self._sending):
         self.store.put(DEVICE_PARAM, dict(dev, forget=True))  # the receiver may have something: ask it
       else:
         self.store.remove(DEVICE_PARAM)  # never reached the receiver: nothing there to delete
       return 200, {"ok": True}
+
+  def reports(self) -> list[dict]:
+    r = self.store.get(REPORTS_PARAM)
+    return [x for x in r if isinstance(x, dict) and isinstance(x.get("t"), int | float)] if isinstance(r, list) else []
+
+  def report(self, data: bytes) -> tuple[int, dict]:
+    """The owner's error report (report.py), sent now: a small JSON, so no waiting for Wi-Fi or for the car to be off. Runs in
+    the phone's request, at most REPORTS_PER_DAY a day."""
+    if not receiver_ok(self.url):
+      return 503, {"error": "O receptor ainda não está no ar."}
+    if len(data) > REPORT_MAX_BYTES:
+      return 413, {"error": "O relatório ficou grande demais."}
+    with self.lock:
+      now = self.clock()
+      if sum(1 for r in self.reports() if 0 <= now - r["t"] < 86400) >= REPORTS_PER_DAY:
+        return 429, {"error": "Já foram 5 envios de erros hoje. Tente amanhã."}
+      dev = self.store.get(DEVICE_PARAM)
+      if isinstance(dev, dict) and dev.get("forget"):
+        return 409, {"error": "Ainda apagando os envios anteriores. Tente de novo depois do próximo Wi-Fi."}
+      dev = device(self.store)
+    if not self._register(dev, post=self.report_post):
+      return 502, {"error": "O receptor não respondeu."}
+    with self.lock:  # registered: still the same identity, no forget asked meanwhile
+      if not self._same_device(dev):
+        return 409, {"error": "Os envios foram apagados agora há pouco. Tente de novo."}
+      dev = dict(self.store.get(DEVICE_PARAM), used=True)  # from here on, "apagar meus envios" asks the receiver
+      self.store.put(DEVICE_PARAM, dev)
+    status, out = self._signed_post(dev, "/v1/report", data, post=self.report_post)
+    if status in (200, 201):
+      receipt = str(out.get("id", ""))[:40]
+      with self.lock:
+        if self._same_device(dev):
+          self.store.put(REPORTS_PARAM, (self.reports() + [{"t": int(self.clock()), "receipt": receipt}])[-20:])
+      return 200, {"ok": True, "receipt": receipt}
+    if status == 401:  # the receiver forgot this key: the next tap registers again
+      self._mark_device(dev, registered=False)
+    if status == 429:
+      return 429, {"error": "O receptor recebeu muitos envios hoje. Tente amanhã."}
+    if status in (400, 413):
+      return 502, {"error": "O receptor recusou este relatório."}
+    return 502, {"error": "O receptor não respondeu."}
 
   # the worker
 
@@ -628,25 +677,26 @@ class Sharer:
       if self._same_device(dev):
         self.store.put(DEVICE_PARAM, dict(self.store.get(DEVICE_PARAM), **fields))
 
-  def _signed_post(self, dev: dict, path: str, body: bytes) -> tuple[int, dict]:
+  def _signed_post(self, dev: dict, path: str, body: bytes, post: Callable | None = None) -> tuple[int, dict]:
+    post = post or self.post
     try:
-      status, out = self.post(self.url.rstrip("/") + path, body, headers(dev, "POST", path, body, self.clock() + self.skew))
+      status, out = post(self.url.rstrip("/") + path, body, headers(dev, "POST", path, body, self.clock() + self.skew))
     except Exception:
       return 0, {}  # no network, DNS, TLS: try again later
     now = out.get("now")
     if status == 401 and out.get("error") == "clock" and isinstance(now, int | float) and not isinstance(now, bool):
       self.skew = float(now) - self.clock()
       try:  # once more, on the receiver's clock
-        status, out = self.post(self.url.rstrip("/") + path, body, headers(dev, "POST", path, body, self.clock() + self.skew))
+        status, out = post(self.url.rstrip("/") + path, body, headers(dev, "POST", path, body, self.clock() + self.skew))
       except Exception:
         return 0, {}
     return status, out
 
-  def _register(self, dev: dict) -> bool:
+  def _register(self, dev: dict, post: Callable | None = None) -> bool:
     if dev.get("registered"):
       return True
     body = json.dumps({"device": dev["id"], "key": dev["key"], "build": BUILD_SECRET}).encode()
-    status, _ = self._signed_post(dev, "/v1/register", body)
+    status, _ = self._signed_post(dev, "/v1/register", body, post=post)
     if status in (200, 201):
       self._mark_device(dev, registered=True)
       return True

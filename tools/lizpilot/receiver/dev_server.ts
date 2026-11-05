@@ -19,7 +19,8 @@ const server = createServer(async (req, res) => {
   for (const [k, v] of Object.entries(req.headers)) if (typeof v === "string") headers.set(k, v);
   if (req.url === "/_dev/state") { // only here: what the memory store holds, for the tests
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ devices: [...store.devices.keys()], shares: store.shares.map(({ manifest, ...r }) => ({ ...r, manifest })) }));
+    res.end(JSON.stringify({ devices: [...store.devices.keys()], shares: store.shares.map(({ manifest, ...r }) => ({ ...r, manifest })),
+                            reports: store.reports }));
     return;
   }
   const r = await handle(new Request(`http://localhost${req.url}`, { method: req.method, headers, body: req.method === "POST" ? body : undefined }),

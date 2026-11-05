@@ -14,7 +14,7 @@ from openpilot.selfdrive.hexa import comma_ctl, i18n, live, marks, missions, opt
 HEXA = Path(__file__).parent
 ROOT = HEXA.parents[1]  # openpilot/openpilot
 PY_SOURCES = [ROOT / "system/hexaweb/hexaweb.py", HEXA / "phone.py", HEXA / "updates.py", HEXA / "marks.py", HEXA / "comma_ctl.py", HEXA / "missions.py",
-              HEXA / "share.py",
+              HEXA / "share.py", HEXA / "report.py",
               HEXA / "nav.py",
               HEXA / "speed_limit.py",
               ROOT / "selfdrive/ui/mici/layouts/settings/hexa.py", ROOT / "selfdrive/ui/layouts/settings/hexa.py"]
@@ -22,7 +22,7 @@ PAGES = [ROOT / "system/hexaweb/static" / n for n in ("index.html", "viagens.htm
 # objects in the pages whose values are passed through t() by name
 PAGE_TABLES = ("UPDATE_ACTIONS", "EVENTS", "RADAR_ACTIONS", "RESUME", "SIDES", "SIDE_CHIPS", "POINT", "KINDS",
                "COMMA_ACTIONS", "LEVEL_TEXT", "SAFETY_TEXT", "SAFETY_NAMES", "MARK_POINTS", "HOW_TEXT", "HOW_LONG", "MOMENT_TEXT", "MARK_RESULT",
-               "EVENT_UI", "STAGE_TEXT", "EV_BUTTONS", "EV_BY", "MARK_WIN", "TILE_TEXT", "SHARE_TEXT")
+               "EVENT_UI", "STAGE_TEXT", "EV_BUTTONS", "EV_BY", "MARK_WIN", "TILE_TEXT", "SHARE_TEXT", "KNOWN_TEXT")
 FIELD = re.compile(r"\{[^{}]*\}")
 PT = re.compile(r"[a-zà-ú]", re.I)
 
