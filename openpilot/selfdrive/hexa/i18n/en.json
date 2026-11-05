@@ -1467,5 +1467,7 @@
  "trocar": "change",
  "Últimos 10 s": "Last 10 s",
  "Últimos 30 s": "Last 30 s",
- "últimos {n} s": "last {n} s"
+ "últimos {n} s": "last {n} s",
+ "··· mais {n}": "··· {n} more",
+ "menos": "less"
 }

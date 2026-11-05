@@ -1083,3 +1083,14 @@ def test_marking_is_two_steps_with_nothing_to_scroll_and_the_text_box_on_top():
   assert "markStep(2)" in pick  # one tap on a reason: on to the text
   assert '$("markSheet").classList.toggle("up", two)' in html and 'class="sheet up hidden" id="evSheet"' in html  # above the keyboard
   assert "window: MARK_WIN_S[markWin]" in html
+
+
+def test_to_review_shows_the_newest_three_and_the_rest_behind_one_tap():
+  # owner, 04/11: "tem que ser só 3 e o outro um 3 pontinhos que você abre o resto"
+  evs = [{"id": f"e{i}", "kind": "stop_lead", "t": 1000 - i} for i in range(7)]
+  g = run("groupPending", list(reversed(evs)), None)
+  assert [e["id"] for e in g["shown"]] == ["e0", "e1", "e2"]  # newest first, whatever the order they came in
+  assert [e["id"] for e in g["rest"]] == ["e3", "e4", "e5", "e6"]
+  assert run("groupPending", evs[:2], None)["rest"] == []
+  html = (LOGIC.parent / "index.html").read_text()
+  assert 'tf("··· mais {n}"' in html and "evShowRest" in html

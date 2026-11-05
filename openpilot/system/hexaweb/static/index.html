@@ -327,7 +327,9 @@
   .evrow { display: flex; gap: 10px; align-items: center; width: 100%; min-height: 52px; padding: 8px 12px; margin: 0; border-radius: 12px; text-align: left;
            background: var(--card-2); border: 0; border-left: 4px solid var(--line-2); color: var(--text); font: inherit; }
   .evrow.recent { border-left-color: var(--warn); } .evrow.live { border-left-color: var(--accent); }
-  .evrow .x { flex: 1; min-width: 0; } .evrow .w { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .evrow .x { flex: 1; min-width: 0; }
+  .evmore { width: 100%; min-height: 44px; border: 0; border-radius: 12px; background: transparent; color: var(--muted); font: inherit; font-size: 15px; letter-spacing: .04em; }
+  .evrow .w { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .copbar { position: sticky; bottom: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-top: 8px; margin-top: auto; background: var(--bg); }
   .copbar .btn { margin: 0; min-height: 56px; }
   /* under the card, always at the same place (owner, 04/11): skip it, or stop showing this kind */
@@ -2025,6 +2027,7 @@ let copReview = false, evShowAll = false;  // the review, parked or with the car
 // kinds the owner turned off (owner, 04/11): still detected and kept, never in the big card; a preference, not data (not wiped)
 const EV_MUTED_STORE = "lpCopMuted";
 let evMuted = [], evShowQuiet = false, undoTimer = null, muteAsk = null;
+let evShowRest = false;  // "A conferir": the older ones opened by a tap on "···"
 function mutedLoad() { try { evMuted = LPL.mutedKinds(JSON.parse(load(EV_MUTED_STORE) || "[]")); } catch (e) { evMuted = []; } }
 function mutedSave() { store(EV_MUTED_STORE, evMuted.length ? JSON.stringify(evMuted) : null); }
 function kindTitle(kind) { return t((EVENT_UI[kind] || {}).title || kind); }  // a kind (evTitle is an event)
@@ -2341,18 +2344,29 @@ function renderCop() {
   const pk = missions.route && act.some((m) => m.route && m.option) ? missions.route : null;
   const hidden = copReview && !evShowAll ? reviewAll().filter((e) => !e.answer && Date.now() - e.t >= LPL.EV_RECENT_S * 1000 && (!evRelevant(e) || LPL.quietEvent(e, evMuted))).length : 0;
   $("copSheet").querySelector(".copbar").classList.toggle("hidden", copReview);  // marks belong to the drive, not to the review
-  const sig = JSON.stringify([v.pending.map((e) => [e.id, e.stage]), v.quiet.map((e) => e.id), evMuted, evShowQuiet, v.answered, act.map((m) => m.key), !!pk, hidden, copReview, L()]);
-  if (body.dataset.sig === sig) { body.querySelectorAll(".evrow").forEach((r, i) => { if (v.pending[i]) r.lastChild.textContent = clockText(v.pending[i], now); }); return; }
+  const sig = JSON.stringify([v.pending.map((e) => [e.id, e.stage]), v.quiet.map((e) => e.id), evMuted, evShowQuiet, evShowRest, v.answered, act.map((m) => m.key), !!pk, hidden, copReview, L()]);
+  if (body.dataset.sig === sig) {  // only the clocks move, each on its own row
+    body.querySelectorAll(".evrow[data-id]").forEach((r) => { const e = v.pending.find((x) => x.id === r.dataset.id) || v.quiet.find((x) => x.id === r.dataset.id); if (e) r.lastChild.textContent = clockText(e, now); });
+    return;
+  }
   body.dataset.sig = sig;
   const out = [];
   if (v.pending.length) {
     out.push(el("div", "label", tf("A conferir · {n}", { n: v.pending.length })));
-    for (const e of v.pending) {
-      const b = el("button", "evrow " + e.stage); b.type = "button";
+    const row = (e) => {
+      const b = el("button", "evrow " + e.stage); b.type = "button"; b.dataset.id = e.id;
       if (isPoint(e)) b.insertAdjacentHTML("beforeend", pointGlyph((e.data || {}).kind, 22));
       const lim = isPoint(e) && (e.data || {}).limit ? " · " + speedText({ kind: e.data.kind, limit: e.data.limit }) : "";
       b.append(el("span", "x", evTitle(e) + lim), el("span", "w", clockText(e, now)));
       b.addEventListener("click", () => { evPick = e.id; evPickAt = Date.now(); renderCop(); window.scrollTo(0, 0); $("copSheet").scrollTo(0, 0); });
+      return b;
+    };
+    const gp = LPL.groupPending(v.pending);
+    gp.shown.forEach((e) => out.push(row(e)));
+    if (gp.rest.length) {  // the older ones behind one tap, in the same rows
+      const b = el("button", "evmore", evShowRest ? t("menos") : tf("··· mais {n}", { n: gp.rest.length })); b.type = "button";
+      b.addEventListener("click", () => { evShowRest = !evShowRest; body.dataset.sig = ""; renderCop(); });
+      if (evShowRest) gp.rest.forEach((e) => out.push(row(e)));
       out.push(b);
     }
   }
