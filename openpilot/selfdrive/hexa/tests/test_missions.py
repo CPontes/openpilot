@@ -116,3 +116,15 @@ def test_the_owners_marks_are_kept_for_the_history():
     st = M.add_pending(st, "fila", f"m{i}", 1000 + i)
   assert len(st["pending"]) == M.MAX_PENDING and st["pending"][0]["mark"] == "m5" and st["pending"][-1]["mark"] == f"m{M.MAX_PENDING + 4}"
   assert M.MAX_PENDING >= 300  # weeks of marks, not the last 50
+
+
+def test_install_waits_for_the_newest_version_never_an_old_one():
+  from openpilot.selfdrive.hexa import missions, versions
+  inst = next(m for m in missions.public()["missions"] if m["key"] == "instalar")
+  newest = next(r.commit for r in versions.RELEASES if r.commit)
+  assert inst["arg"] == newest and inst["arg"] != "b3ac6fe"
+
+
+def test_a_returned_try_is_a_known_result():
+  from openpilot.selfdrive.hexa import missions
+  assert set(missions.RETURNED) <= set(missions.TRY_RESULTS) and missions.TRY_RESULTS["back"] == "devolvida"

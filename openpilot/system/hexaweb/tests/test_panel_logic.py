@@ -499,11 +499,13 @@ def trip(km=10, moving=900, slow=0, commit="a635314", hour_end=12, hidden=False)
           "summary": {"km": km, "moving_s": moving, "slow_s": slow, "commit": commit, "v_max": 60, "marks": 0}}
 
 
-def test_missions_seen_in_the_summaries_and_never_from_a_mark():
+def test_missions_seen_in_the_summaries_and_the_owners_marks_count_at_once():
   st = {"active": ["fila"], "answers": {"portas": 2}, "pending": [{"key": "fila", "mark": "x", "t": 1}, {"key": "fila", "mark": "y", "t": 2}]}
   p = run("missionProgress", CAT, st, [trip(slow=650, commit="b3ac6fe1234")])
   assert p["lento"]["full"] and p["inst"]["full"] and not p["noite"]["full"]
-  assert p["fila"]["d"] == 1 and p["fila"]["toCheck"] == 2 and p["fila"]["active"]  # marks wait for the CTO
+  # two layers (owner, 05/11): 1 accepted by the CTO + 2 done by the owner = full now, and still to check
+  f = p["fila"]
+  assert f["d"] == 3 and f["full"] and f["accepted"] == 1 and f["byYou"] == 2 == f["toCheck"] and not f["checked"] and f["active"]
   assert p["portas"]["d"] == 2 and p["aeb"]["locked"]
   assert not run("missionProgress", CAT, st, [trip(slow=650, hidden=True)])["lento"]["full"]  # a hidden drive doesn't count
   assert run("missionProgress", CAT, st, [trip(moving=1900, hour_end=21)])["noite"]["full"]
@@ -1123,3 +1125,39 @@ def test_to_review_shows_the_newest_three_and_the_rest_behind_one_tap():
   assert run("groupPending", evs[:2], None)["rest"] == []
   html = (LOGIC.parent / "index.html").read_text()
   assert 'tf("··· mais {n}"' in html and "evShowRest" in html
+
+
+
+# ----- two layers (owner, 05/11): the owner's part counts at once; the CTO accepts or sends it back
+
+def _fila(tries, pending):
+  return run("missionProgress", {"missions": [_m("fila", "marca", 2, 0) | {"tries": tries}]}, {"pending": pending}, [])["fila"]
+
+
+def test_a_try_ok_accepts_and_a_back_returns_with_its_reason():
+  mark = {"key": "fila", "mark": "x", "t": 1_762_300_000}  # 2025-11-04
+  f = _fila([], [mark])
+  assert f["d"] == 1 and f["byYou"] == 1 and f["accepted"] == 0 and f["returned"] is None
+  back = {"date": "2026-11-05T12:00", "route": "rota 40", "version": "abc", "result": "back", "measured": "o log não tem a parada"}
+  f = _fila([back], [mark])
+  assert f["d"] == 0 and f["byYou"] == 0 and f["returned"] == {"date": "2026-11-05T12:00", "reason": "o log não tem a parada"}
+  f = _fila([back], [mark, {"key": "fila", "mark": "y", "t": 1_800_000_000}])  # done again after it came back
+  assert f["returned"] is None and f["byYou"] == 1
+  bad = dict(back, result="bad", measured="freou tarde")
+  assert _fila([bad], [mark])["returned"]["reason"] == "freou tarde"
+  ok = dict(back, result="ok")
+  assert _fila([ok], [mark])["returned"] is None
+  base = dict(back, result="base")
+  assert _fila([back, base], [mark])["returned"] is not None  # a reference is no verdict
+
+
+def test_a_no_deu_mark_never_counts():
+  f = _fila([], [{"key": "fila", "mark": "x", "t": 1, "result": "bad"}])
+  assert f["d"] == 0 and f["fails"] == 1
+
+
+def test_200_km_in_one_week_whatever_the_versions():
+  m = {"missions": [_m("km", "auto", detect="km200")]}
+  week = [trip(km=70, commit=c) for c in ("a1", "b2", "c3")]  # 210 km, three versions, one day
+  assert run("missionProgress", m, {}, week)["km"]["full"]
+  assert not run("missionProgress", m, {}, week[:2])["km"]["full"]

@@ -1,9 +1,15 @@
 """Hexa missions: the tests the car still needs, as missions the owner takes along on a drive (owner, 02/11).
 
+Two layers (owner, 05/11: "a sensação de avanço automático; se precisar, a gente devolve"):
+1. the owner: what he does counts at once on the phone ("Fiz agora", "Deu certo", the parked answers), as "feita · a conferir";
+2. the CTO and the team: check it in the log and accept it (a Try "ok"/"partial", and `done` raised) or send it back (a Try
+   "back", or "bad", with the reason in `measured`): it counts no more and the phone says "devolvida: refazer" and why,
+   until the owner does it again.
+
 Each mission is one real test. What counts as done, and who says so:
 - "auto": the phone sees it in the drive summaries the comma already keeps (lp-logic.js missionProgress), with the car off;
 - "marca": it happens while driving and the comma can't tell by itself yet. The owner taps "Fiz agora": a mark with the hour,
-  the place and the mission, so the CTO finds the minute in the log. A mark never completes a mission by itself;
+  the place and the mission, so the CTO finds the minute in the log. The mark counts at once; the CTO accepts or returns it;
 - "parado": the owner does it parked and answers on the phone (HexaMissions keeps the answer);
 - "cto": the CTO measures it in a log. Only proofs checked by the CTO go in `done` (never the designer's own reports);
 - "decisao": not a test, a choice of the owner's.
@@ -34,7 +40,9 @@ WHEN = ("stop_free", "stop_queue", "stop_long", "follow_mid", "slow_follow", "mo
 RESULTS = {"done": "missão feita", "ok": "missão: deu certo", "bad": "missão: não deu", "stop": "missão: parei o teste"}
 ADVANCED = ("done", "ok")
 # How a try went, checked in the log; "base" is the number before the change, to compare with
-TRY_RESULTS = {"ok": "deu certo", "partial": "em parte", "bad": "não deu", "base": "referência"}
+TRY_RESULTS = {"ok": "deu certo", "partial": "em parte", "bad": "não deu", "base": "referência", "back": "devolvida"}
+# a try that sends the owner's marks back: they count no more, and the phone asks to do it again (lp-logic missionReturned)
+RETURNED = ("back", "bad")
 
 TRAILS: tuple[tuple[str, str], ...] = (
   ("direcao", "Direção"),
@@ -213,10 +221,10 @@ CATALOG: tuple[Mission, ...] = (
   Mission("tunel", "cobertura", "Túnel", 1, "cto", done=1, proof="rota 0f"),
   Mission("noite", "cobertura", "Noite", 1, "auto", detect="night30", note="30 min depois do pôr do sol"),
   Mission("chuva", "cobertura", "Chuva", 1, "parado", drive=True, note="você diz que choveu"),
-  Mission("km200", "cobertura", "200 km numa mesma versão", 1, "auto", detect="km200", note="para a comparação de versões"),
+  Mission("km200", "cobertura", "200 km numa mesma semana", 1, "auto", detect="km200", note="para a comparação de versões"),
   # *** Versão e envio à comma ***
-  Mission("instalar", "versao", "Instalar a versão nova", 1, "auto", detect="installed", arg="b3ac6fe", version="b3ac6fe",
-          note="Software, Check for update"),
+  # arg: filled by public() with the newest version in versions.py, so it never waits for an old one (it did for b3ac6fe)
+  Mission("instalar", "versao", "Instalar a versão nova", 1, "auto", detect="installed", note="Software, Check for update"),
   Mission("subir-logs", "versao", "Subir as viagens dos testes", 1, "parado", note="para medir no log"),
   Mission("branches", "versao", "Apagar as branches arquivadas", 1, "decisao"),
   Mission("rota-publica", "versao", "Rota pública para a comma", 1, "decisao", note="privacidade: você escolhe"),
@@ -280,6 +288,12 @@ ROUTE: dict = {
 }
 
 
+def newest_version() -> str:
+  """The newest version with its commit in versions.py: what "Instalar a versão nova" waits for."""
+  from openpilot.selfdrive.hexa import versions
+  return next((r.commit for r in versions.RELEASES if r.commit), "")
+
+
 def public() -> dict:
   """What the phone needs, texts in Portuguese: the phone translates them."""
   trails = [(k, t) for k, t in TRAILS if any(m.trail == k for m in CATALOG)]
@@ -287,7 +301,8 @@ def public() -> dict:
   return {"trails": [{"key": k, "title": t} for k, t in trails], "levels": [list(lv) for lv in LEVELS], "max_active": MAX_ACTIVE,
           "route": dict({k: list(x) if isinstance(x, tuple) else x for k, x in ROUTE.items()}, key=ROUTE_KEY),
           "missions": [{"key": m.key, "trail": m.trail, "title": m.title, "total": m.total, "how": m.how, "note": m.note, "why": m.why,
-                        "steps": list(m.steps), "option": m.option, "lock": m.lock, "drive": m.drive, "detect": m.detect, "arg": m.arg,
+                        "steps": list(m.steps), "option": m.option, "lock": m.lock, "drive": m.drive, "detect": m.detect,
+                        "arg": newest_version() if m.detect == "installed" else m.arg,
                         "done": m.done, "proof": m.proof, "version": m.version, "route": m.route, "when": m.when, "goal": m.goal,
                         "tries": [vars(t) for t in tries.get(m.key, ())]} for m in CATALOG],
           "try_results": TRY_RESULTS}

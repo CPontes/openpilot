@@ -425,6 +425,8 @@
   // from the owner's answers, or from the drive summaries the comma already keeps, read here with the car off.
   // A "Fiz agora" mark is a clue for the CTO, never done by itself. The level is the system's, never the driver's.
   const SLOW_MISSION_S = 600, NIGHT_MIN_S = 1800, HIGHWAY_KMH = 90, HIGHWAY_KM = 15, MISSION_VERSION_KM = 200, MARKS_IN_A_TRIP = 10;
+  // The week of a time (Monday 00:00 local, as a day number): 200 km in one week, whatever versions it had
+  function weekOf(s) { const d = new Date(s * 1000); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return Math.round(d.getTime() / 86400000); }
   function missionAuto(m, trips) {
     const ts = (trips || []).filter((t) => t.summary && !t.hidden), S = (t) => t.summary;
     const night = (t) => { const h = new Date(tripStart(t) * 1000).getHours(); return h >= 19 || h < 5; };
@@ -433,8 +435,8 @@
       case "night30": return ts.some((t) => (S(t).moving_s || 0) >= NIGHT_MIN_S && night(t)) ? 1 : 0;
       case "highway": return ts.some((t) => (S(t).v_max || 0) >= HIGHWAY_KMH && (S(t).km || 0) >= HIGHWAY_KM) ? 1 : 0;
       case "marks10": return ts.some((t) => (S(t).marks || 0) >= MARKS_IN_A_TRIP) ? 1 : 0;
-      case "installed": return m.arg && ts.some((t) => versionOf(t).startsWith(m.arg)) ? 1 : 0;
-      case "km200": { const km = {}; ts.forEach((t) => { const v = versionOf(t); if (v) km[v] = (km[v] || 0) + (S(t).km || 0); });
+      case "installed": return m.arg && ts.some((t) => versionOf(t).startsWith(m.arg)) ? 1 : 0;  // m.arg: the newest version (missions.public)
+      case "km200": { const km = {}; ts.forEach((t) => { const w = weekOf(tripStart(t)); km[w] = (km[w] || 0) + (S(t).km || 0); });  // a week: versions change daily
         return Object.values(km).some((x) => x >= MISSION_VERSION_KM) ? 1 : 0; }
       default: return 0;
     }
@@ -462,16 +464,27 @@
     return ((cat && cat.missions) || []).filter((m) => checked(m) || (prog && prog[m.key] && prog[m.key].full))
       .map((m, i) => ({ m, i })).sort((a, b) => (last(b.m) > last(a.m) ? 1 : last(b.m) < last(a.m) ? -1 : a.i - b.i)).map((x) => x.m);
   }
+  // Two layers (owner, 05/11): what the owner did counts at once ("Fiz agora", "Deu certo"), waiting for the check; the CTO
+  // then accepts it (a try "ok"/"partial", and `done` raised) or returns it (a try "back" or "bad": it counts no more, and
+  // says why, until the owner does it again). d is both layers; accepted is the CTO's alone.
   function missionProgress(cat, state, trips) {
     const st = state || {}, answers = st.answers || {}, out = {};
     for (const m of (cat && cat.missions) || []) {
-      const d = Math.min(m.total, Math.max(m.done || 0, answers[m.key] || 0, m.how === "auto" ? missionAuto(m, trips) : 0));
+      const accepted = Math.min(m.total, Math.max(m.done || 0, answers[m.key] || 0, m.how === "auto" ? missionAuto(m, trips) : 0));
       const until = checkedUntil(m);  // a mark a try already checked waits for nothing
       const mine = (st.pending || []).filter((p) => p.key === m.key && !markChecked(m, p, until)), marks = mine.filter(advanced).length;
-      out[m.key] = { d, total: m.total, full: d >= m.total, locked: !!m.lock && d < m.total, toCheck: Math.min(marks, m.total - d),
-                     fails: mine.length - marks, active: (st.active || []).includes(m.key) };
+      const byYou = Math.min(marks, m.total - accepted), d = accepted + byYou;
+      out[m.key] = { d, accepted, byYou, total: m.total, full: d >= m.total, checked: accepted >= m.total, locked: !!m.lock && d < m.total,
+                     toCheck: byYou, fails: mine.length - marks, active: (st.active || []).includes(m.key), returned: missionReturned(m, mine) };
     }
     return out;
+  }
+  // The CTO's last word, when it sent the mission back and the owner hasn't done it again since: {date, reason}, or null
+  const RETURNED = ["back", "bad"];
+  function missionReturned(m, open) {
+    const tr = ((m && m.tries) || []).filter((x) => x.result !== "base"), last = tr[tr.length - 1];
+    if (!last || !RETURNED.includes(last.result) || open.some(advanced)) return null;
+    return { date: last.date, reason: last.measured || "" };
   }
   function missionLevel(cat, prog) {
     const keys = Object.keys(prog), n = keys.filter((k) => prog[k].full).length, total = keys.length || 1, levels = (cat && cat.levels) || [[0, ""]];

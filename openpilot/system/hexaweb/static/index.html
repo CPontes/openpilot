@@ -2096,8 +2096,9 @@ function mIcon(p) {
     + (p.d ? `<circle cx="12" cy="12" r="9" fill="none" stroke="var(--warn)" stroke-width="3" stroke-dasharray="${(c * p.d / p.total).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 12 12)" stroke-linecap="round"/>` : "") + "</svg>";
 }
 function mCount(p) {
-  if (p.full) return t("completa");
+  if (p.full) return p.checked ? t("conferida") : t("feita · a conferir");  // two layers (owner, 05/11): yours counts now, the CTO checks
   if (p.locked) return t("trancada");
+  if (p.returned) return t("devolvida");
   const base = p.total > 1 ? tf("{d} de {n}", { d: p.d, n: p.total }) : t("a fazer");
   return [base, p.toCheck ? tf("{n} a conferir", { n: p.toCheck }) : "", p.fails ? tf("{n} não deu", { n: p.fails }) : ""].filter(Boolean).join(" · ");
 }
@@ -2871,7 +2872,12 @@ function renderMissions() {
       const hl = el("span", "small", m.how === "parado" && m.drive ? driveLong() : t(HOW_LONG[m.how])); c.append(hl); out.push(c);
     } else if (!p.full) out.push(el("div", "small", m.how === "parado" && m.drive ? driveLong() : t(HOW_LONG[m.how])));
     if (m.option && !p.full) out.push(optionLine(m.option));
-    if (p.toCheck) out.push(el("div", "small", tf(p.toCheck === 1 ? "1 marca sua espera a conferência no log." : "{n} marcas suas esperam a conferência no log.", { n: p.toCheck })));
+    if (p.returned) {  // the CTO sent it back: why, and do it again
+      const c = el("section", "card att stack"); c.style.gap = "4px";
+      c.append(el("b", "", t("Devolvida pela conferência: refazer")), el("span", "desc", p.returned.reason ? t(p.returned.reason) : t("O log não mostrou o teste. Faça de novo e marque.")));
+      out.push(c);
+    }
+    if (p.toCheck) out.push(el("div", "small", tf(p.toCheck === 1 ? "1 feita por você: já conta, e o CTO confere no log." : "{n} feitas por você: já contam, e o CTO confere no log.", { n: p.toCheck })));
     if (p.fails) out.push(el("div", "small", tf(p.fails === 1 ? "1 marca diz que não deu: falta conferir no log." : "{n} marcas dizem que não deu: falta conferir no log.", { n: p.fails })));
     if (p.locked) { const c = el("section", "card"); c.style.borderStyle = "dashed"; c.append(el("b", "", t("Ainda trancada.")), document.createTextNode(" " + t(m.lock))); out.push(c); }
     const act = st.active.includes(m.key), can = !p.full && LPL.canTake(m);
