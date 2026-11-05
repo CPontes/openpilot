@@ -1060,6 +1060,15 @@ def test_no_function_is_declared_twice_in_the_page():
   assert [n for n, c in collections.Counter(names).items() if c > 1] == []
 
 
+def test_a_kind_is_titled_by_kind_title_and_an_event_by_ev_title():
+  # evTitle(ev) reads ev.kind and ev.data: given a kind (a string) it says nothing. The "Silenciados" list holds kinds (CTO, 05/11)
+  html = (LOGIC.parent / "index.html").read_text()
+  muted = html[html.index('tf("Silenciados · {n}"'):]
+  muted = muted[:muted.index("out.push(list)")]
+  assert "kindTitle(k)" in muted and "evTitle(" not in muted
+  assert "evTitle(k)" not in html and "evTitle(kind)" not in html and "evTitle(a.kind)" not in html
+
+
 def test_skip_and_turning_a_kind_off_never_mark_and_turning_off_asks_first():
   html = (LOGIC.parent / "index.html").read_text()
   skip = html[html.index("function evSkip(ev)"):html.index("function openMute(")]

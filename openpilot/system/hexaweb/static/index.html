@@ -2082,7 +2082,7 @@ function evDone(id, r) {
 // Pular: no mark, no answer to keep; out of the card and of "A conferir". It goes at once, with "Desfazer" for a few seconds
 function evSkip(ev) {
   evDone(ev.id, "skip");
-  $("copUndoText").textContent = tf("Pulado: {evento}", { evento: kindTitle(ev.kind) });
+  $("copUndoText").textContent = tf("Pulado: {evento}", { evento: evTitle(ev) });
   $("copUndo").classList.remove("hidden"); $("copActs").classList.add("hidden");
   clearTimeout(undoTimer);
   undoTimer = setTimeout(() => { $("copUndo").classList.add("hidden"); $("copActs").classList.remove("hidden"); }, 5000);
@@ -2378,7 +2378,7 @@ function renderCop() {
     out.push(b);
     if (evShowQuiet) for (const e of v.quiet) {
       const r = el("button", "evrow past"); r.type = "button";
-      const x = el("span", "x", kindTitle(e.kind)); x.append(el("span", "q", e.kind === "radar" && e.data && e.data.confirmed ? t("confirmado") : t("silenciado")));
+      const x = el("span", "x", evTitle(e)); x.append(el("span", "q", e.kind === "radar" && e.data && e.data.confirmed ? t("confirmado") : t("silenciado")));
       r.append(x, el("span", "w", clockText(e, now)));
       r.addEventListener("click", () => { evPick = e.id; evPickAt = Date.now(); renderCop(); $("copSheet").scrollTo(0, 0); });
       out.push(r);
@@ -2390,7 +2390,7 @@ function renderCop() {
     for (const k of evMuted) {
       const row = el("div", "line"), b = el("button", "link", t("Ativar")); b.type = "button";
       b.addEventListener("click", () => openMute(k, false));
-      row.append(el("span", "", evTitle(k)), b); list.append(row);
+      row.append(el("span", "", kindTitle(k)), b); list.append(row);
     }
     out.push(list);
   }
