@@ -217,6 +217,17 @@ OPTIONS: tuple[HexaOption, ...] = (
     driving=False,
     phone_writable=False,
   ),
+  HexaOption(
+    key="HexaShareEnabled",
+    brands=edition.GWM_ONLY,  # owner, 05/11: only the Haval; another brand only with its DBC reviewed by hand
+    group="celular",
+    title="enviar trechos aos desenvolvedores",
+    description="Numa marca, o botão Enviar manda aos desenvolvedores 45 s do log daquele momento, para melhorar o LizPilot.\n" +
+                "Vai o que o carro e o openpilot fizeram, e da rede CAN só o que o openpilot lê deste carro: " +
+                "sem GPS, câmeras, áudio, VIN nem o número do comma.\n" +
+                "Só envia a marca que você escolher, com o carro desligado e num Wi-Fi.",
+    driving=False,
+  ),
 )
 
 _BY_KEY = {o.key: o for o in OPTIONS}

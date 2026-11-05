@@ -556,6 +556,11 @@
       <div class="label" id="marksLabel" tabindex="-1" data-t>Marcas</div>
       <div id="pendingList"></div>
       <div class="card list" id="markList"></div>
+      <div class="card hidden" id="shareCard">
+        <div class="title" data-t>Enviados aos desenvolvedores</div>
+        <div class="desc" id="shareText"></div>
+        <button class="link" id="shareForget" type="button" data-t>apagar meus envios</button>
+      </div>
       <details class="card">
         <summary data-t>Motivos e exportar</summary>
         <label class="field" for="newReason" data-t>Novo motivo</label>
@@ -1596,6 +1601,7 @@ function renderMarks(m) {
     const b = el("button", "link", t("editar")); b.type = "button"; b.addEventListener("click", () => openMark(x, x.reason));
     const acts = el("span", "row"); acts.style.gap = "4px";
     if (!carOn) { const v = el("button", "link", t("vídeo")); v.type = "button"; v.addEventListener("click", () => openClip(x)); acts.append(v); }
+    if (shareState.enabled) acts.append(shareButton(x));
     acts.append(b); row.append(acts); list.append(row);
   }
   const mine = m.reasons.filter((r) => r.custom);
@@ -1616,6 +1622,7 @@ function renderMarks(m) {
 
 async function refreshMarks() {
   if (!online) return;
+  refreshShare();
   const r = await api("/api/marks" + (marksState.v ? "?" + LPL.since(marksState.v) : ""));
   if (r.status === 200) synced("marks", r.ep);
   if (r.status === 200 && !r.data.same) { renderMarks(r.data); DB.put("marks", r.data, r.ep); }
@@ -1732,6 +1739,65 @@ async function saveMark() {
   } else toast(res.data.error || t("Não foi possível salvar."));
   refreshMarks();
 }
+
+// ----- sending a mark's moment to the developers (selfdrive/hexa/share.py): only the marks the owner picks, one by one -----
+let shareState = { enabled: false, receiver: false, items: [], forgetting: false, sent: 0 }, shareAt = 0;
+const SHARE_TEXT = { fila: "na fila", pronto: "pronto para enviar", enviado: "enviado", erro: "não enviado" };  // pronto: the next Wi-Fi, within 2 h
+async function refreshShare() {
+  if (!online || Date.now() - shareAt < 2000) return;
+  shareAt = Date.now();
+  const r = await api("/api/share");
+  if (r.status !== 200) return;
+  const was = JSON.stringify(shareState);
+  shareState = r.data; renderShare();
+  if (was !== JSON.stringify(shareState) && marksState.marks.length) renderMarks(marksState);
+}
+function shareItem(id) { return (shareState.items || []).find((i) => i.id === id); }
+function shareButton(mark) {
+  const it = shareItem(mark.id);
+  if (!it || it.state === "erro") {
+    const b = el("button", "link", it ? t("enviar de novo") : t("enviar")); b.type = "button";
+    if (it && it.error) b.title = t(it.error);
+    b.addEventListener("click", () => shareMark(mark, it));
+    return b;
+  }
+  const b = el("button", "link", (it.state === "enviado" ? "✓ " : "") + t(SHARE_TEXT[it.state] || it.state)); b.type = "button";
+  b.style.color = "var(--dim)";  // a state, not an action: tapping it explains or takes it out of the queue
+  b.addEventListener("click", () => shareInfo(mark, it));
+  return b;
+}
+async function shareMark(mark, old) {
+  if (old && old.error) toast(t(old.error));
+  if (!confirm(tf("Enviar aos desenvolvedores o log de {hora}, 30 s antes e 15 s depois?\nVai o que o carro e o openpilot fizeram, e da rede CAN só o que o openpilot lê deste carro. Sem GPS, câmeras, áudio, VIN nem o número do comma.", { hora: hhmmss(mark.t) }))) return;
+  // what he typed goes only if he says so, seeing it (owner, 05/11): the note, and a reason of his own
+  const typed = [mark.note || "", String(mark.reason || "").startsWith("c-") ? (mark.label || "") : ""].filter((x) => x.trim()).join(" — ");
+  const withNote = !!typed && confirm(tf("Incluir o que você escreveu?\n«{texto}»\nOK inclui; Cancelar envia sem.", { texto: typed.slice(0, 300) }));
+  const r = await api("/api/share", { id: mark.id, with_note: withNote });
+  toast(r.status === 200 ? t("Na fila: vai com o carro desligado, num Wi-Fi.") : (r.data.error || t("Não foi possível.")));
+  shareAt = 0; refreshShare();
+}
+async function shareInfo(mark, it) {
+  if (it.state === "enviado") { toast(it.receipt ? tf("Enviado. Código do envio: {codigo}", { codigo: it.receipt }) : t("Enviado. Obrigado por ajudar o LizPilot.")); return; }
+  if (!confirm(t("Tirar este trecho da fila? Ele não será enviado."))) return;
+  const r = await api("/api/share/cancel", { id: mark.id });
+  toast(r.status === 200 ? t("Tirado da fila.") : (r.data.error || t("Não foi possível.")));
+  shareAt = 0; refreshShare();
+}
+function renderShare() {
+  const s = shareState, waiting = (s.items || []).filter((i) => i.state === "fila" || i.state === "pronto").length;
+  $("shareCard").classList.toggle("hidden", !s.enabled && !s.sent && !s.forgetting);
+  const lines = [tf("Enviados: {n} · na fila: {m}", { n: s.sent || 0, m: waiting })];
+  if (!s.receiver) lines.push(t("O receptor ainda não está no ar: os trechos esperam no comma."));
+  if (s.forgetting) lines.push(t("Pedindo ao receptor que apague seus envios…"));
+  $("shareText").textContent = lines.join("\n");
+  $("shareText").style.whiteSpace = "pre-line";
+}
+$("shareForget").addEventListener("click", async () => {
+  if (!confirm(t("Tirar tudo da fila e pedir ao receptor que apague o que este comma enviou?\nOs próximos envios saem com uma chave nova."))) return;
+  const r = await api("/api/share/forget", {});
+  toast(r.status === 200 ? t("Pedido feito: apaga no próximo Wi-Fi.") : (r.data.error || t("Não foi possível.")));
+  shareAt = 0; refreshShare();
+});
 
 // ----- the video of a mark: a short-lived link from the comma, played by the phone's own player -----
 async function openClip(mark) {
