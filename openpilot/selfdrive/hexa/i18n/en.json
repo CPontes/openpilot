@@ -56,7 +56,6 @@
  "Aparece depois da primeira viagem desde que o comma ligou.": "Shows up after the first drive since the comma started.",
  "Aparece depois de uma viagem com o openpilot no volante e o ACC do Haval ligado.": "Shows up after a drive with openpilot on the wheel and the Haval ACC on.",
  "Aparelho": "Device",
- "Aperte + uma vez e toque em Fiz agora.": "Press + once and tap Did it now.",
  "Aprendizado aparece depois de dirigir": "Learning shows up after driving",
  "Aprendizado {pct}%": "Learning {pct}%",
  "Aqui o comma só avisa.": "Here the comma only warns.",
@@ -138,7 +137,6 @@
  "DESLIGADO": "OFF",
  "DIRIGINDO": "DRIVING",
  "Depois a do passageiro, a traseira esquerda e a traseira direita, uma de cada vez.": "Then the passenger's, the rear left and the rear right, one at a time.",
- "Depois − uma vez, depois a distância uma vez, marcando cada um.": "Then − once, then distance once, marking each one.",
  "Desconectar este celular": "Disconnect this phone",
  "Desconectar este celular? Para voltar, será preciso parear de novo.": "Disconnect this phone? To come back, you'll need to pair again.",
  "Desconectar {nome}? Para voltar, será preciso parear de novo.": "Disconnect {nome}? To come back, it'll need to pair again.",
@@ -420,7 +418,6 @@
  "Pontos restaurados: {x}. Valem na próxima partida do carro.": "Points restored: {x}. They apply on the car's next start.",
  "Por enquanto, o envio de erros é só do Haval.": "For now, sending errors is only for the Haval.",
  "Por enquanto, os envios são só do Haval.": "For now, sending is for the Haval only.",
- "Por último, empurre a alavanca para cancelar e marque.": "Last, push the stalk to cancel and mark it.",
  "Por último, o porta-malas.": "Last, the trunk.",
  "Posição do carro na faixa": "Car position in the lane",
  "Precisa de uma versão de teste que não força o reconhecimento (CTO)": "Needs a test version that doesn't force the recognition (CTO)",
@@ -1681,5 +1678,8 @@
  "Direção: o atraso não muda sozinho": "Steering: the delay doesn't change by itself",
  "O atraso que o comma usa para guiar fica em 0,50 s, como hoje: nada muda ao dirigir": "The delay the comma steers with stays at 0.50 s, as today: nothing changes while driving",
  "Antes, um trecho de estrada acima de 80 km/h faria o comma trocar sozinho para ~0,27 s, aprendido numa versão antiga": "Before, a stretch of highway above 80 km/h would make the comma switch by itself to ~0.27 s, learned on an old version",
- "O comma continua medindo e gravando o atraso, para um teste planejado": "The comma keeps measuring and logging the delay, for a planned test"
+ "O comma continua medindo e gravando o atraso, para um teste planejado": "The comma keeps measuring and logging the delay, for a planned test",
+ "Aperte + uma vez, depois − uma vez, depois a distância uma vez, com uns 5 s entre cada um.": "Press + once, then − once, then the distance once, about 5 s apart.",
+ "Por último, empurre a alavanca para cancelar.": "Last, push the lever to cancel.",
+ "Não precisa tocar no celular andando: o comma grava cada botão e o CTO confere no log.": "No need to touch the phone while driving: the comma logs every button and the CTO checks the log."
 }

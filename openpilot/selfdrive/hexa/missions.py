@@ -245,10 +245,10 @@ CATALOG: tuple[Mission, ...] = (
           why="O comma não pode acordar o carro nem gastar a bateria de 12 V parado.",
           steps=("Desligue e tranque o carro por 30 minutos.", "Ao voltar, veja se a tela do comma está apagada.",
                  "Ligue o carro: o comma reconhece o carro de primeira?")),
-  Mission("botoes-acc", "coleta", "Botões do ACC: +, −, distância e cancelar", 4, "marca", when="moving",
+  Mission("botoes-acc", "coleta", "Botões do ACC: +, −, distância e cancelar", 4, "cto",  # CTO, 05/11: no phone while driving
           why="A comma confere se cada botão chega certo ao aparelho.",
-          steps=("Numa reta, com o ACC ligado e o trânsito permitindo.", "Aperte + uma vez e toque em Fiz agora.",
-                 "Depois − uma vez, depois a distância uma vez, marcando cada um.", "Por último, empurre a alavanca para cancelar e marque.")),
+          steps=("Numa reta, com o ACC ligado e o trânsito permitindo.", "Aperte + uma vez, depois − uma vez, depois a distância uma vez, com uns 5 s entre cada um.",
+                 "Por último, empurre a alavanca para cancelar.", "Não precisa tocar no celular andando: o comma grava cada botão e o CTO confere no log.")),
   Mission("sem-fingerprint", "coleta", "O comma reconhece o carro sozinho", 3, "parado",
           lock="Precisa de uma versão de teste que não força o reconhecimento (CTO)",
           why="Hoje o aparelho é avisado de que é um Haval. A comma exige que ele descubra sozinho, toda vez.",
