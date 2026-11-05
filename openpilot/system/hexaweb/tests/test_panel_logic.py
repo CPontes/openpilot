@@ -1089,15 +1089,29 @@ def test_marking_is_two_steps_with_nothing_to_scroll_and_the_text_box_on_top():
   assert "<textarea" not in one and 'id="reasons"' in one and "<textarea" in two and 'id="markWin"' in two  # no keyboard on step 1
   assert two.index('id="markSave"') > two.index("<textarea") and 'class="duo"' in two
   pick = html[html.index("function drawReasons()"):html.index("function drawPointKinds(")]
-  assert "markStep(2, markTyping())" in pick  # one tap on a reason: on to the text
+  assert "markStep(2, !tile && markTyping())" in pick  # one tap on a reason: on to the text; a group asks which first
   # the keyboard opens by itself only parked or in the copilot; moving, the box still leaves by itself untouched (CTO, 05/11)
   assert "function markTyping() { return carStopped || copOpen; }" in html
   opening = html[html.index("function openMarkNow("):html.index("const MARK_WIN =")]
   assert "markStep(2, !editing.id && markTyping())" in opening and "if (!markTyping()) markTimer = setTimeout(closeMark, EDITOR_MS)" in opening
-  step = html[html.index("function markStep("):html.index("// Three groups")]
+  step = html[html.index("function markStep("):html.index("// Nine buttons")]
+  assert "picked = k; markStep(2, markTyping())" in step  # the second tap, on "Qual?", says which and opens the text
   assert "\n  clearTimeout(markTimer);" not in step  # opening step 2 alone doesn't stop the timer: a tap or the text's focus does
   assert '$("markSheet").classList.toggle("up", two)' in html and 'class="sheet up hidden" id="evSheet"' in html  # above the keyboard
   assert "window: MARK_WIN_S[markWin]" in html
+
+
+def test_marking_has_nine_buttons_and_what_comes_in_pairs_asks_which():
+  # owner, 05/11: "alguns que são dois botões, a gente pode fazer um botão e a segunda etapa faz a diferença"
+  html = (LOGIC.parent / "index.html").read_text()
+  tiles = 'mapa: "Radar ou lombada", estrada_g: "Na estrada", balanco_g: "Balançou", balancou: "sem motivo", estrada: "estrada ruim"'
+  assert "const TILE_TEXT = { " + tiles + " };" in html
+  grid = html[html.index("function drawReasons()"):html.index("function drawPointKinds(")]
+  assert "!r.group && !inTile.has(r.key)" in grid  # a reason inside a button never shows twice, and "anotação" (its own group) stays out
+  sheet = html[html.index('id="markSheet"'):]
+  one, two = sheet[sheet.index('id="markStep1"'):sheet.index('id="markStep2"')], sheet[sheet.index('id="markStep2"'):sheet.index("</section>")]
+  assert 'id="pointKinds"' in two and 'id="pointKinds"' not in one and 'id="markSub"' in two  # the points and "Qual?" are the second step
+  assert 'const MARK_WIN = { now: "Agora", b10: "10 s antes", b30: "30 s antes", a30: "30 s depois" };' in html  # one line each
 
 
 def test_to_review_shows_the_newest_three_and_the_rest_behind_one_tap():

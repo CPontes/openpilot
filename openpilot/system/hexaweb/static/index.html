@@ -117,6 +117,9 @@
   .reasons.three button { flex-direction: column; justify-content: center; text-align: center; gap: 4px; min-height: 60px; padding: 6px 4px;
                           font-size: 13.5px; line-height: 1.15; overflow-wrap: anywhere; }
   .reasons.three .label { grid-column: 1 / -1; margin: 4px 0 0; }
+  .reasons.three button > span::first-letter, #markSub button::first-letter, .mchosen .grow::first-letter { text-transform: uppercase; }
+  #markSub { grid-template-columns: repeat(var(--n, 4), minmax(0, 1fr)); } #markSub button { min-height: 56px; font-size: 16px; }
+  #markStep2.map .duo { grid-template-columns: 1fr; }
   #markSheet #pointKinds button { min-height: 52px; padding: 6px 4px; font-size: 13.5px; gap: 3px; }
   .sheet.up { top: calc(8px + env(safe-area-inset-top, 0px)); bottom: auto; border-radius: 0 0 26px 26px; border-top: 0; border-bottom: 1px solid var(--line-2);
                max-height: calc(100% - 16px - env(safe-area-inset-top, 0px)); padding-bottom: 14px; }
@@ -294,7 +297,9 @@
   .evcard.live { border-color: var(--accent); background: #0F2219; box-shadow: 0 0 0 4px #2FD07F22; }
   .evcard.recent { border-color: var(--warn); background: #221B0E; }
   .evcard.past { border-color: var(--line-2); background: var(--card-2); }
-  .evcard.wait { border: 1.5px dashed var(--line-2); background: transparent; grid-template-rows: 30px 60px 1fr; }
+  /* nothing to answer: one short card, no buttons to keep in place (owner, 05/11: the empty box took half the screen) */
+  .evcard.wait { height: auto; border: 1.5px dashed var(--line-2); background: transparent; grid-template-rows: auto; gap: 4px; padding: 12px 14px; }
+  .evcard.wait .evtitle { font-size: 18px; } .evcard.wait .evwait { font-size: 14px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
   .evcard .evhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .evcard .evbadge { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
   .evcard.live .evbadge { color: var(--accent); } .evcard.recent .evbadge { color: var(--warn); }
@@ -335,7 +340,7 @@
   /* under the card, always at the same place (owner, 04/11): skip it, or stop showing this kind */
   .evacts { display: flex; justify-content: space-between; gap: 8px; min-height: 44px; margin-top: -4px; }
   .evacts .link { min-height: 44px; padding: 0 4px; color: var(--muted); }
-  .evacts .link[disabled] { visibility: hidden; }
+  .evacts .link[disabled] { visibility: hidden; } .evacts.none { display: none; }
   .evundo { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; margin-top: -4px; padding: 0 12px; border-radius: 12px;
             background: var(--text); color: var(--bg); font-weight: 600; }
   .evundo .link { color: var(--bg); text-decoration: underline; min-height: 44px; }
@@ -781,20 +786,23 @@
   <div class="row" style="align-items:baseline;gap:8px"><h2 class="grow" id="markTitle" data-t>Marcar</h2><span class="small num" id="markWhen"></span>
     <button class="link" id="markClose" type="button" data-t>Cancelar</button></div>
   <div id="markStep1">
-    <div id="markPoints">
-      <div class="label" style="margin:10px 0 6px" data-t>Ponto neste lugar</div>
-      <div class="reasons" id="pointKinds"></div>
-      <div class="small" id="pointKindsNote" style="margin-top:4px"></div>
-    </div>
-    <div class="reasons three" id="reasons" style="margin-top:6px"></div>
+    <div class="reasons three" id="reasons" style="margin-top:10px"></div>
   </div>
   <div id="markStep2" class="hidden">
     <button class="mchosen" id="markChosen" type="button"></button>
+    <div id="markPoints" class="hidden">
+      <label class="field" style="margin:12px 0 6px" data-t>Qual?</label>
+      <div class="reasons three" id="pointKinds"></div>
+      <div class="small" id="pointKindsNote" style="margin-top:4px"></div>
+    </div>
+    <div id="markSubBox" class="hidden"><label class="field" style="margin:12px 0 6px" data-t>Qual?</label><div class="pick" id="markSub"></div></div>
+    <div id="markText">
     <div id="markWinBox"><label class="field" style="margin:12px 0 6px" data-t>Quando</label><div class="pick" id="markWin"></div></div>
-    <label class="field" for="markNote" style="margin:12px 0 6px" data-t>Comentário (opcional)</label>
+    <label class="field" for="markNote" id="markNoteLb" style="margin:12px 0 6px">Comentário (opcional)</label>
     <textarea id="markNote" rows="2" maxlength="500" data-t-ph="ex.: ponte com junta, volante tremeu" placeholder="ex.: ponte com junta, volante tremeu"></textarea>
+    </div>
     <div class="duo"><button class="btn" id="markSave" type="button" disabled>—</button><button class="btn ghost" id="markCancel" type="button" data-t>Cancelar</button></div>
-    <div class="small" style="margin-top:8px" data-t>A marca só vale depois de Salvar e aciona a bandeira do comma. Dá para ditar pelo microfone do teclado.</div>
+    <div class="small" id="markHint" style="margin-top:8px" data-t>Dá para ditar pelo microfone do teclado.</div>
   </div>
 </section>
 
@@ -1664,11 +1672,10 @@ async function openMark(mark, reason) {
 function openMarkNow(mark, reason, tapped) {
   clearTimeout(markTimer);
   editing = { id: mark && mark.id || null, tapped: mark && mark.id ? null : tapped, t: mark && mark.t };
-  picked = reason || null;
+  picked = reason || null; markTile = picked ? markTileOf(picked) : null;
   $("markTitle").textContent = editing.id ? t("Marca") : t("Marcar");
   $("markWhen").textContent = editing.id ? hhmmss(mark.t) : tf("tocado às {hora}", { hora: new Date(tapped).toLocaleTimeString(L(), { hour: "2-digit", minute: "2-digit", second: "2-digit" }) }) + (live && live.driving ? ` · ${live.v} km/h` : "");
   $("markNote").value = (mark && mark.note) || "";
-  $("markPoints").classList.toggle("hidden", !!editing.id);
   markPin = editing.id ? null : api("/api/radars/pin", {});  // the place of this tap, before anything is chosen
   drawPointKinds(null);
   if (markPin) markPin.then((r) => { if (editing && !editing.id) drawPointKinds(r); });
@@ -1681,7 +1688,7 @@ function openMarkNow(mark, reason, tapped) {
   if (!markTyping()) markTimer = setTimeout(closeMark, EDITOR_MS);  // the driver alone: a box nobody touches leaves by itself
 }
 // When it happened, around the tap (owner, 04/11): seconds [before, after] the mark, for whoever reads the log
-const MARK_WIN = { now: "Na hora", b10: "Últimos 10 s", b30: "Últimos 30 s", a30: "Próximos 30 s" };
+const MARK_WIN = { now: "Agora", b10: "10 s antes", b30: "30 s antes", a30: "30 s depois" };
 const MARK_WIN_S = { now: [0, 0], b10: [10, 0], b30: [30, 0], a30: [0, 30] };
 let markWin = "now";
 function markTyping() { return carStopped || copOpen; }
@@ -1689,50 +1696,82 @@ function markStep(n, focus = true) {
   const two = n === 2;
   $("markStep1").classList.toggle("hidden", two); $("markStep2").classList.toggle("hidden", !two);
   $("markSheet").classList.toggle("up", two);  // the keyboard comes from below: the box goes up
+  $("markClose").classList.toggle("hidden", two);  // one Cancelar, next to Salvar
+  $("markNoteLb").textContent = picked === "nota" ? t("Anotação") : t("Comentário (opcional)");
   $("markSheet").scrollTop = 0;
   if (!two) { $("markNote").blur(); return; }
-  const r = marksState.reasons.find((x) => x.key === picked);
+  const tile = MARK_TILES.find((x) => x.id === markTile), r = marksState.reasons.find((x) => x.key === picked);
+  const sub = tileSub(markTile), map = markTile === "mapa";
   const c = $("markChosen"); c.replaceChildren();
-  const ic = el("span", ""); ic.innerHTML = reasonIcon(r && !r.custom ? r.key : null, 26);
-  const g = el("span", "grow", r ? t(r.label) : picked || "");
+  const ic = el("span", ""); ic.innerHTML = tile ? tileIcon(tile, 26) : reasonIcon(r && !r.custom ? r.key : null, 26);
+  const g = el("span", "grow", tile ? t(tile.label) : r ? t(r.label) : picked || "");
   c.append(ic, g, el("span", "small", editing && editing.id ? "" : t("trocar")));
   c.disabled = !!(editing && editing.id);
-  $("markWinBox").classList.toggle("hidden", !!(editing && editing.id));  // a new mark only: an old one keeps its time
+  $("markPoints").classList.toggle("hidden", !map);  // a point opens its own box: no text here
+  $("markText").classList.toggle("hidden", map); $("markSave").classList.toggle("hidden", map); $("markHint").classList.toggle("hidden", map);
+  $("markSubBox").classList.toggle("hidden", !sub);
+  $("markStep2").classList.toggle("map", map);
+  if (sub) $("markSub").style.setProperty("--n", sub.length);
+  if (sub) $("markSub").replaceChildren(...sub.map(([k, label]) => {
+    const b = el("button", "", t(label)); b.type = "button"; b.setAttribute("aria-pressed", k === picked ? "true" : "false");
+    b.addEventListener("click", () => { clearTimeout(markTimer); picked = k; markStep(2, markTyping()); });  // the second tap says which
+    return b;
+  }));
+  $("markWinBox").classList.toggle("hidden", map || !!(editing && editing.id));  // a new mark only: an old one keeps its time
   $("markWin").replaceChildren(...Object.keys(MARK_WIN).map((k) => {
     const b = el("button", "", t(MARK_WIN[k])); b.type = "button"; b.setAttribute("aria-pressed", k === markWin ? "true" : "false");
     b.addEventListener("click", () => { clearTimeout(markTimer); markWin = k; markStep(2, false); });
     return b;
   }));
   drawReasons();
-  if (focus) $("markNote").focus({ preventScroll: true });  // inside the tap: the keyboard opens with it
+  if (focus && !map && picked) $("markNote").focus({ preventScroll: true });  // inside the tap: the keyboard opens with it
 }
 
-// Three groups (owner, 03/11): what openpilot did, what was on the road, or only a note
-const REASON_GROUPS = [["", "Problema"], ["estrada", "Na estrada"], ["nota", "Só uma anotação"]];
+// Nine buttons (owner, 05/11: "alguns que são dois botões, a gente pode fazer um botão e a segunda etapa faz a diferença"):
+// what comes in pairs or threes is one button, and "Qual?" in the second step says which. The marks keep their reasons.
+const TILE_TEXT = { mapa: "Radar ou lombada", estrada_g: "Na estrada", balanco_g: "Balançou", balancou: "sem motivo", estrada: "estrada ruim" };
+const MARK_TILES = [
+  { id: "mapa", point: "radar" },
+  { id: "estrada_g", icon: "obra", group: "estrada" },
+  { id: "balanco_g", icon: "balancou", keys: ["balancou", "estrada"].map((k) => [k, TILE_TEXT[k]]) },
+].map((x) => ({ ...x, label: TILE_TEXT[x.id] }));
+let markTile = null;
+const svgPoint = (kind, size) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${POINT_SVG[kind]}</svg>`;
+function tileIcon(tile, size) { return tile.point ? svgPoint(tile.point, size) : reasonIcon(tile.icon, size); }
+function tileSub(id) {
+  const tile = MARK_TILES.find((x) => x.id === id);
+  if (!tile || tile.point) return null;
+  return tile.keys || marksState.reasons.filter((r) => r.group === tile.group).map((r) => [r.key, r.label]);
+}
+function markTileOf(key) {
+  for (const tile of MARK_TILES) if ((tileSub(tile.id) || []).some(([k]) => k === key)) return tile.id;
+  return null;
+}
 function drawReasons() {
-  const btn = (r) => {
-    const b = el("button", r.custom ? "mine" : ""); b.type = "button"; b.setAttribute("aria-pressed", r.key === picked ? "true" : "false");
-    b.innerHTML = reasonIcon(r.custom ? null : r.key, 24); b.append(el("span", "", t(r.label)));
-    b.addEventListener("click", () => { clearTimeout(markTimer); picked = r.key; markStep(2, markTyping()); });  // one tap: on to the text
+  const btn = (id, label, icon, custom) => {
+    const b = el("button", custom ? "mine" : ""); b.type = "button";
+    b.innerHTML = icon; b.append(el("span", "", t(label)));
+    b.addEventListener("click", () => {
+      clearTimeout(markTimer);
+      const tile = MARK_TILES.find((x) => x.id === id);
+      markTile = tile ? id : null; picked = tile ? null : id;
+      markStep(2, !tile && markTyping());  // one tap: on to the text; a group asks which first
+    });
     return b;
   };
-  const out = [];
-  for (const [g, label] of REASON_GROUPS) {
-    const rs = marksState.reasons.filter((r) => (r.group || "") === g);
-    if (!rs.length) continue;
-    const lb = el("div", "label", t(label)); lb.style.cssText = "grid-column:1/-1;margin:6px 0 0"; out.push(lb, ...rs.map(btn));
-  }
-  $("reasons").replaceChildren(...out);
+  const inTile = new Set(MARK_TILES.flatMap((x) => (tileSub(x.id) || []).map(([k]) => k)));
+  $("reasons").replaceChildren(...MARK_TILES.map((x) => btn(x.id, x.label, tileIcon(x, 24))),
+    ...marksState.reasons.filter((r) => !r.group && !inTile.has(r.key)).map((r) => btn(r.key, r.label, reasonIcon(r.custom ? null : r.key, 24), r.custom)));
   const noteOnly = picked === "nota" && !$("markNote").value.trim();  // a note with nothing written says nothing
   $("markSave").disabled = !picked || noteOnly;
-  $("markSave").textContent = !picked ? t("Escolha um motivo") : noteOnly ? t("Escreva a anotação") : (editing && editing.id ? t("Salvar") : t("Salvar marca"));
+  $("markSave").textContent = !picked ? t(markTile ? "Escolha qual" : "Escolha um motivo") : noteOnly ? t("Salvar") : (editing && editing.id ? t("Salvar") : t("Salvar marca"));
 }
 
 function drawPointKinds(pinned) {
   const ok = pinned && pinned.status === 200;
   $("pointKinds").replaceChildren(...MARK_POINTS.map(([kind, label]) => {
     const b = el("button", ""); b.type = "button"; b.disabled = !ok;
-    b.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${POINT_SVG[kind]}</svg>`;
+    b.innerHTML = svgPoint(kind, 24);
     b.append(el("span", "", t(label)));
     b.addEventListener("click", () => {
       closeMark();
@@ -2519,6 +2558,7 @@ function renderCop() {
   const v = LPL.copilotView(copReview ? pend : evList, now, evPick, evPickAt, evMuted);
   // the row under the card: the same place on every card; nothing to skip or turn off on the waiting card
   $("copSkip").disabled = !v.main; $("copMute").disabled = !v.main || evMuted.includes(v.main.kind);
+  $("copActs").classList.toggle("none", !v.main);  // nothing to skip: the row takes no room under the short card
   $("copSkip").onclick = () => { if (v.main && Date.now() - evCardAt >= EV_TAP_GUARD_MS) evSkip(v.main); };
   $("copMute").onclick = () => { if (v.main && Date.now() - evCardAt >= EV_TAP_GUARD_MS) openMute(v.main.kind, true); };
   copRadarStrip();
