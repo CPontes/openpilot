@@ -139,7 +139,7 @@ def test_state_lists_options_and_device(panel):
   token = panel.pair("celular do dono")
   status, s = panel.json("/api/state", token=token)
   assert status == 200
-  assert s["device"] == {"branch": "h6gt-next", "commit": "abcdef1", "version": ""}
+  assert s["device"] == {"branch": "h6gt-next", "commit": "abcdef1", "version": "", "edition": "h6gt"}  # the phone's first Usar | Melhorar
   assert s["you"] == "celular do dono"
   keys = {o["key"] for g in s["groups"] for o in g["options"]}
   assert {"LaneOffsetEnabled", "HexaWebEnabled"} <= keys

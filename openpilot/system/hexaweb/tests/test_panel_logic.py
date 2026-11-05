@@ -394,7 +394,7 @@ def test_unpairing_leaves_no_list_of_drives_on_the_phone():
   assert "LPL.DATA_KEYS" in wipe and "trips = null" in wipe and "paths.clear()" in wipe
   keys = subprocess.run([NODE, "-e", f"process.stdout.write(JSON.stringify(require({json.dumps(str(LOGIC))}).DATA_KEYS))"],
                         capture_output=True, text=True, timeout=30, check=True).stdout
-  assert set(json.loads(keys)) == {"lpTrips", "lpMissionSnap", "lpCopEvents", "lpCopAnswers"}  # data only: the language and the view stay
+  assert set(json.loads(keys)) == {"lpTrips", "lpMissionSnap", "lpCopEvents", "lpCopAnswers", "lpCopTally"}  # data only: the language and the view stay
 
 
 def test_no_path_yet_is_not_no_gps():
@@ -1205,6 +1205,40 @@ def test_the_route_lives_on_the_mapa_and_every_change_asks():
   assert "contextmenu" not in html and "prompt(" not in html[html.index("// ----- the route"):html.index("// ----- the road's limit")]
   js = html[html.index("// ----- the route"):html.index("// ----- the road's limit")]
   assert js.count("navConfirm(") >= 4  # go, change, end; andando the passenger first (askPassenger inside navConfirm)
-  assert "if (askPassenger(() => navConfirm(title, what, ok, run))) return;" in js
+  assert "if (passengerFirst && askPassenger(() => askSheet(title, what, ok, run, passengerFirst))) return;" in js
+  assert "askSheet(title, what, ok, run, true)" in js
   assert 'b.addEventListener("click", () => openPick(p));' in js  # a saved place opens "É aqui?", it never goes straight
   assert 'id="navToken"' in html[html.index('data-subview="comma"'):]  # the Mapbox key went to Ajustes → Comma
+
+
+def test_usar_and_melhorar_one_app_and_the_sending_follows():
+  # owner, 05/11: a switch, not a level; Usar shows the panel, the map and the drives; Melhorar the whole app; the sending follows
+  assert [run("appMode", m, e) for m, e in [(None, "generic"), (None, "h6gt"), ("usar", "h6gt"), ("melhorar", "generic"), ("x", None)]] == \
+    ["usar", "melhorar", "usar", "melhorar", "melhorar"]
+  opt = {"key": "HexaShareEnabled", "value": False, "writable": True}
+  assert run("shareFor", "melhorar", opt) is True and run("shareFor", "usar", opt) is None
+  assert run("shareFor", "usar", {**opt, "value": True}) is False and run("shareFor", "melhorar", None) is None  # no such option: nothing
+  assert run("shareFor", "melhorar", {**opt, "writable": False}) is None
+  html = (LOGIC.parent / "index.html").read_text()
+  assert "body.usar nav.tabs .fab, body.usar nav.tabs [data-go=\"pontos\"], body.usar .melhorar-only { display: none !important; }" in html
+  for idn in ("pendingCard", "missionCard", "kpiBox", "driveMissions", "driveMore", "nextActs", "marksJump"):
+    tag = html[html.rindex("<", 0, html.index(f'id="{idn}"')):html.index(">", html.index(f'id="{idn}"'))]
+    assert "melhorar-only" in tag, idn
+  js = html[html.index("// ----- Usar | Melhorar"):html.index("// ----- the route")]
+  assert 'if (m === "usar") { setMode("usar"); return; }' in js and "askSheet(t(\"Ajudar a melhorar o LizPilot?\")" in js  # in asks, out doesn't
+
+
+def test_the_copilot_is_a_panel_and_the_avisos_count_the_answers():
+  # owner, 05/11: with no event the copilot shows how the car is driving; "pode silenciar" after 20 answers, all "deu certo"
+  t = run("tallyAdd", {}, "stop_lead", "ok")
+  for _ in range(19):
+    t = run("tallyAdd", t, "stop_lead", "ok")
+  assert t == {"stop_lead": {"ok": 20, "bad": 0}} and run("canSilence", t["stop_lead"]) is True
+  assert run("canSilence", {"ok": 30, "bad": 1}) is False and run("canSilence", {"ok": 19, "bad": 0}) is False
+  assert run("tallyAdd", t, "stop_lead", "nao") == t and run("tallyAdd", {}, "x", "ok") == {}  # "Não aconteceu" and unknown kinds count nothing
+  html = (LOGIC.parent / "index.html").read_text()
+  assert 'renderCopLive(v.main);' in html and ': copReview ? waitCard(now) : el("span", "")' in html  # no event: the panel, not "Esperando"
+  assert 'sw.addEventListener("click", () => { closeAvisos(); openMute(kind, on); });' in html  # on or off, it asks first
+  keys = json.loads(subprocess.run([NODE, "-e", f"process.stdout.write(JSON.stringify(require({json.dumps(str(LOGIC))}).DATA_KEYS))"],
+                                   capture_output=True, text=True, timeout=30, check=True).stdout)
+  assert "lpCopTally" in keys  # "Apagar dados deste celular" takes the counts too

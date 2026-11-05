@@ -305,6 +305,28 @@
     }
     return out;
   }
+  // The copilot's answers per kind, for good (the 48 h list forgets): ok and bad only; "Não aconteceu"/"Não lembro" say nothing
+  function tallyAdd(tally, kind, r) {
+    const out = { ...(tally || {}) };
+    if (!EV_KINDS.includes(kind) || (r !== "ok" && r !== "bad")) return out;
+    const k = out[kind] || { ok: 0, bad: 0 };
+    out[kind] = { ok: k.ok + (r === "ok" ? 1 : 0), bad: k.bad + (r === "bad" ? 1 : 0) };
+    return out;
+  }
+  // "pode silenciar": 20 answers or more, all "deu certo" (owner, 05/11)
+  const SILENCE_MIN = 20;
+  function canSilence(k) { return !!k && k.ok >= SILENCE_MIN && !k.bad; }
+  // Usar | Melhorar (owner, 05/11): the phone's last choice; before any, LizPilot for every car opens on Usar, the Haval on Melhorar
+  function appMode(stored, edition) {
+    if (stored === "usar" || stored === "melhorar") return stored;
+    return edition === "generic" ? "usar" : "melhorar";
+  }
+  // what the switch does to "enviar trechos aos desenvolvedores": it follows the mode, only where that option exists and the phone can write it
+  function shareFor(mode, opt) {
+    if (!opt || !opt.writable) return null;
+    const want = mode === "melhorar";
+    return !!opt.value === want ? null : want;
+  }
   // ----- the Mapa (owner, 05/11: "ao colocar o endereço, ele mostrar no mapa [...] ver se é aquele endereço certinho") -----
   // A view centred on (lat, lon) at the zoom zf, in a w × h box: the same shape as mapFit, to reuse mapTiles
   function mapCenter(lat, lon, zf, w, h) {
@@ -933,9 +955,9 @@
   // Read only: without the comma, or before the first answer of a page opened from the copy. Commands wait for the comma.
   function readOnly(online, fromCopy) { return !online || !!fromCopy; }
   // what "Apagar dados deste celular" takes from localStorage besides the copy: data, never the language or the view
-  const DATA_KEYS = ["lpTrips", "lpMissionSnap", "lpCopEvents", "lpCopAnswers"];  // the copilot's events of the drive, and the answers
+  const DATA_KEYS = ["lpTrips", "lpMissionSnap", "lpCopEvents", "lpCopAnswers", "lpCopTally"];  // the copilot's events of the drive, and the answers
 
   root.LPL = { groupPending, quietEvent, mutedKinds, EV_KINDS, eventStep, pointPassed, eventsMerge, logEvents, driveStart, reviewList, answerKeep, eventMission, copilotView, eventAge, eventStage, eventClock, EV_MISSIONS, EV_REASON, EV_LIVE_S, EV_RECENT_S, EV_KEEP, versionList, versionChips, VERSION_CHIPS, copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
-               tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, mapCenter, mapXY, mapLatLon, distanceM, shortPlace, maneuverKind, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
+               tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, appMode, shareFor, tallyAdd, canSilence, SILENCE_MIN, mapCenter, mapXY, mapLatLon, distanceM, shortPlace, maneuverKind, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

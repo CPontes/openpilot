@@ -241,6 +241,16 @@
   .confirm input { width: 24px; height: 24px; margin: 0; accent-color: var(--accent); flex: none; }
   .bar { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--line); }
   .bar span { display: block; height: 100%; }
+  /* Usar | Melhorar (owner, 05/11): one app, two ways to use it; nothing is hidden for good, only what shows first */
+  .modesw { display: inline-grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; border-radius: 999px; background: var(--card); border: 1px solid var(--line-2); margin-left: auto; margin-right: 10px; }
+  .modesw button { min-height: 36px; padding: 0 12px; border: 0; border-radius: 999px; background: none; color: var(--muted); font: 700 14px var(--font-display); }
+  .modesw button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+  .modesw button[data-mode="melhorar"][aria-pressed="true"] { background: var(--warn); color: var(--on-warn); }
+  body:not(.on-inicio) .modesw { display: none; }
+  body.on-inicio .top #conn { display: none; }  /* the switch takes its room; the dot stays, the panel says the rest */
+  body.usar nav.tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  body.usar nav.tabs .fab, body.usar nav.tabs [data-go="pontos"], body.usar .melhorar-only { display: none !important; }
+  body:not(.usar) .usar-only { display: none !important; }
   nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: #11161B; border-top: 1px solid var(--line);
              display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: start; padding: 6px 4px calc(8px + env(safe-area-inset-bottom)); }
   nav.tabs button { background: none; border: 0; color: var(--dim); font-size: 12px; font-weight: 600; min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 0; position: relative; }
@@ -320,6 +330,21 @@
   #passScrim { z-index: 15; } #passSheet { z-index: 16; }  /* the passenger question goes over the copilot */
   .cop { position: fixed; inset: 0; z-index: 12; overflow-y: auto; background: var(--bg); display: flex; flex-direction: column; gap: 12px;
          padding: calc(14px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+  /* the copilot as a panel (owner, 05/11): with no event, what the driver's panel shows; an event comes, it becomes one line */
+  .coplive { display: grid; gap: 10px; }
+  .coplive .lband { border-radius: 18px; padding: 14px; display: flex; gap: 12px; align-items: center; }
+  .coplive .lband.op, .coplive .lband.lat { background: var(--accent); color: var(--on-accent); } .coplive .lband.you { background: var(--you); color: #071A2E; }
+  .coplive .lband.warn { background: var(--warn); color: var(--on-warn); } .coplive .lband.fail { background: var(--danger); color: #2a0705; } .coplive .lband.none { background: var(--card); color: var(--muted); }
+  .coplive .lband .w { font: 700 26px/1.1 var(--font-display); } .coplive .lband .s { font-weight: 700; font-size: 15px; }
+  .coplive .lband svg { flex: none; transition: transform .3s; }
+  .coplive .ltile { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; }
+  .coplive .ltile b { font: 700 30px/1 var(--font-display); } .coplive .ltile span { color: var(--muted); font-size: 14px; }
+  .coplive .lbar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin-top: 6px; } .coplive .lbar i { display: block; height: 100%; background: var(--accent); }
+  .coplive.strip { display: block; } .coplive.strip > :not(.lband) { display: none; }
+  .coplive.strip .lband { padding: 8px 12px; } .coplive.strip .lband .w { font-size: 17px; } .coplive.strip .lband .s { display: none; }
+  .copwatch { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 14px; padding: 0 4px; }
+  .avrow { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .avrow .grow { flex: 1; min-width: 0; } .avrow .tag { margin-left: 6px; }
   .cop .now { font-family: var(--font-display); font-weight: 700; font-size: 28px; line-height: 1.1; }
   .cop .fit { color: var(--accent); font-weight: 700; }
   .cop .answers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -379,7 +404,7 @@
             background: var(--text); color: var(--bg); font-weight: 600; }
   .evundo .link { color: var(--bg); text-decoration: underline; min-height: 44px; }
   .evrow .q { font-size: 12px; color: var(--muted); border: 1px solid var(--line-2); border-radius: 8px; padding: 1px 6px; margin-left: 6px; }
-  #markScrim, #pointScrim, #evScrim, #rcScrim, #muteScrim { z-index: 13; } #markSheet, #pointSheet, #evSheet, #rcSheet, #muteSheet { z-index: 14; }  /* over the copilot */
+  #markScrim, #pointScrim, #evScrim, #rcScrim, #muteScrim, #avisosScrim, #navScrim, #placesScrim { z-index: 13; } #markSheet, #pointSheet, #evSheet, #rcSheet, #muteSheet, #avisosSheet, #navSheet, #placesSheet { z-index: 14; }  /* over the copilot */
   .toast { position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 20; max-width: calc(100% - 32px);
            background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 15px; font-weight: 600; opacity: 0; transition: opacity .2s; pointer-events: none; }
   .toast.show { opacity: .96; }
@@ -431,6 +456,7 @@
   <section id="app" class="hidden">
     <div class="top">
       <span class="brand"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.6l8.2 4.7v9.4L12 21.4l-8.2-4.7V7.3z"/><text x="12" y="15.2" text-anchor="middle" stroke="none" font-family="Barlow Semi Condensed, Barlow, sans-serif" font-weight="700" font-size="9.4" letter-spacing=".1"><tspan fill="var(--text)">L</tspan><tspan fill="var(--accent)">P</tspan></text></svg><span>Liz<span style="color:var(--accent)">Pilot</span></span></span>
+      <span class="modesw" id="modeSw" role="group" data-t-aria="Como usar" aria-label="Como usar"><button type="button" data-mode="usar" data-t>Usar</button><button type="button" data-mode="melhorar" data-t>Melhorar</button></span>
       <span class="conn"><span class="dot"></span><span id="conn">—</span></span>
     </div>
     <div class="card att hidden" id="offlineCard" role="status">
@@ -491,7 +517,7 @@
           <div class="row">
             <svg width="52" height="52" viewBox="0 0 24 24" aria-hidden="true" id="readyIcon"><path d="M12 1.8l8.8 5.1v10.2L12 22.2l-8.8-5.1V6.9z" fill="currentColor"/><path id="readyMark" d="M8.5 12h7" fill="none" stroke="var(--bg)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <div class="grow"><div class="big" id="readyTitle">—</div><div class="desc" id="readySub"></div></div>
-            <button class="mpill hidden" id="readyMissions" type="button"></button>
+            <button class="mpill hidden melhorar-only" id="readyMissions" type="button"></button>
           </div>
           <div class="checks" id="readyChecks"></div>
           <div class="grid2" id="readyLinks">
@@ -505,17 +531,17 @@
           <div class="chips" id="limitActs"></div>
         </section>
         <button class="card navline hidden" id="navLineG" type="button" data-navline></button>
-        <div class="card att row hidden" id="pendingCard">
+        <div class="card att row hidden melhorar-only" id="pendingCard">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>
           <span class="grow" id="pendingText"></span>
           <button class="btn warn" id="pendingBtn" type="button" style="width:auto;min-height:44px;padding:0 16px;font-size:16px" data-t>Classificar</button>
         </div>
-        <section class="card stack hidden" id="missionCard" style="gap:10px">
+        <section class="card stack hidden melhorar-only" id="missionCard" style="gap:10px">
           <button class="mhead" id="missionOpen" type="button"><span id="missionRing"></span>
             <span class="grow" style="min-width:0"><span class="mlevel" id="missionLevel"></span><span class="big" id="missionCount" style="display:block"></span><span class="desc" id="missionNext"></span></span></button>
           <div id="missionResultBox"></div>
         </section>
-        <section class="hidden" id="kpiBox">
+        <section class="hidden melhorar-only" id="kpiBox">
           <div class="row" style="margin:6px 4px 8px;align-items:baseline"><span class="label grow" style="margin:0" data-t>Últimas 4 semanas</span><span class="small" data-t>contra as 4 antes</span></div>
           <div class="kpis" id="kpiGrid"></div>
           <button class="link hidden" id="kpiVersion" type="button" style="margin:2px 4px 0"></button>
@@ -524,7 +550,7 @@
           <span class="grow"><span class="title" data-t>Versão nova pronta</span><br><span class="desc" id="updateCardDesc"></span></span>
           <span class="link" data-t>Ver</span>
         </a>
-        <section class="card stack hidden" id="changesCard" style="gap:6px">
+        <section class="card stack hidden melhorar-only" id="changesCard" style="gap:6px">
           <div class="label" style="margin:0 0 4px" data-t>Mudou desde a última viagem</div>
           <div id="changesList" class="list"></div>
         </section>
@@ -564,7 +590,8 @@
             <button class="link" id="tripHide" type="button" style="color:var(--muted)" data-t>Ocultar viagem</button>
           </div>
         </section>
-        <details class="card hidden" id="historyBox">
+        <button class="btn dark usar-only" id="oddG" type="button" data-odd style="margin:0 0 10px" data-t>Algo estranho? Avise</button>
+        <details class="card hidden melhorar-only" id="historyBox">
           <summary class="row" style="gap:10px"><span class="grow" data-t>Histórico</span><span class="small num" id="historyCount"></span><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
           <div style="padding-top:6px">
           <input type="search" id="historyQuery" autocomplete="off" enterkeyhint="search" data-t-ph="Buscar: dia, hora, versão, marca" placeholder="Buscar: dia, hora, versão, marca" data-t-aria="Buscar viagens" aria-label="Buscar viagens">
@@ -592,7 +619,7 @@
           <div class="row" style="gap:18px" id="nextRow"></div>
           <div class="bar"><span id="nextBar" style="background:var(--warn);width:0"></span></div>
           <div class="small" id="nextAfter"></div>
-          <div id="nextActs"></div>
+          <div id="nextActs" class="melhorar-only"></div>
         </section>
         <div class="grid2" id="driveTiles"></div>
         <section class="card hidden" id="laneCard" style="margin-top:10px">
@@ -600,13 +627,14 @@
           <canvas id="road" data-t-aria="Posição do carro na faixa" aria-label="Posição do carro na faixa"></canvas>
         </section>
         <button class="card navline hidden" id="navLineD" type="button" data-navline style="margin-top:10px"></button>
-        <section class="card hidden" id="driveMissions" style="margin-top:10px">
+        <button class="btn dark usar-only" id="oddD" type="button" data-odd style="margin-top:10px" data-t>Algo estranho? Avise</button>
+        <section class="card hidden melhorar-only" id="driveMissions" style="margin-top:10px">
           <div class="label" style="margin:0 0 4px" data-t>Missões desta viagem</div>
           <div class="list" id="driveMissionList"></div>
           <div class="small" style="margin-top:6px" data-t>O comma conta sozinho o que consegue. Toque em Fiz agora só para garantir: marca a hora e o lugar.</div>
           <button class="btn dark" id="copOpen" type="button" style="margin-top:10px" data-t>Modo copiloto (passageiro)</button>
         </section>
-        <details class="card" id="driveMore">
+        <details class="card melhorar-only" id="driveMore">
           <summary data-t>Detalhes: volante e força</summary>
           <div class="grid2" id="driveDetails"></div>
         </details>
@@ -624,10 +652,10 @@
 
     <!-- Viagens -->
     <div data-view="viagens" class="hidden">
-      <div class="seg" role="tablist" style="margin:4px 0 10px"><button type="button" role="tab" aria-selected="true" data-t>Viagens</button><button type="button" role="tab" aria-selected="false" id="segToMissions" data-t>Missões</button></div>
+      <div class="seg melhorar-only" role="tablist" style="margin:4px 0 10px"><button type="button" role="tab" aria-selected="true" data-t>Viagens</button><button type="button" role="tab" aria-selected="false" id="segToMissions" data-t>Missões</button></div>
       <h1 class="page" data-t>Viagens</h1>
       <p class="sub" data-t>Abrem com o carro desligado</p>
-      <button class="card row hidden" id="marksJump" type="button" style="width:100%;margin:0 0 10px;text-align:left;color:inherit;font:inherit">
+      <button class="card row hidden melhorar-only" id="marksJump" type="button" style="width:100%;margin:0 0 10px;text-align:left;color:inherit;font:inherit">
         <span class="grow"><span class="title" data-t>Marcas</span><br><span class="desc num" id="marksJumpText"></span></span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--dim)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
       </button>
       <div id="tripsList" class="stack" style="gap:10px"></div>
@@ -799,6 +827,7 @@
   <div class="row cophead" style="justify-content:space-between"><span class="mlevel" id="copTitle" data-t>Copiloto</span>
     <button class="link" id="copClose" type="button" data-t>Fechar</button></div>
   <div class="small" id="copNow" style="min-height:2.9em"></div>
+  <section class="coplive hidden" id="copLive" aria-live="off"></section>
   <div id="copMain"></div>
   <div class="evacts" id="copActs"><button class="link" id="copSkip" type="button" data-t>Pular</button><button class="link" id="copMute" type="button" data-t>Não mostrar mais este tipo</button></div>
   <div class="evundo hidden" id="copUndo"><span id="copUndoText"></span><button class="link" id="copUndoBtn" type="button" data-t>Desfazer</button></div>
@@ -817,6 +846,17 @@
   <label class="field" for="evText" data-t>Observação (opcional)</label>
   <textarea id="evText" rows="2" maxlength="300" data-t-ph="ex.: saiu devagar, demorou uns 3 s" placeholder="ex.: saiu devagar, demorou uns 3 s"></textarea>
   <div class="duo"><button class="btn" id="evSave" type="button" data-t>Salvar</button><button class="btn ghost" id="evCancel" type="button" data-t>Cancelar</button></div>
+</section>
+
+<!-- Avisos do copiloto (owner, 05/11): each kind on or off, with your answers; turning one off or on still confirms (muteSheet) -->
+<div class="scrim hidden" id="avisosScrim"></div>
+<section class="sheet hidden" id="avisosSheet" role="dialog" aria-modal="true" aria-labelledby="avisosTitle">
+  <span class="grab"></span>
+  <h2 id="avisosTitle" data-t>Avisos do copiloto</h2>
+  <p class="small" data-t>O que aparece no quadro grande. Desligado continua registrado na viagem.</p>
+  <div id="avisosList"></div>
+  <p class="small" id="avisosHint"></p>
+  <button class="btn dark" id="avisosClose" type="button" style="margin-top:12px" data-t>Fechar</button>
 </section>
 
 <!-- The route's confirmations (owner, 04/11: "tudo que fizer tem que pedir confirmação"); andando, the passenger first -->
@@ -1140,7 +1180,7 @@ async function baseLoad() {
 async function wipeBase() {  // the epoch moves first: an answer still on its way writes nothing, not even the hour
   const done = DB.clear();
   for (const k of LPL.DATA_KEYS) store(k, null);
-  evList = []; evAnswers = {};  // the copilot's events and the answers go with them
+  evList = []; evAnswers = {}; evTally = {};  // the copilot's events and the answers go with them
   trips = null; histMarks = null; tripsV = ""; missions = null; stateJson = ""; syncAt = {}; syncSaved = 0; paths.clear(); mapSig = ""; histSig = "";
   mQueue = []; mQueueNotes = [];
   marksState = { reasons: marksState.reasons || [], marks: [], pending: 0 };
@@ -1220,6 +1260,7 @@ if (!["inicio", "viagens", "pontos", "ajustes", "missoes", "versoes"].includes(v
 
 function showView(name) {
   view = name; store("lpView", name);
+  document.body.classList.toggle("on-inicio", name === "inicio");
   document.querySelectorAll("[data-view]").forEach((e) => e.classList.toggle("hidden", e.dataset.view !== name));
   const tab = name === "missoes" || name === "versoes" ? "viagens" : name;  // Missões lives in Viagens (owner, 03/11)
   document.querySelectorAll("[data-go]").forEach((b) => b.dataset.go === tab ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
@@ -1277,6 +1318,7 @@ function render(s, copy, ep) {
   }
   state = s;
   titles = s.titles || {};
+  applyMode();
   const v = s.vehicle;
   const parked = !v.onroad || (v.parked && v.standstill && !v.engaged);
   carStopped = !v.onroad || v.standstill;
@@ -1573,7 +1615,7 @@ async function refreshLive() {
 
 function renderDrive() {
   const l = live, b = LPL.band(l, { online, age: Date.now() - liveAt, now: Date.now() }, latSince);
-  latSince = b.latSince;
+  latSince = b.latSince; copBand = b;
   stopSince = LPL.stopClock(stopSince, live, b.stale, Date.now());
   if (!b.stale) { const r = LPL.eventStep(evSt, l, liveAt || Date.now()); evSt = r.st; evFeed(r.events, r.updates); }  // the copilot's events
   renderCop();
@@ -1956,6 +1998,42 @@ $("shareForget").addEventListener("click", async () => {
   toast(r.status === 200 ? t("Pedido feito: apaga no próximo Wi-Fi.") : (r.data.error || t("Não foi possível.")));
   shareAt = 0; refreshShare();
 });
+// ----- Usar | Melhorar (owner, 05/11): "agora eu quero melhorar [...] agora eu só quero ver como é que tá aqui, botar meu destino e
+// seguir minha vida". One app: the mode picks what shows first, and the sending to the developers follows it.
+let appMode = null;
+function applyMode() {
+  const m = LPL.appMode(load("lpMode"), state && state.device && state.device.edition);
+  if (m === appMode) return;
+  appMode = m;
+  document.body.classList.toggle("usar", m === "usar");
+  document.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.mode === m ? "true" : "false"));
+  if (m === "usar" && ["pontos", "missoes"].includes(view)) showView("inicio");  // what Usar leaves out is never the open screen
+}
+async function setMode(m) {
+  const opt = optionOf("HexaShareEnabled"), share = LPL.shareFor(m, opt);
+  if (share !== null) {
+    const r = await api("/api/option", { key: "HexaShareEnabled", value: share });
+    if (r.status !== 200) { toast(r.data.error || t("Não foi possível.")); return; }
+  }
+  store("lpMode", m); appMode = null; applyMode();
+  toast(m === "usar" ? (share === false ? t("Modo Usar: o envio aos desenvolvedores desligou.") : t("Modo Usar.")) : t("Modo Melhorar: obrigado por ajudar o LizPilot."));
+  refresh();
+}
+document.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => {
+  const m = b.dataset.mode; if (m === appMode) return;
+  if (m === "usar") { setMode("usar"); return; }  // back to Usar: one tap, nothing is lost
+  const opt = optionOf("HexaShareEnabled");
+  askSheet(t("Ajudar a melhorar o LizPilot?"),
+    t("O app mostra tudo: Marcar, missões, copiloto do passageiro, versões.") + (opt && opt.writable && !opt.value ? " " + t("E o envio aos desenvolvedores liga: o trecho de cada marca que você escolher, com o carro desligado. Desliga quando você voltar para Usar.") : ""),
+    t("Melhorar"), () => setMode("melhorar"));
+}));
+// Usar: one button to say something felt wrong, a mark with the time; nothing is sent
+document.querySelectorAll("[data-odd]").forEach((b) => b.addEventListener("click", () => askSheet(t("Avisar que algo estranho aconteceu?"),
+  t("Fica uma marca com a hora de agora, para ver depois em Viagens. Nada é enviado."), t("Avisar"), async () => {
+    const r = await api("/api/mark", { reason: "outro", note: t("Algo estranho (modo Usar)"), delay_s: 0 });
+    toast(r.status === 200 ? t("Marcado. Dá para ver em Viagens.") : (r.data.error || t("Não foi possível salvar.")));
+  }, false)));
+
 // ----- the route (selfdrive/hexa/nav.py): the phone picks where to go, openpilot's navigation does the rest -----
 // openpilot keeps the lane and the speed: turning at a junction stays with the driver. Andando, só o passageiro mexe aqui.
 // The Mapa of Início (owner, 05/11): Painel | Mapa on top; search, "É aqui?" with the pin, the route; the driver's panel stays as it was.
@@ -2139,8 +2217,9 @@ function openPick(p) {
 }
 function closePick() { navPickP = null; $("navPick").classList.add("hidden"); $("navClear").classList.add("hidden"); $("navQuery").value = ""; mvMoved = false; mv = null; renderNav(); }
 // every change of the route asks first; andando, the passenger first (owner, 05/11: "passageiro andando pode trocar destino")
-function navConfirm(title, what, ok, run) {
-  if (askPassenger(() => navConfirm(title, what, ok, run))) return;
+function navConfirm(title, what, ok, run) { askSheet(title, what, ok, run, true); }
+function askSheet(title, what, ok, run, passengerFirst) {
+  if (passengerFirst && askPassenger(() => askSheet(title, what, ok, run, passengerFirst))) return;
   navAsk = run;
   $("navAskTitle").textContent = title; $("navAskWhat").textContent = what; $("navAskOk").textContent = ok;
   $("navScrim").classList.remove("hidden"); $("navSheet").classList.remove("hidden");
@@ -2607,7 +2686,7 @@ function openReview() {
 function evDone(id, r) {
   const ev = evList.find((e) => e.id === id) || reviewAll().find((e) => e.id === id);
   evList = evList.map((e) => (e.id === id ? { ...e, answer: { r, at: Date.now() } } : e)); evSave();
-  if (ev) { evAnswers = LPL.answerKeep(evAnswers, ev, r, Date.now(), Date.now() - EV_REVIEW_H * 3600e3); ansSave(); }
+  if (ev) { evAnswers = LPL.answerKeep(evAnswers, ev, r, Date.now(), Date.now() - EV_REVIEW_H * 3600e3); ansSave(); evTally = LPL.tallyAdd(evTally, ev.kind, r); tallySave(); }
   if (evPick === id) evPick = null;
   renderCop();
 }
@@ -2631,7 +2710,7 @@ function evSkip(ev) {
 function openMute(kind, on) {
   muteAsk = { kind, on };
   $("muteTitle").textContent = on ? tf("Parar de mostrar \u201c{evento}\u201d?", { evento: kindTitle(kind) }) : tf("Voltar a mostrar \u201c{evento}\u201d?", { evento: kindTitle(kind) });
-  $("muteWhat").textContent = on ? t("Continua registrado no histórico e em \u201cA conferir\u201d, como silenciado; só não aparece no quadro grande. Dá para reativar em \u201cSilenciados\u201d.")
+  $("muteWhat").textContent = on ? t("Continua registrado no histórico e em \u201cA conferir\u201d, como silenciado; só não aparece no quadro grande. Dá para reativar em Copiloto, \u201cAvisos\u201d.")
     : t("Volta a aparecer no quadro grande quando acontecer.");
   const act = missions ? mState().active : [], mk = (LPL.EV_MISSIONS[kind] || []).filter((k) => act.includes(k) && mOf(k));
   $("muteMission").textContent = on && mk.length ? tf("A missão {m} deixa de ser perguntada na hora.", { m: mk.map((k) => t(mOf(k).title)).join(", ") }) : "";
@@ -2841,6 +2920,62 @@ function waitCard(now) {  // nothing recent: what the copilot is watching for, n
   return c;
 }
 
+// ----- the copilot as a panel (owner, 05/11: "enquanto não tem nenhuma marcação na tela [...] mostrar aquilo") -----
+let copBand = null, evTally = {};
+const EV_TALLY_STORE = "lpCopTally";
+function tallyLoad() { try { const x = JSON.parse(load(EV_TALLY_STORE) || "{}"); evTally = x && typeof x === "object" && !Array.isArray(x) ? x : {}; } catch (e) { evTally = {}; } }
+function tallySave() { store(EV_TALLY_STORE, Object.keys(evTally).length ? JSON.stringify(evTally) : null); }
+tallyLoad();
+const WHEEL_SVG = '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.4"/><path d="M3.2 10.8h6.4M14.4 10.8h6.4M12 14.4v6.6"/></svg>';
+function renderCopLive(main) {  // built once, then only its texts move: nothing in it is a button
+  const box = $("copLive"), l = live, b = copBand;
+  box.classList.toggle("hidden", copReview); if (copReview) return;
+  box.classList.toggle("strip", !!main);
+  if (!box.firstChild) {
+    box.innerHTML = `<div class="lband none" id="clBand">${WHEEL_SVG}<div style="flex:1;min-width:0"><div class="w" id="clWho"></div><div class="s" id="clSub"></div></div></div>
+      <div class="ltile"><div class="row" style="justify-content:space-between;align-items:baseline;gap:8px"><span style="color:var(--text);font-weight:700" id="clWheel"></span><span id="clHands"></span></div>
+        <div class="lbar"><i id="clTorque" style="width:0"></i></div><div class="small" style="margin-top:4px" id="clTorqueTxt"></div></div>
+      <div class="grid2" style="margin:0"><div class="ltile"><b class="num" id="clSpeed">–</b> <span data-t>km/h</span></div><div class="ltile"><b class="num" id="clLead">–</b> <span id="clLeadTxt"></span></div></div>
+      <div class="small" id="clLane" style="padding:0 4px"></div>
+      <div class="copwatch"><span id="clWatch"></span><button class="link" id="clAvisos" type="button" style="min-height:36px">${t("Avisos ›")}</button></div>`;
+    $("clAvisos").addEventListener("click", openAvisos);
+  }
+  const fresh = b && !b.stale && l && l.driving;
+  $("clBand").className = "lband " + (b ? b.cls : "none");
+  $("clWho").textContent = main && fresh ? [t(b.who), l.v + " km/h", l.lead ? tf("carro a {d} m", { d: l.lead.d }) : ""].filter(Boolean).join(" · ") : b ? t(b.who) : t("sem dados");
+  $("clSub").textContent = !b ? "" : b.why ? tf(b.sub, { motivos: b.why.map(t).join(", ") }) : t(b.sub) + (b.acc != null ? " · ACC " + b.acc : "");
+  const svg = $("clBand").querySelector("svg"); svg.style.transform = `rotate(${fresh ? -Math.max(-90, Math.min(90, l.wheel || 0)) : 0}deg)`;  // positive is to the left
+  $("clWheel").textContent = fresh ? tf("Volante {a}", { a: wheelText(l.wheel) }) : t("Volante");
+  $("clHands").textContent = fresh ? (l.driver ? t("sua mão no volante") : t("sua mão: nenhuma")) : "";
+  $("clTorque").style.width = fresh ? Math.min(100, Math.abs(l.torque || 0)) + "%" : "0";
+  $("clTorqueTxt").textContent = fresh ? tf("força do openpilot {p}%", { p: l.torque || 0 }) : "";
+  $("clSpeed").textContent = fresh ? String(l.v) : "–";
+  $("clLead").textContent = fresh && l.lead ? (l.lead.gap != null ? num(l.lead.gap, 1) : String(l.lead.d)) : "–";
+  $("clLeadTxt").textContent = fresh && l.lead ? (l.lead.gap != null ? tf("s · carro a {d} m", { d: l.lead.d }) : t("m até o carro à frente")) : t("nenhum carro à frente");
+  const lt = fresh ? LPL.laneText(l.lane) : null; $("clLane").textContent = lt ? t(lt.text) : "";
+  const kinds = LPL.EV_KINDS.filter((k) => k !== "bump");
+  $("clWatch").textContent = tf("Olhando {n} tipos · {m} silenciados", { n: kinds.filter((k) => !evMuted.includes(k)).length, m: evMuted.length });
+}
+function openAvisos() { drawAvisos(); $("avisosScrim").classList.remove("hidden"); $("avisosSheet").classList.remove("hidden"); }
+function closeAvisos() { $("avisosScrim").classList.add("hidden"); $("avisosSheet").classList.add("hidden"); }
+function drawAvisos() {
+  $("avisosList").replaceChildren(...LPL.EV_KINDS.filter((k) => k !== "bump").map((kind) => {
+    const row = el("div", "avrow"), info = el("div", "grow"), k = evTally[kind] || { ok: 0, bad: 0 }, on = !evMuted.includes(kind);
+    const name = el("div", "title", kindTitle(kind));
+    if (on && LPL.canSilence(k)) name.append(el("span", "tag warn", t("pode silenciar")));
+    if (!on) name.append(el("span", "tag", t("silenciado")));
+    const n = k.ok + k.bad;
+    info.append(name, el("div", "small", n ? tf("{n} respostas · {ok} deu certo", { n, ok: k.ok }) : t("sem resposta ainda")));
+    const sw = el("button", "switch"); sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", on ? "true" : "false");
+    sw.setAttribute("aria-label", kindTitle(kind));
+    sw.addEventListener("click", () => { closeAvisos(); openMute(kind, on); });  // on or off, it asks first (owner, 04/11)
+    row.append(info, sw); return row;
+  }));
+  $("avisosHint").textContent = tf("Conta as respostas deste celular a partir de agora. \u201cPode silenciar\u201d: {n} ou mais, todas \u201cdeu certo\u201d.", { n: LPL.SILENCE_MIN });
+}
+$("avisosClose").addEventListener("click", closeAvisos);
+$("avisosScrim").addEventListener("click", closeAvisos);
+
 function renderCop() {
   if (!copOpen || !missions) return;
   const gate = LPL.copilotGate({ ok: passengerOk }, carNow());
@@ -2863,12 +2998,13 @@ function renderCop() {
   $("copSkip").onclick = () => { if (v.main && Date.now() - evCardAt >= EV_TAP_GUARD_MS) evSkip(v.main); };
   $("copMute").onclick = () => { if (v.main && Date.now() - evCardAt >= EV_TAP_GUARD_MS) openMute(v.main.kind, true); };
   copRadarStrip();
+  renderCopLive(v.main);
   const main = $("copMain");
   const msig = JSON.stringify(v.main ? [v.main.id, v.stage, evSource(v.main), evMission(v.main), L()] : ["wait", mState().active, L()]);
   if (main.dataset.sig !== msig || !main.firstChild) {
     main.dataset.sig = msig;
     if (v.main && main.firstChild && (main.firstChild.dataset.ev || null) !== v.main.id) evCardAt = Date.now();  // another event took the card
-    main.replaceChildren(v.main ? evCard(v.main, v.stage, now) : waitCard(now));
+    main.replaceChildren(v.main ? evCard(v.main, v.stage, now) : copReview ? waitCard(now) : el("span", ""));  // no event: the panel above says it
     if (v.main) main.firstChild.dataset.ev = v.main.id;
     if (v.main && v.stage === "live" && evShown !== v.main.id) main.firstChild.classList.add("flash");  // a new one: it blinks, once
   } else if (v.main) evClock(main.firstChild, v.main, v.stage, now);
