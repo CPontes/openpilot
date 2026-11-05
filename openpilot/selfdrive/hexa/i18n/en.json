@@ -1420,5 +1420,13 @@
  "A posição na faixa que você ensina não corrige abaixo de 25 km/h e volta inteira a partir de 35 km/h": "The lane position you teach doesn't correct below 25 km/h and is fully back from 35 km/h",
  "No trânsito lento ela empurrava o carro para cima do vizinho; a posição continua guardada nas paradas": "In slow traffic it pushed the car onto the one beside it; the position is still kept through stops",
  "Segure o volante 1,5 s para deslocar o carro na faixa; solte e ele mantém a partir de 35 km/h, mesmo se ensinou mais devagar.\nSegure de volta ao centro para voltar. Zera ao desengatar.": "Hold the wheel 1.5 s to shift the car in the lane; let go and it stays there from 35 km/h, even if taught slower.\nHold it back to the center to return. Resets when disengaged.",
- "Voltando à posição ensinada, o carro desliza devagar, em vez de passar do ponto": "Going back to the taught position, the car slides there slowly instead of going past it"
+ "Voltando à posição ensinada, o carro desliza devagar, em vez de passar do ponto": "Going back to the taught position, the car slides there slowly instead of going past it",
+ "Mais números da viagem": "More numbers from this drive",
+ "Ver os números": "See the numbers",
+ "Pouca estrada para dizer": "Too little road to tell",
+ "LizPilot com menos rolagem": "LizPilot with less scrolling",
+ "Início: a marca sem motivo no alto, o histórico recolhido em uma linha e os números da viagem a um toque": "Home: the mark without a reason on top, the history folded into one line and the drive numbers one tap away",
+ "Viagens: as marcas logo no alto, a comparação de versões com o veredito à vista e as 8 viagens mais novas primeiro": "Trips: the marks right on top, the version comparison with its verdict in sight and the 8 newest drives first",
+ "Missões: as 3 próximas e o resto a um toque, e as trilhas em grade": "Missions: the next 3 and the rest one tap away, and the trails in a grid",
+ "Opções: uma linha de descrição, e o ↻ diz o que muda na próxima partida": "Options: one line of description, and ↻ tells what changes on the next start"
 }

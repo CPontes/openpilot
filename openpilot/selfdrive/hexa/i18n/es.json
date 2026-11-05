@@ -1420,5 +1420,13 @@
  "A posição na faixa que você ensina não corrige abaixo de 25 km/h e volta inteira a partir de 35 km/h": "La posición en el carril que usted enseña no corrige por debajo de 25 km/h y vuelve entera desde 35 km/h",
  "No trânsito lento ela empurrava o carro para cima do vizinho; a posição continua guardada nas paradas": "En tráfico lento empujaba el auto hacia el vecino; la posición sigue guardada en las paradas",
  "Segure o volante 1,5 s para deslocar o carro na faixa; solte e ele mantém a partir de 35 km/h, mesmo se ensinou mais devagar.\nSegure de volta ao centro para voltar. Zera ao desengatar.": "Sostenga el volante 1,5 s para desplazar el auto en el carril; suelte y se mantiene desde 35 km/h, aunque lo haya enseñado más despacio.\nSostenga de vuelta al centro para volver. Se reinicia al desactivar.",
- "Voltando à posição ensinada, o carro desliza devagar, em vez de passar do ponto": "Al volver a la posición enseñada, el auto se desliza despacio en lugar de pasarse"
+ "Voltando à posição ensinada, o carro desliza devagar, em vez de passar do ponto": "Al volver a la posición enseñada, el auto se desliza despacio en lugar de pasarse",
+ "Mais números da viagem": "Más números del viaje",
+ "Ver os números": "Ver los números",
+ "Pouca estrada para dizer": "Poca ruta para decir",
+ "LizPilot com menos rolagem": "LizPilot con menos desplazamiento",
+ "Início: a marca sem motivo no alto, o histórico recolhido em uma linha e os números da viagem a um toque": "Inicio: la marca sin motivo arriba, el historial plegado en una línea y los números del viaje a un toque",
+ "Viagens: as marcas logo no alto, a comparação de versões com o veredito à vista e as 8 viagens mais novas primeiro": "Viajes: las marcas arriba, la comparación de versiones con el veredicto a la vista y los 8 viajes más nuevos primero",
+ "Missões: as 3 próximas e o resto a um toque, e as trilhas em grade": "Misiones: las 3 próximas y el resto a un toque, y las rutas en cuadrícula",
+ "Opções: uma linha de descrição, e o ↻ diz o que muda na próxima partida": "Opciones: una línea de descripción, y el ↻ indica lo que cambia en el próximo arranque"
 }

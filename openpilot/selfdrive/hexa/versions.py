@@ -20,7 +20,13 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "04/11", "8066720", "Parada sem recuo na subida e posição na faixa sem empurrão no trânsito lento",
+  Release("", "04/11", "8066720", "LizPilot com menos rolagem",
+          ("Início: a marca sem motivo no alto, o histórico recolhido em uma linha e os números da viagem a um toque",
+           "Viagens: as marcas logo no alto, a comparação de versões com o veredito à vista e as 8 viagens mais novas primeiro",
+           "Missões: as 3 próximas e o resto a um toque, e as trilhas em grade",
+           "Opções: uma linha de descrição, e o ↻ diz o que muda na próxima partida"),
+          driving=False),
+  Release("001a358", "04/11", "8066720", "Parada sem recuo na subida e posição na faixa sem empurrão no trânsito lento",
           ("No fim da parada o comma termina no freio, como a Haval faz, e segura o carro parado",
            "Se mesmo assim o carro andar para trás em D, o comma freia na hora",
            "A posição na faixa que você ensina não corrige abaixo de 25 km/h e volta inteira a partir de 35 km/h",
