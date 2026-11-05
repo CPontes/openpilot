@@ -20,7 +20,12 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "05/11", "8066720", "Rota pelo celular e enviar um momento aos desenvolvedores",
+  Release("", "05/11", "8066720", "Marcar em 9 botões",
+          ("Marcar: 9 botões sem teclado; o que vinha em par (Balançou, Na estrada, Radar ou lombada) pergunta «Qual?» no segundo passo",
+           "«Quando»: Agora, 10 s antes, 30 s antes ou 30 s depois; um Cancelar só, ao lado de Salvar",
+           "Copiloto sem evento: o cartão «Esperando» fica curto"),
+          driving=False),
+  Release("d4e67eb", "05/11", "8066720", "Rota pelo celular e enviar um momento aos desenvolvedores",
           ("Início: «Para onde?» busca o endereço ou abre o link do Maps/Waze e manda a rota à navegação do comma (alfa)",
            "A rota só mostra o caminho e a próxima manobra: virar segue com você; lugares salvos ficam no comma",
            "Ajustes → Celular: «enviar trechos aos desenvolvedores», desligada; ligada, cada marca ganha «Enviar»",

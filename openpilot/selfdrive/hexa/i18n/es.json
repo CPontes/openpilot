@@ -1557,5 +1557,9 @@
  "Qual?": "¿Cuál?",
  "Radar ou lombada": "Radar o lomo de burro",
  "estrada ruim": "camino malo",
- "sem motivo": "sin motivo"
+ "sem motivo": "sin motivo",
+ "Marcar em 9 botões": "Marcar en 9 botones",
+ "Marcar: 9 botões sem teclado; o que vinha em par (Balançou, Na estrada, Radar ou lombada) pergunta «Qual?» no segundo passo": "Marcar: 9 botones sin teclado; lo que venía en pares (Se balanceó, En la ruta, Radar o lomo de burro) pregunta «¿Cuál?» en el segundo paso",
+ "«Quando»: Agora, 10 s antes, 30 s antes ou 30 s depois; um Cancelar só, ao lado de Salvar": "«Cuándo»: Ahora, 10 s antes, 30 s antes o 30 s después; un solo Cancelar, al lado de Guardar",
+ "Copiloto sem evento: o cartão «Esperando» fica curto": "Copiloto sin evento: la tarjeta «Esperando» queda corta"
 }
