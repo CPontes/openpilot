@@ -87,7 +87,9 @@
   .tgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .ttile { margin: 0; padding: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left; color: inherit; font: inherit; min-height: 96px; }
   .ttile .ttl { font-weight: 600; font-size: 15px; line-height: 1.2; }
-  .opt .sum { color: var(--muted); font-size: 14px; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+  .opt .sum { color: var(--muted); font-size: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  #groups .opt .sum { -webkit-line-clamp: 1; }
+  .opt .text[aria-expanded="true"] .sum { display: block; -webkit-line-clamp: unset; overflow: visible; }
   .restart { display: inline-flex; vertical-align: -2px; color: var(--muted); margin-left: 6px; }
   .glabel { display: flex; align-items: baseline; gap: 8px; } .glabel .small { text-transform: none; letter-spacing: 0; font-weight: 500; }
   .opt .more { margin: 4px 0 6px; padding: 12px; border-radius: 12px; background: var(--card-2); font-size: 14px; color: #C9D1D9; white-space: pre-line; }
@@ -427,7 +429,7 @@
             <div class="legend3" id="tripLegend"></div>
           </div>
           <div class="row" style="gap:20px;flex-wrap:wrap" id="tripNums"></div>
-          <details class="hidden" id="tripMore"><summary data-t>Mais números da viagem</summary>
+          <details class="hidden" id="tripMore"><summary class="row" style="gap:10px"><span class="grow" data-t>Mais números da viagem</span><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
             <div class="stack" style="gap:10px;padding-bottom:4px"><div class="vsavg hidden" id="tripVs"></div><div class="grid2 hidden" id="tripFigures"></div></div>
           </details>
           <div class="row" style="justify-content:space-between;flex-wrap:wrap">
@@ -505,7 +507,7 @@
         <span class="grow"><span class="title" data-t>Replay por minuto</span><br><span class="desc" data-t>Direto na linha do tempo marcada: bandeiras, força no limite, balanço, alertas.</span></span>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--dim)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
       </a>
-      <div class="label" id="marksLabel" data-t>Marcas</div>
+      <div class="label" id="marksLabel" tabindex="-1" data-t>Marcas</div>
       <div id="pendingList"></div>
       <div class="card list" id="markList"></div>
       <details class="card">
@@ -776,6 +778,7 @@ const POINT_SVG = {
   sinal: '<rect x="8" y="2.5" width="8" height="16" rx="2.5"/><circle cx="12" cy="6.5" r="1.4"/><circle cx="12" cy="10.5" r="1.4"/><circle cx="12" cy="14.5" r="1.4"/><path d="M12 18.5v3"/>',
   lombada: '<path d="M2 17h4.5c2.2 0 3.2-6 5.5-6s3.3 6 5.5 6H22"/>',
 };
+let vvOpen = false;  // «A atualização valeu?»: the numbers stay open while Viagens refreshes
 const TRIPS_FIRST = 8, TRIPS_MAX = 15;  // the newest first; the history in Início has them all
 let tripsShown = TRIPS_FIRST;
 let tripVersion = null;  // Viagens filtered by the installed version (its commit), null = all
@@ -799,6 +802,7 @@ function when(s) { return isToday(s) ? tf("hoje, {hora}", { hora: hhmm(s) }) : d
 function wheelText(w) { return w === 0 ? "0°" : w > 0 ? `◀ ${w}°` : `${-w}° ▶`; }  // positive is to the left
 const ICON_CHECK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 const ICON_X = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const ICON_CHEV_DOWN = '<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 const ICON_RESTART = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>';
 const ICON_LOCK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
 const ICON_CHEV = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--dim)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
@@ -1505,11 +1509,11 @@ function renderMarks(m) {
     b.addEventListener("click", () => openMark(p, null));
     c.append(b); return c;
   }));
-  const nAll = m.marks.length;
+  const nAll = m.marks.length, nPend = typeof m.pending === "number" ? m.pending : pending.length;  // /api/marks: the newest 30
   $("marksJump").classList.toggle("hidden", !nAll);
-  $("marksJumpText").textContent = [nAll === 1 ? t("1 marca") : tf("{n} marcas", { n: nAll }),
-    ...(pending.length ? [pending.length === 1 ? t("1 marca sem motivo") : tf("{n} marcas sem motivo", { n: pending.length })] : [])].join(" · ");
-  $("marksJump").classList.toggle("att", !!pending.length);
+  $("marksJumpText").textContent = [nAll === 1 ? t("1 marca") : tf("{n} marcas", { n: nAll >= 30 ? "30+" : nAll }),
+    ...(nPend ? [nPend === 1 ? t("1 marca sem motivo") : tf("{n} marcas sem motivo", { n: nPend })] : [])].join(" · ");
+  $("marksJump").classList.toggle("att", !!nPend);
   const list = $("markList"); list.replaceChildren();
   const done = m.marks.filter((x) => x.reason).slice(0, 10);
   if (!done.length) list.append(el("div", "line desc", t("Nenhuma marca ainda.")));
@@ -2311,12 +2315,15 @@ function renderMissions() {
     const left = openMissionsLeft(prog).filter((m) => !st.active.includes(m.key));
     if (left.length) {
       out.push(el("div", "label", tf("Ainda não feitas · {n}", { n: left.length })));
-      const ll = el("div", "card list"); ll.style.padding = "4px 16px";
+      const ll = el("div", "card list"); ll.style.padding = "4px 16px"; ll.id = "mLeftList";
       const ordered = LPL.missionOrder(left, prog), shown = mLeftAll ? ordered : ordered.slice(0, M_LEFT_FIRST);
       for (const m of shown) ll.append(mPickRow(m, prog[m.key], () => openMission(m.key, { s: "trilhas" })));
       if (shown.length < ordered.length) {
         const more = el("button", "link", tf("Mostrar mais ({n})", { n: ordered.length - shown.length })); more.type = "button"; more.style.margin = "6px 0";
-        more.addEventListener("click", () => { mLeftAll = true; renderMissions(); }); ll.append(more);
+        more.addEventListener("click", () => {
+          mLeftAll = true; renderMissions();
+          const nxt = document.querySelectorAll("#mLeftList .mpick")[M_LEFT_FIRST]; const f = nxt && nxt.querySelector("button"); if (f) f.focus();
+        }); ll.append(more);
       }
       out.push(ll, el("div", "small", tf("Toque em + para levar. Até {n} por viagem; andando, o copiloto mostra uma de cada vez.", { n: missions.max_active })));
     }
@@ -2327,7 +2334,9 @@ function renderMissions() {
       b.setAttribute("aria-label", `${t(tr.title)}: ${tr.d}/${tr.total}. ${tr.seal ? t("Selo conquistado") : tr.next ? tf("Próxima: {m}", { m: t(tr.next) }) : t("O que falta depende da conferência dos logs")}`);
       const top = el("span", "row"); top.style.gap = "8px"; top.insertAdjacentHTML("beforeend", ringSvg(tr.d, tr.total, 36, ""));
       const n = el("span", "title num", `${tr.d}/${tr.total}`); n.style.color = tr.seal ? "var(--accent)" : "var(--warn)"; top.append(n);
-      b.append(top, el("span", "ttl", t(tr.title))); b.addEventListener("click", () => openMissions({ s: "trilha", tr: tr.key })); grid.append(b);
+      b.append(top, el("span", "ttl", t(tr.title)));
+      if (tr.seal) b.append(el("span", "small", t("Selo conquistado")));
+      b.addEventListener("click", () => openMissions({ s: "trilha", tr: tr.key })); grid.append(b);
     }
     out.push(grid);
     const done = LPL.missionsChecked(missions, prog);
@@ -2701,10 +2710,12 @@ function renderHistory(h) {
   if (!has) return;
   const sel = tripPicked(h);
   const sig = JSON.stringify([h.list.map((tr) => [tr.id, tr.hidden, !!tr.summary, tr.minutes]), h.counts, h.filter, histShown, sel && sel.id,
-                              allMarks().map((m) => [m.t, m.reason]), L(), tripsPending, h.hidden, h.idle, histShowHidden, !!histQuery]);
+                              allMarks().map((m) => [m.t, m.reason]), L(), tripsPending, h.hidden, h.idle, histShowHidden, histQuery]);
   if (sig === histSig) return;
   histSig = sig;
-  $("historyCount").textContent = h.list.length === 1 ? t("1 viagem") : tf("{n} viagens", { n: h.list.length });
+  const fl = h.filter !== "todas" && LPL.HISTORY_FILTERS.find(([k]) => k === h.filter);
+  $("historyCount").textContent = [h.list.length === 1 ? t("1 viagem") : tf("{n} viagens", { n: h.list.length }),
+                                   ...(histQuery ? [`“${histQuery}”`] : []), ...(fl ? [t(fl[1])] : [])].join(" · ");
   $("historyFilters").replaceChildren(...LPL.HISTORY_FILTERS.map(([k, label]) => {
     const b = el("button", "chip num", `${t(label)} · ${h.counts[k]}`); b.type = "button";
     b.setAttribute("aria-pressed", k === h.filter ? "true" : "false");
@@ -2943,7 +2954,9 @@ function versionVerdict(list) {
     const v = el("div", "big"); v.style.color = vc.better * 2 > vc.judged ? "var(--accent)" : vc.better * 2 === vc.judged ? "var(--text)" : "var(--warn)";
     v.textContent = tf("Melhor em {n} de {m}", { n: vc.better, m: vc.judged }); c.append(v);
   } else if (vc.few) c.append(el("div", "desc", t("Pouca estrada para dizer")));
-  const box = el("details"); box.append(el("summary", "", t("Ver os números")));
+  const box = el("details"); box.open = vvOpen; const sum = el("summary", "row", ""); sum.style.gap = "10px";
+  sum.append(el("span", "grow", t("Ver os números"))); sum.insertAdjacentHTML("beforeend", ICON_CHEV_DOWN); box.append(sum);
+  box.addEventListener("toggle", () => { vvOpen = box.open; });
   const inner = el("div", "stack"); inner.style.cssText = "gap:8px;padding-bottom:4px"; box.append(inner); c.append(box);
   const head = el("div", "small num", tf("{a} km nesta versão · {b} km na última testada", { a: num(vc.a.km, 0), b: num(vc.b.km, 0) }));
   inner.append(head);
@@ -3037,7 +3050,7 @@ function renderTrips(err) {
   const moreBtn = [];
   if (firstN < upto) {
     const mb = el("button", "btn dark", tf("Mostrar mais ({n})", { n: upto - firstN })); mb.type = "button";
-    mb.addEventListener("click", () => { tripsShown = TRIPS_MAX; renderTrips(); }); moreBtn.push(mb);
+    mb.addEventListener("click", () => { tripsShown = TRIPS_MAX; renderTrips(); const nxt = $("tripsList").querySelectorAll(":scope > a.card")[firstN]; if (nxt) nxt.focus(); }); moreBtn.push(mb);
   }
   box.replaceChildren(...cards, ...shown.slice(0, firstN).map((tr) => {
     const start = tr.mtime - tr.minutes * 60;
@@ -3450,7 +3463,10 @@ $("readyCard").addEventListener("click", () => { readyOpen = !readyOpen; renderG
 $("readyMissions").addEventListener("click", (e) => { e.stopPropagation(); openMissions(); });
 $("readyMissionsBtn").addEventListener("click", (e) => { e.stopPropagation(); openMissions(); });
 $("readyHealth").addEventListener("click", (e) => { e.stopPropagation(); sub = "comma"; showView("ajustes"); });
-$("kpiVersion").addEventListener("click", () => { showView("viagens"); setTimeout(() => { const v = document.getElementById("versionVerdict"); if (v) v.scrollIntoView({ behavior: "smooth", block: "start" }); }, 300); });
+$("kpiVersion").addEventListener("click", () => {
+  vvOpen = true; showView("viagens");
+  setTimeout(() => { const v = document.getElementById("versionVerdict"); if (v) { const d = v.querySelector("details"); if (d) d.open = true; v.scrollIntoView({ behavior: "smooth", block: "start" }); } }, 300);
+});
 $("tripOlder").addEventListener("click", () => { const h = lastHist, tr = h && tripPicked(h); if (tr) { const o = h.list[h.list.indexOf(tr) + 1]; if (o) { tripSel = o.id; renderGarage(); } } });
 $("tripNewer").addEventListener("click", () => { const h = lastHist, tr = h && tripPicked(h); if (tr) { const o = h.list[h.list.indexOf(tr) - 1]; if (o) { tripSel = o.id; renderGarage(); } } });
 $("tripHide").addEventListener("click", () => { const tr = lastHist && tripPicked(lastHist); if (tr) hideTrip(tr, !tr.hidden); });
@@ -3473,7 +3489,7 @@ $("pointScrim").addEventListener("click", closePoint);
 $("passCheck").addEventListener("change", () => { $("passGo").disabled = !$("passCheck").checked; });
 $("missionOpen").addEventListener("click", () => openMissions());
 $("segToMissions").addEventListener("click", () => openMissions());
-$("marksJump").addEventListener("click", () => $("marksLabel").scrollIntoView({ behavior: "smooth", block: "start" }));
+$("marksJump").addEventListener("click", () => { $("marksLabel").scrollIntoView({ behavior: "smooth", block: "start" }); $("marksLabel").focus({ preventScroll: true }); });
 $("segToTrips").addEventListener("click", () => showView("viagens"));
 $("copClose").addEventListener("click", () => closeCop());
 $("copMark").addEventListener("click", () => openMark(null));
