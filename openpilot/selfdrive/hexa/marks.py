@@ -123,9 +123,12 @@ WINDOW_MAX_S = 60
 
 
 def clean_window(win) -> list[int] | None:
+  """[before, after] in whole seconds, each 0..WINDOW_MAX_S; None for the instant or anything that isn't two numbers."""
+  if not isinstance(win, list | tuple) or len(win) != 2 or any(isinstance(x, bool) or not isinstance(x, int | float) for x in win):
+    return None  # a string "12" isn't [1, 2]
   try:
     before, after = (max(0, min(WINDOW_MAX_S, int(x))) for x in win)
-  except (TypeError, ValueError):
+  except (OverflowError, ValueError):  # json.loads takes Infinity and NaN
     return None
   return [before, after] if before or after else None
 
