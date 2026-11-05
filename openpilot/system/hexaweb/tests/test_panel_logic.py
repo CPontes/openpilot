@@ -1089,7 +1089,13 @@ def test_marking_is_two_steps_with_nothing_to_scroll_and_the_text_box_on_top():
   assert "<textarea" not in one and 'id="reasons"' in one and "<textarea" in two and 'id="markWin"' in two  # no keyboard on step 1
   assert two.index('id="markSave"') > two.index("<textarea") and 'class="duo"' in two
   pick = html[html.index("function drawReasons()"):html.index("function drawPointKinds(")]
-  assert "markStep(2)" in pick  # one tap on a reason: on to the text
+  assert "markStep(2, markTyping())" in pick  # one tap on a reason: on to the text
+  # the keyboard opens by itself only parked or in the copilot; moving, the box still leaves by itself untouched (CTO, 05/11)
+  assert "function markTyping() { return carStopped || copOpen; }" in html
+  opening = html[html.index("function openMarkNow("):html.index("const MARK_WIN =")]
+  assert "markStep(2, !editing.id && markTyping())" in opening and "if (!markTyping()) markTimer = setTimeout(closeMark, EDITOR_MS)" in opening
+  step = html[html.index("function markStep("):html.index("// Three groups")]
+  assert "\n  clearTimeout(markTimer);" not in step  # opening step 2 alone doesn't stop the timer: a tap or the text's focus does
   assert '$("markSheet").classList.toggle("up", two)' in html and 'class="sheet up hidden" id="evSheet"' in html  # above the keyboard
   assert "window: MARK_WIN_S[markWin]" in html
 

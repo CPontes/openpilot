@@ -1643,20 +1643,22 @@ function openMarkNow(mark, reason, tapped) {
   markWin = "now";
   drawReasons();
   $("markScrim").classList.remove("hidden"); $("markSheet").classList.remove("hidden");
-  if (picked) markStep(2, !editing.id);  // a reason already chosen (Nota, or a mark being edited): straight to the text
-  else { markStep(1); if (!carStopped && !copOpen) markTimer = setTimeout(closeMark, EDITOR_MS); }  // the driver alone: it leaves by itself
+  // the keyboard only parked or in the copilot (the passenger's): moving outside it, the text waits for a tap (as before app 15)
+  if (picked) markStep(2, !editing.id && markTyping());  // a reason already chosen (Nota, or a mark being edited): straight to the text
+  else markStep(1);
+  if (!markTyping()) markTimer = setTimeout(closeMark, EDITOR_MS);  // the driver alone: a box nobody touches leaves by itself
 }
 // When it happened, around the tap (owner, 04/11): seconds [before, after] the mark, for whoever reads the log
 const MARK_WIN = { now: "Na hora", b10: "Últimos 10 s", b30: "Últimos 30 s", a30: "Próximos 30 s" };
 const MARK_WIN_S = { now: [0, 0], b10: [10, 0], b30: [30, 0], a30: [0, 30] };
 let markWin = "now";
+function markTyping() { return carStopped || copOpen; }
 function markStep(n, focus = true) {
   const two = n === 2;
   $("markStep1").classList.toggle("hidden", two); $("markStep2").classList.toggle("hidden", !two);
   $("markSheet").classList.toggle("up", two);  // the keyboard comes from below: the box goes up
   $("markSheet").scrollTop = 0;
   if (!two) { $("markNote").blur(); return; }
-  clearTimeout(markTimer);
   const r = marksState.reasons.find((x) => x.key === picked);
   const c = $("markChosen"); c.replaceChildren();
   const ic = el("span", ""); ic.innerHTML = reasonIcon(r && !r.custom ? r.key : null, 26);
@@ -1666,7 +1668,7 @@ function markStep(n, focus = true) {
   $("markWinBox").classList.toggle("hidden", !!(editing && editing.id));  // a new mark only: an old one keeps its time
   $("markWin").replaceChildren(...Object.keys(MARK_WIN).map((k) => {
     const b = el("button", "", t(MARK_WIN[k])); b.type = "button"; b.setAttribute("aria-pressed", k === markWin ? "true" : "false");
-    b.addEventListener("click", () => { markWin = k; markStep(2, false); });
+    b.addEventListener("click", () => { clearTimeout(markTimer); markWin = k; markStep(2, false); });
     return b;
   }));
   drawReasons();
@@ -1679,7 +1681,7 @@ function drawReasons() {
   const btn = (r) => {
     const b = el("button", r.custom ? "mine" : ""); b.type = "button"; b.setAttribute("aria-pressed", r.key === picked ? "true" : "false");
     b.innerHTML = reasonIcon(r.custom ? null : r.key, 24); b.append(el("span", "", t(r.label)));
-    b.addEventListener("click", () => { clearTimeout(markTimer); picked = r.key; markStep(2); });  // one tap: on to the text
+    b.addEventListener("click", () => { clearTimeout(markTimer); picked = r.key; markStep(2, markTyping()); });  // one tap: on to the text
     return b;
   };
   const out = [];
