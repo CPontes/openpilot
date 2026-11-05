@@ -20,7 +20,12 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "05/11", "8066720", "Limite da via pelo mapa (em teste)",
+  Release("", "05/11", "8066720", "Missões que avançam na hora",
+          ("Missões: o que você faz conta na hora, como «feita · a conferir»; o nível e os selos já sobem",
+           "Depois o CTO confere no log: aceita, ou devolve com o motivo e o celular pede para refazer",
+           "«Instalar a versão nova» espera a versão que o comma roda; «200 km» conta numa mesma semana"),
+          driving=False),
+  Release("841fb39", "05/11", "8066720", "Limite da via pelo mapa (em teste)",
           ("Velocidade: «limite da via pelo mapa», desligado; «mostrar» põe o limite na tela do celular; «avisar» também toca um aviso",
            "O aviso toca uma vez quando você passa do limite mais a tolerância (7 km/h até 100, 7% acima) por 2 s",
            "O mapa vem do OpenStreetMap: instale e baixe o Rio pelo celular, com o carro desligado e num Wi-Fi",
