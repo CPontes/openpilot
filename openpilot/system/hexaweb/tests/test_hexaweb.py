@@ -1732,3 +1732,56 @@ def test_a_comma_without_sharing_answers_plainly(panel):
   token = panel.pair()
   assert panel.json("/api/share", token=token) == (200, {"enabled": False, "receiver": False, "items": [], "forgetting": False, "sent": 0})
   assert panel.json("/api/share", {"id": "x"}, token)[0] == 404
+
+
+# *** the route from the phone (selfdrive/hexa/nav.py) ***
+
+def _nav_panel(panel, results=None):
+  from openpilot.selfdrive.hexa import nav
+  urls = []
+
+  def get(url):
+    urls.append(url)
+    return results if results is not None else [{"lat": "-22.9035", "lon": "-43.1092", "display_name": "Icaraí, Niterói"}]
+  panel.backend.navigator = nav.Navigator(panel.store, get_json=get, mono=lambda: panel.now)
+  panel.store.put("NavigationEnabled", True)
+  return urls
+
+
+def test_nav_needs_a_paired_phone(panel):
+  _nav_panel(panel)
+  assert panel.json("/api/nav")[0] == 401
+  assert panel.json("/api/nav/go", {"latitude": -22.9, "longitude": -43.1})[0] == 401
+
+
+def test_nav_search_go_save_and_stop(panel):
+  urls = _nav_panel(panel)
+  token = panel.pair()
+  status, body = panel.json("/api/nav/search", {"q": "icaraí"}, token)
+  assert status == 200 and body["results"][0]["name"] == "Icaraí, Niterói" and len(urls) == 1
+  place = body["results"][0]
+  assert panel.json("/api/nav/go", {**place}, token)[0] == 200
+  state = panel.json("/api/nav", token=token)[1]
+  assert state["enabled"] and state["destination"]["place_name"] == "Icaraí, Niterói" and state["route"] == {"active": False}
+  assert panel.store.get("HexaWebAudit")[-1]["event"] == "nav_go" and "Icaraí" not in str(panel.store.get("HexaWebAudit")[-1])
+  assert panel.json("/api/nav/place", {**place, "name": "Praia"}, token)[1]["places"][0]["name"] == "Praia"
+  assert panel.json("/api/nav/stop", {}, token) == (200, {"ok": True})
+  assert panel.json("/api/nav", token=token)[1]["destination"] is None
+  assert panel.json("/api/nav/place/remove", {"name": "praia"}, token)[1]["places"] == []
+
+
+def test_nav_go_while_driving_is_allowed_it_doesnt_change_the_driving(panel):
+  _nav_panel(panel)
+  token = panel.pair()
+  panel.vs = VehicleState(onroad=True, parked=False, standstill=False, engaged=True)
+  assert panel.json("/api/nav/go", {"latitude": -22.9, "longitude": -43.1, "name": "x"}, token)[0] == 200
+  assert panel.json("/api/nav/token", {"token": "pk." + "a" * 30}, token)[0] == 409  # the key only with the car off
+
+
+def test_nav_errors_are_the_phones(panel):
+  _nav_panel(panel)
+  token = panel.pair()
+  panel.store.put("NavigationEnabled", False)
+  status, body = panel.json("/api/nav/go", {"latitude": -22.9, "longitude": -43.1}, token)
+  assert status == 400 and "navegação" in body["error"]
+  assert panel.json("/api/nav/search", {"q": "a"}, token)[0] == 400

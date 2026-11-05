@@ -401,6 +401,30 @@
 
     <!-- Início -->
     <div data-view="inicio">
+      <section class="card stack" id="navCard" style="gap:10px">
+        <div class="row"><span class="grow title" data-t>Para onde?</span><span class="small" id="navState"></span></div>
+        <div class="hidden stack" id="navRoute" style="gap:6px">
+          <div class="big" id="navNext"></div>
+          <div class="desc num" id="navLeft"></div>
+          <div class="map hidden" id="navMap" style="height:180px">
+            <div class="tiles" id="navTiles"></div>
+            <canvas id="navCanvas" role="img" data-t-aria="Rota" aria-label="Rota"></canvas>
+          </div>
+          <div class="chips"><button class="link" id="navStop" type="button" data-t>Encerrar rota</button><button class="link" id="navSave" type="button" data-t>Salvar este destino</button></div>
+        </div>
+        <form class="row" id="navForm" style="gap:8px" autocomplete="off">
+          <input id="navQuery" type="search" class="grow" maxlength="200" enterkeyhint="search" data-t-ph="Endereço ou link do Maps" placeholder="Endereço ou link do Maps">
+          <button class="btn" id="navSearch" type="submit" style="width:auto;padding:0 16px" data-t>Buscar</button>
+        </form>
+        <div class="stack" id="navResults" style="gap:6px"></div>
+        <div class="chips" id="navPlaces"></div>
+        <div class="small" id="navNote"></div>
+        <details>
+          <summary class="small" data-t>Chave Mapbox (opcional)</summary>
+          <p class="small" data-t>A rota vem da Mapbox. Se o comma não conseguir a rota pela conta da comma, cole aqui uma chave pública sua (começa com pk.). Fica só no comma.</p>
+          <div class="row" style="gap:8px"><input id="navToken" type="text" class="grow" autocomplete="off" spellcheck="false" placeholder="pk...."><button class="btn" id="navTokenSave" type="button" style="width:auto;padding:0 16px" data-t>Salvar</button></div>
+        </details>
+      </section>
       <div id="garage">
         <section class="card att stack hidden" id="addrCard" style="gap:8px">
           <div class="title" data-t>Este atalho usa um número que muda</div>
@@ -1341,6 +1365,7 @@ function auditText(a) {
 
 // ----- Início -----
 function refreshHome(full) {
+  refreshNav();
   $("garage").classList.toggle("hidden", driving);
   $("drive").classList.toggle("hidden", !driving);
   document.body.classList.toggle("driving", driving && view === "inicio");
@@ -1797,6 +1822,105 @@ $("shareForget").addEventListener("click", async () => {
   const r = await api("/api/share/forget", {});
   toast(r.status === 200 ? t("Pedido feito: apaga no próximo Wi-Fi.") : (r.data.error || t("Não foi possível.")));
   shareAt = 0; refreshShare();
+});
+// ----- the route (selfdrive/hexa/nav.py): the phone picks where to go, openpilot's navigation does the rest -----
+// openpilot keeps the lane and the speed: turning at a junction stays with the driver. Andando, só o passageiro mexe aqui.
+let navState = null, navAt = 0, navSig = "";
+async function refreshNav(force) {
+  if (!online || (!force && Date.now() - navAt < 2000)) return;
+  navAt = Date.now();
+  const r = await api("/api/nav");
+  if (r.status === 200) { navState = r.data; renderNav(); }
+}
+function navDistance(m) { return m >= 1000 ? `${num(m / 1000, 1)} km` : `${Math.max(0, Math.round(m / 10) * 10)} m`; }
+function renderNav() {
+  const s = navState; if (!s) return;
+  const rt = s.route || {}, dest = s.destination;
+  $("navState").textContent = !s.enabled ? t("navegação desligada no comma") : dest ? (dest.place_name || "") : "";
+  $("navRoute").classList.toggle("hidden", !dest);
+  if (dest) {
+    $("navNext").textContent = rt.active ? (rt.next || t("Siga em frente")) : t("Calculando a rota…");
+    $("navLeft").textContent = rt.active ? [tf("em {d}", { d: navDistance(rt.in_m) }), tf("faltam {d}", { d: navDistance(rt.left_m) }), tf("{m} min", { m: Math.round(rt.left_s / 60) })].join(" · ")
+                                         : t("A rota aparece com o carro ligado e o comma na internet.");
+  }
+  $("navNote").textContent = s.enabled ? "" : t("Para usar, ligue \"navegação (alfa)\" na tela do comma: Configurações, Desenvolvedor.");
+  $("navPlaces").replaceChildren(...(s.places || []).map((p) => {
+    const b = el("button", "chip", "★ " + p.name); b.type = "button";
+    b.addEventListener("click", () => navGo(p));
+    b.addEventListener("contextmenu", (e) => { e.preventDefault(); navRemovePlace(p); });
+    return b;
+  }));
+  $("navToken").placeholder = s.token ? t("chave salva") : "pk....";
+  drawNavMap(rt.path || []);
+}
+function drawNavMap(path) {
+  const box = $("navMap");
+  box.classList.toggle("hidden", path.length < 2);
+  if (path.length < 2) return;
+  const w = box.clientWidth, hgt = box.clientHeight, sig = [w, hgt, streets, path.length, path[0], path[path.length - 1]].join("|");
+  if (sig === navSig || !w) return;
+  navSig = sig;
+  const fit = LPL.mapFit(path, w, hgt, MAP_PAD); if (!fit) return;
+  const tiles = streets ? LPL.mapTiles(fit, w, hgt) : [];  // the street map only if turned on on this phone, as in Viagens
+  $("navTiles").replaceChildren(...tiles.map((tl) => {
+    const im = new Image(); im.alt = ""; im.referrerPolicy = "strict-origin";
+    im.style.cssText = `left:${tl.left}px;top:${tl.top}px;width:${tl.size + .5}px;height:${tl.size + .5}px`;
+    im.onerror = () => im.remove();
+    im.src = `https://tile.openstreetmap.org/${tl.z}/${tl.x}/${tl.y}.png`;
+    return im;
+  }));
+  const c = $("navCanvas"), ratio = window.devicePixelRatio || 1;
+  c.width = Math.round(w * ratio); c.height = Math.round(hgt * ratio);
+  const g = c.getContext("2d"); g.setTransform(ratio, 0, 0, ratio, 0, 0); g.clearRect(0, 0, w, hgt);
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  g.lineCap = "round"; g.lineJoin = "round";
+  g.strokeStyle = "rgba(5, 7, 9, .8)"; g.lineWidth = 9; g.beginPath(); fit.xy.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
+  g.strokeStyle = css("--accent"); g.lineWidth = 5; g.beginPath(); fit.xy.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
+  const dot = ([x, y], fill, ring) => { g.beginPath(); g.arc(x, y, 7, 0, 7); g.fillStyle = fill; g.fill(); g.lineWidth = 3; g.strokeStyle = ring; g.stroke(); };
+  dot(fit.xy[0], css("--bg"), css("--text")); dot(fit.xy[fit.xy.length - 1], css("--text"), css("--bg"));
+}
+async function navSearch() {
+  const q = $("navQuery").value.trim();
+  if (!q) return;
+  if (askPassenger(() => navSearch())) return;
+  $("navSearch").disabled = true;
+  const r = await api("/api/nav/search", { q });
+  $("navSearch").disabled = false;
+  if (r.status !== 200) { toast(r.data.error || t("Não foi possível.")); return; }
+  const res = r.data.results || [];
+  $("navResults").replaceChildren(...(res.length ? res : [null]).map((x) => {
+    if (!x) return el("div", "desc", t("Nada encontrado. Tente com o bairro e a cidade."));
+    const b = el("button", "card row", ""); b.type = "button"; b.style.cssText = "text-align:left;margin:0;padding:10px 12px;color:inherit;font:inherit";
+    b.append(el("span", "grow", x.name), el("b", "", t("Ir")));
+    b.addEventListener("click", () => navGo(x));
+    return b;
+  }));
+}
+async function navGo(p) {
+  const r = await api("/api/nav/go", { latitude: p.latitude, longitude: p.longitude, name: p.name });
+  toast(r.status === 200 ? tf("Rota para {lugar}.", { lugar: p.name }) : (r.data.error || t("Não foi possível.")));
+  if (r.status === 200) { $("navResults").replaceChildren(); $("navQuery").value = ""; }
+  refreshNav(true);
+}
+async function navRemovePlace(p) {
+  if (!confirm(tf("Tirar \"{lugar}\" dos lugares salvos?", { lugar: p.name }))) return;
+  const r = await api("/api/nav/place/remove", { name: p.name });
+  if (r.status !== 200) toast(r.data.error || t("Não foi possível."));
+  refreshNav(true);
+}
+$("navForm").addEventListener("submit", (e) => { e.preventDefault(); navSearch(); });
+$("navStop").addEventListener("click", async () => { await api("/api/nav/stop", {}); refreshNav(true); });
+$("navSave").addEventListener("click", async () => {
+  const d = navState && navState.destination; if (!d) return;
+  const name = prompt(t("Nome deste lugar (ex.: Casa, Trabalho):"), ""); if (!name) return;
+  const r = await api("/api/nav/place", { name, latitude: d.latitude, longitude: d.longitude });
+  toast(r.status === 200 ? t("Lugar salvo. Toque e segure para tirar.") : (r.data.error || t("Não foi possível.")));
+  refreshNav(true);
+});
+$("navTokenSave").addEventListener("click", async () => {
+  const r = await api("/api/nav/token", { token: $("navToken").value.trim() });
+  toast(r.status === 200 ? (r.data.token ? t("Chave salva no comma.") : t("Chave removida.")) : (r.data.error || t("Não foi possível.")));
+  $("navToken").value = ""; refreshNav(true);
 });
 
 // ----- the video of a mark: a short-lived link from the comma, played by the phone's own player -----

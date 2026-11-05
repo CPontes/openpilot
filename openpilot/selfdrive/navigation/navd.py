@@ -50,7 +50,8 @@ class RouteEngine:
     self.recompute_hold = 0
     self.reroute_counter = 0
 
-    self.mapbox_token = os.environ.get("MAPBOX_TOKEN")
+    # LizPilot: the owner's own key, set from the phone (selfdrive/hexa/nav.py), when comma's API doesn't route for this comma
+    self.mapbox_token = os.environ.get("MAPBOX_TOKEN") or self.params.get("HexaMapboxToken") or None
     self.api = Api(self.params.get("DongleId")) if self.mapbox_token is None else None
     self.mapbox_host = "https://api.mapbox.com" if self.mapbox_token is not None else API_HOST.rstrip('/') + '/v1/nav'
 

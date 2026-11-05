@@ -25,6 +25,7 @@ from openpilot.selfdrive.hexa import live as hexa_live
 from openpilot.selfdrive.hexa import marks as hexa_marks
 from openpilot.selfdrive.hexa import mdns as hexa_mdns
 from openpilot.selfdrive.hexa import missions as hexa_missions
+from openpilot.selfdrive.hexa import nav as hexa_nav
 from openpilot.selfdrive.hexa import radars
 from openpilot.selfdrive.hexa import share as hexa_share
 from openpilot.selfdrive.hexa import phone
@@ -117,7 +118,8 @@ class PanelBackend:
                gps_fix: Callable[[], tuple[float, float, float, float] | None] | None = None,
                health_state: Callable[[], dict] | None = None,
                summarize: Callable[[dict], dict] = timeline.trip_summary, spawn: Callable[[Callable[[], None]], None] | None = None,
-               sharer: hexa_share.Sharer | None = None):
+               sharer: hexa_share.Sharer | None = None,
+               navigator: hexa_nav.Navigator | None = None, route_state: Callable[[], dict] | None = None):
     self.store = store  # Params, or anything with get/put/get_bool/put_bool/remove
     self._vehicle_state = vehicle_state
     self.clock = clock  # wall clock: token, audit and mark dates
@@ -159,6 +161,8 @@ class PanelBackend:
     self._trip_sigs: dict[str, tuple[str, int]] = {}
     self._trip_gen = 0
     self.sharer = sharer  # sending a mark's moment to the developers (selfdrive/hexa/share.py)
+    self.navigator = navigator or hexa_nav.Navigator(store)  # where to go: openpilot's own navigation takes it from there
+    self._route_state = route_state or (lambda: {"active": False})
 
   def vehicle_state(self) -> VehicleState:
     with self._vs_lock:
@@ -1245,6 +1249,43 @@ class PanelBackend:
       marks = [dict(m) for m in self._marks()]
     return self.sharer.step(offroad=not self.vehicle_state().onroad, network_ok=network_ok, marks=marks)
 
+  # *** the route: the phone picks the destination, openpilot's navigation (navd) does the rest. It never changes the driving ***
+
+  def nav_state(self) -> dict:
+    n = self.navigator
+    return {"enabled": n.enabled(), "destination": n.destination(), "places": n.places(),
+            "token": bool(self.store.get(hexa_nav.TOKEN_PARAM)), "route": self._route_state()}
+
+  def _nav(self, fn) -> tuple[int, dict]:
+    try:
+      out = fn()
+    except hexa_nav.NavError as e:
+      return 400, {"error": str(e)}
+    return 200, {"ok": True, **(out or {})}
+
+  def nav_search(self, who: dict, query: str) -> tuple[int, dict]:
+    return self._nav(lambda: {"results": self.navigator.search(query)})
+
+  def nav_go(self, who: dict, body: dict) -> tuple[int, dict]:
+    status, out = self._nav(lambda: {"destination": self.navigator.go(body.get("latitude"), body.get("longitude"), body.get("name", ""))})
+    if status == 200:
+      self._audit({"event": "nav_go", "who": who.get("name", "")})  # not where: the audit is read on the phones
+    return status, out
+
+  def nav_stop(self, who: dict) -> tuple[int, dict]:
+    return self._nav(lambda: self.navigator.stop())
+
+  def nav_place(self, who: dict, body: dict) -> tuple[int, dict]:
+    return self._nav(lambda: {"places": self.navigator.save_place(body.get("name"), body.get("latitude"), body.get("longitude"))})
+
+  def nav_place_remove(self, who: dict, name: str) -> tuple[int, dict]:
+    return self._nav(lambda: {"places": self.navigator.remove_place(name)})
+
+  def nav_token(self, who: dict, token) -> tuple[int, dict]:
+    if self.vehicle_state().onroad:
+      return 409, {"error": "Só com o carro desligado."}
+    return self._nav(lambda: {"token": self.navigator.set_token(token)})
+
   def logout(self, who: dict) -> tuple[int, dict]:
     with self.lock:
       self.store.put(phone.TOKENS_PARAM, phone.revoke_token(self._tokens(), who.get("id", "")))
@@ -1425,6 +1466,10 @@ def make_handler(backend: PanelBackend):
         who = self._who()
         if who is not None:
           self._json(200, backend.share_state())
+      elif path == "/api/nav":
+        who = self._who()
+        if who is not None:
+          self._json(200, backend.nav_state())
       elif path == "/api/phones":
         who = self._who()
         if who is not None:
@@ -1468,6 +1513,12 @@ def make_handler(backend: PanelBackend):
         "/api/share": lambda who, b: backend.share_add(who, str(b.get("id", "")), b.get("with_note") is True),
         "/api/share/cancel": lambda who, b: backend.share_cancel(who, str(b.get("id", ""))),
         "/api/share/forget": lambda who, b: backend.share_forget(who),
+        "/api/nav/search": lambda who, b: backend.nav_search(who, str(b.get("q", ""))),
+        "/api/nav/go": lambda who, b: backend.nav_go(who, b),
+        "/api/nav/stop": lambda who, b: backend.nav_stop(who),
+        "/api/nav/place": lambda who, b: backend.nav_place(who, b),
+        "/api/nav/place/remove": lambda who, b: backend.nav_place_remove(who, str(b.get("name", ""))),
+        "/api/nav/token": lambda who, b: backend.nav_token(who, b.get("token", "")),
       }
       if path not in routes and path != "/api/logout":
         self._json(404, {"error": "Não encontrado."})
@@ -1512,7 +1563,7 @@ def main():
   params = Params()
   sm = messaging.SubMaster(["deviceState", "carState", "selfdriveState", "carControl", "carOutput", "radarState", "gpsLocationExternal",
                             "onroadEvents", "drivingModelData", "driverMonitoringState", "managerState", "lateralTorqueParameters",
-                            "vehicleParameters", "lateralDelay", "peripheralState"])
+                            "vehicleParameters", "lateralDelay", "peripheralState", "navInstruction", "navRoute"])
 
   def vehicle_state() -> VehicleState:
     sm.update(0)
@@ -1560,11 +1611,23 @@ def main():
       return None
     return g.latitude, g.longitude, g.bearingDeg, g.speed
 
+  def route_state() -> dict:
+    with nav_lock:
+      sm.update(0)
+      alive = sm.recv_frame["navInstruction"] > 0 and time.monotonic() - sm.recv_time["navInstruction"] < 5 and sm.valid["navInstruction"]
+      pts = [(c.latitude, c.longitude) for c in sm["navRoute"].coordinates] if sm.recv_frame["navRoute"] > 0 else []
+      return hexa_nav.route_view(sm["navInstruction"], pts, alive)
+
+  def car_position() -> tuple[float, float] | None:
+    fix = gps_fix()
+    return (fix[0], fix[1]) if fix is not None else None
+
+  nav_lock = threading.Lock()
   from openpilot.common.hardware.hw import Paths
   from openpilot.selfdrive.hexa import edition
   backend = PanelBackend(params, vehicle_state, log_event=lambda fields: cloudlog.event("hexa_mark", **fields),
                          log_root=Paths.log_root(), live_state=live_state, radar_path=radars.updated_path(), gps_fix=gps_fix,
-                         health_state=health_state,
+                         health_state=health_state, navigator=hexa_nav.Navigator(params, position=car_position), route_state=route_state,
                          sharer=hexa_share.Sharer(params, Paths.log_root(), edition=edition.EDITION,
                                                   offroad=lambda: not backend.vehicle_state().onroad))  # the car on stops a cut
 
