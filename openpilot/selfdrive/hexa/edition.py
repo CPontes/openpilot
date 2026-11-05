@@ -17,10 +17,11 @@ EDITION_FILE = Path(__file__).with_name("edition.txt")
 
 
 def read_edition(path=EDITION_FILE) -> str:
-  """The word in edition.txt. Missing or unknown: the Haval build, which the canal always was."""
+  """The word in edition.txt, read exactly as launch_env.sh reads it (the first 16 bytes, only a-z and 0-9), so both
+  always agree. Missing, unreadable or unknown: the Haval build, which the canal always was. Never raises."""
   try:
-    word = path.read_text(encoding="utf-8").strip()
-  except OSError:
+    word = "".join(c for c in path.read_bytes()[:16].decode("latin-1") if c in "abcdefghijklmnopqrstuvwxyz0123456789")
+  except Exception:
     return "h6gt"
   return word if word in EDITIONS else "h6gt"
 

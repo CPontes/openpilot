@@ -149,8 +149,16 @@ class Params:
 
 
 def test_delay_from_the_options():
-  assert auto_lane_change_delay(Params(False, 1)) is None
-  assert [auto_lane_change_delay(Params(True, i)) for i in range(3)] == list(AUTO_LANE_CHANGE_DELAYS) == [1., 2., 3.]
+  assert auto_lane_change_delay(Params(False, 1), "gwm") is None
+  assert [auto_lane_change_delay(Params(True, i), "gwm") for i in range(3)] == list(AUTO_LANE_CHANGE_DELAYS) == [1., 2., 3.]
+
+
+def test_only_in_a_gwm_by_the_car_of_this_drive():
+  # the brand modeld has from CarParams: CarParamsPersistent can still say the last car's (a comma moved from a Haval)
+  p = Params(True, 1)
+  p.d["CarParamsPersistent"] = b"from the last car, never read"
+  assert [auto_lane_change_delay(p, b) for b in ("toyota", "hyundai", "", "mock")] == [None] * 4
+  assert auto_lane_change_delay(p, "gwm") == 2.
 
 
 def test_bad_delay_never_stops_modeld():
@@ -166,7 +174,7 @@ def test_bad_delay_never_stops_modeld():
     def get(self, key):
       return self.delay
 
-  assert [auto_lane_change_delay(Store(d)) for d in (0, 1, 2, 7, None)] == [1., 2., 3., 2., 2.]
+  assert [auto_lane_change_delay(Store(d), "gwm") for d in (0, 1, 2, 7, None)] == [1., 2., 3., 2., 2.]
 
 
 
@@ -323,3 +331,15 @@ def test_back_over_to_the_last_side_is_an_ordinary_prompt():
   dh = DesireHelper(1.)
   drive(dh, left_change() + [(.3, BOTH), (REVERSE_HOLD + .5, RIGHT)])  # the change-back prompt
   assert sides(drive(dh, [(1.5, LEFT)])) == [L]  # straight over to the left: as always, the auto timer may chain
+
+
+def test_other_brands_count_the_hand_off_by_their_own_steering_pressed():
+  # RELEASE_TORQUE is in the Haval's units: another car's resting hand may read any number, but steeringPressed is its own
+  for torque in (10., 60., 200.):  # under, around and over the Haval's 30
+    dh = DesireHelper(2., release_torque=None)
+    drive(dh, left_change() + [(.3, BOTH), (REVERSE_HOLD + .1, {**RIGHT, "pressed": True, "torque": -torque})])
+    st = drive(dh, [(RELEASE_TIME + .1, {**RIGHT, "torque": -torque}), (.1, {**RIGHT, "pressed": True, "torque": -torque})])
+    assert sides(st) == [R], torque  # let go by its own measure, then a push: it goes back
+    dh = DesireHelper(2., release_torque=None)
+    st = drive(dh, left_change() + [(.3, BOTH), (REVERSE_HOLD + 2., {**RIGHT, "pressed": True, "torque": -torque})])
+    assert sides(st) == [L], torque  # never let go: still only the first change

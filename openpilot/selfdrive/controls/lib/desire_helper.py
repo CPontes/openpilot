@@ -31,10 +31,11 @@ RELEASE_TIME = .5  # s
 RELEASE_FRAMES = round(RELEASE_TIME / DT_MDL)  # counted in frames: adding up DT_MDL never quite reaches it
 
 
-def auto_lane_change_delay(params) -> float | None:
+def auto_lane_change_delay(params, brand: str) -> float | None:
+  """brand: of the car this drive is in (CarParams). CarParamsPersistent can still be the last car's when modeld reads it."""
   if not params.get_bool("AutoLaneChange"):
     return None
-  if not edition.allows(edition.GWM_ONLY, params):  # RELEASE_TORQUE is in the Haval's units: off in other cars (edition.py)
+  if brand not in edition.GWM_ONLY:  # measured and tuned on the Haval only (edition.py)
     return None
   choice = params.get("AutoLaneChangeDelay")
   # modeld reads this at startup: a bad value must not stop it from running
@@ -42,8 +43,10 @@ def auto_lane_change_delay(params) -> float | None:
 
 
 class DesireHelper:
-  def __init__(self, auto_delay: float | None = None):
+  def __init__(self, auto_delay: float | None = None, release_torque: float | None = RELEASE_TORQUE):
     self.auto_delay = auto_delay  # None: only the push on the wheel starts a change
+    # the wheel let go: under RELEASE_TORQUE, in the Haval's units; None (other brands): the car's own steeringPressed off
+    self.release_torque = release_torque
     self.auto_timer = 0.0
     self.auto_armed = False
     self.prev_blinker = False
@@ -134,7 +137,8 @@ class DesireHelper:
         auto_ready = self.auto_armed and self.auto_delay is not None and self.auto_timer >= self.auto_delay
         if self.change_back:  # going back: never the auto timer, and a push after the wheel was let go
           if self.released < RELEASE_FRAMES:  # once let go long enough, it stays so for this prompt
-            self.released = self.released + 1 if abs(carstate.steeringTorque) < RELEASE_TORQUE else 0
+            let_go = not carstate.steeringPressed if self.release_torque is None else abs(carstate.steeringTorque) < self.release_torque
+            self.released = self.released + 1 if let_go else 0
           auto_ready = False
           torque_applied = torque_applied and self.released >= RELEASE_FRAMES
 

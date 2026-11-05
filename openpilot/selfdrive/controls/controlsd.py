@@ -52,8 +52,8 @@ class Controls:
     self.low_speed_filter = LowSpeedCurvatureFilter() if self.CP.brand == "gwm" and self.params.get_bool("LowSpeedFilter") else None
 
     self.lane_offset = LaneOffset()
-    # tuned on the Haval only: in the generic edition (edition.py) it stays off in any other car, whatever the param says
-    self.lane_offset_allowed = self.CP.brand in edition.GWM_ONLY or edition.EDITION != "generic"
+    # tuned on the Haval only: off in any other car, whatever the param says (the Haval build is always a GWM)
+    self.lane_offset_allowed = self.CP.brand in edition.GWM_ONLY
     self.lane_offset_enabled = self.lane_offset_allowed and self.params.get_bool("LaneOffsetEnabled")
     self.frame = 0
 

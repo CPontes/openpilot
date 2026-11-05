@@ -42,9 +42,9 @@ GENERIC_CHECKS = textwrap.dedent('''
   assert edition.car_brand(Store(CarParamsPersistent=b"not capnp")) is None  # never raises
 
   # lane change by the turn signal: the release torque is in the Haval's units
-  assert auto_lane_change_delay(store("toyota", AutoLaneChange=True, AutoLaneChangeDelay=1)) is None
-  assert auto_lane_change_delay(store(None, AutoLaneChange=True, AutoLaneChangeDelay=1)) is None
-  assert auto_lane_change_delay(store("gwm", AutoLaneChange=True, AutoLaneChangeDelay=1)) == 2.
+  assert auto_lane_change_delay(store("toyota", AutoLaneChange=True, AutoLaneChangeDelay=1), "toyota") is None
+  assert auto_lane_change_delay(store("gwm", AutoLaneChange=True, AutoLaneChangeDelay=1), "toyota") is None  # last car a Haval
+  assert auto_lane_change_delay(store(None, AutoLaneChange=True, AutoLaneChangeDelay=1), "gwm") == 2.
 
   # missions: only what any car can test, from zero, without the owner's drives
   assert missions.CATALOG and {m.trail for m in missions.CATALOG} <= set(missions.GENERIC_TRAILS)
@@ -94,6 +94,15 @@ def launch_env_fingerprint(tmp_path, edition, fp_content):
   return out.stdout
 
 
+def launch_env_fingerprint_raw(tmp_path, raw: bytes):
+  """FINGERPRINT from launch_env.sh with edition.txt holding these exact bytes and no opt-in file."""
+  launch_env_fingerprint(tmp_path, "", None)
+  (tmp_path / "openpilot" / "selfdrive" / "hexa" / "edition.txt").write_bytes(raw)
+  out = subprocess.run(["bash", "-c", f'unset FINGERPRINT; source "{tmp_path / "launch_env.sh"}" >/dev/null 2>&1; printf "%s" "$FINGERPRINT"'],
+                       cwd=tmp_path, capture_output=True, text=True, timeout=30)
+  return out.stdout
+
+
 def test_launch_env_the_haval_build_is_always_the_haval(tmp_path):
   for edition in ("h6gt\n", None, "something else"):  # missing or unknown: the canal, as it always was
     for fp in (None, "TOYOTA_RAV4\n"):  # the opt-in file doesn't change the Haval build
@@ -114,3 +123,29 @@ def test_the_edition_file(tmp_path):
     f.write_text(content)
     assert edition.read_edition(f) == expected, content
   assert edition.read_edition(tmp_path / "missing.txt") == "h6gt"
+
+
+def test_python_and_the_shell_read_the_edition_alike(tmp_path):
+  # a word they disagreed on could leave the shell generic (no forced Haval) and Python in the Haval build
+  from openpilot.selfdrive.hexa import edition
+  f = tmp_path / "edition.txt"
+  cases = (b"generic\n", b"\xef\xbb\xbfgeneric\n", b"gen eric", "generic".encode("utf-16"), b"GENERIC", b"h6gt\r\n",
+           b"\xff\xfe\x00", b"generic" + b"x" * 20, b"   generic   ")
+  for raw in cases:
+    f.write_bytes(raw)
+    # the very lines of launch_env.sh, sourced against this file
+    shell = launch_env_fingerprint_raw(tmp_path, raw)
+    py = edition.read_edition(f)  # never raises
+    assert (py == "generic") == (shell != "GWM_HAVAL_H6"), (raw, py, shell)
+
+
+def test_information_alerts_never_hide_driver_monitoring():
+  from openpilot.cereal import log
+  from openpilot.selfdrive.selfdrived.events import EVENTS, ET, Priority
+  E = log.OnroadEvent.EventName
+  dm = min(EVENTS[E.driverDistracted1][ET.PERMANENT].priority, EVENTS[E.driverUnresponsive1][ET.PERMANENT].priority)
+  for name in ("leadDeparted", "autoResume", "stopHold"):
+    assert EVENTS[getattr(E, name)][ET.PERMANENT].priority < dm, name
+  src = (REPO / "openpilot" / "selfdrive" / "selfdrived" / "events.py").read_text()
+  body = src[src.index("def radar_ahead_alert"):src.index("\n\n", src.index("def radar_ahead_alert"))]
+  assert "Priority.LOWER" in body and dm == Priority.LOW
