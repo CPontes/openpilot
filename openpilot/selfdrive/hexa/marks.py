@@ -117,6 +117,22 @@ def clean_delay(delay) -> float:
   return round(float(delay), 1)
 
 
+# When it happened, around the tap (owner, 04/11): the instant, the last seconds, or from now on. Seconds before and after
+# the mark's time, for whoever reads the log; the bookmark stays at the tap.
+WINDOW_MAX_S = 60
+
+
+def clean_window(win) -> list[int] | None:
+  """[before, after] in whole seconds, each 0..WINDOW_MAX_S; None for the instant or anything that isn't two numbers."""
+  if not isinstance(win, list | tuple) or len(win) != 2 or any(isinstance(x, bool) or not isinstance(x, int | float) for x in win):
+    return None  # a string "12" isn't [1, 2]
+  try:
+    before, after = (max(0, min(WINDOW_MAX_S, int(x))) for x in win)
+  except (OverflowError, ValueError):  # json.loads takes Infinity and NaN
+    return None
+  return [before, after] if before or after else None
+
+
 def clean_note(note) -> str:
   return " ".join(str(note or "").split())[:MAX_NOTE]
 
@@ -168,7 +184,7 @@ def set_reason(marks: list[dict] | None, mark_id: str, reason: str, label: str, 
 
 def log_fields(mark: dict) -> dict:
   """What goes to the log with the 'hexa_mark' event."""
-  return {k: mark.get(k) for k in ("id", "t", "mono_ns", "source", "who", "reason", "label", "note", "delay_s")}
+  return {k: mark.get(k) for k in ("id", "t", "mono_ns", "source", "who", "reason", "label", "note", "delay_s", "win")}
 
 
 def public(mark: dict) -> dict:

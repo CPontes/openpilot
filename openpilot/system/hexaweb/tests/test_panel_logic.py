@@ -1038,3 +1038,74 @@ def test_the_review_answers_and_fiz_agora_keep_their_moment():
   assert html.count("openEv(null, \"done\", EV_BUTTONS.done, m.key, at)") == 2
   cop = html[html.index("function renderCop()"):]
   assert '$("copTitle").textContent = t(copReview ? "A conferir" : "Copiloto")' in cop[:cop.index("\n}\n")]
+
+
+def test_a_kind_turned_off_and_a_confirmed_point_stay_out_of_the_big_card_but_are_kept():
+  # owner, 04/11: "registra, identifica, mas só deixa de aparecer no quadrado grande"
+  evs = [{"id": "a", "kind": "stop_lead", "t": 100_000}, {"id": "b", "kind": "radar", "t": 101_000, "data": {"confirmed": True}},
+         {"id": "c", "kind": "radar", "t": 102_000, "data": {"confirmed": False}}, {"id": "d", "kind": "pull_away", "t": 103_000}]
+  v = run("copilotView", evs, 105_000, None, 0, ["pull_away", "stop_lead"])
+  assert v["main"]["id"] == "c"  # the newest that isn't quiet: the point still to confirm
+  assert [e["id"] for e in v["quiet"]] == ["d", "b", "a"] and v["pending"] == []
+  assert run("copilotView", evs, 105_000, "d", 104_000, ["pull_away"])["main"]["id"] == "d"  # picked from the list: shown
+  assert run("copilotView", evs, 105_000, None, 0, [])["main"]["id"] == "d"  # nothing turned off: as before
+  assert run("mutedKinds", ["stop_lead", "nope", "stop_lead", "radar"]) == ["stop_lead", "radar"]
+
+
+def test_no_function_is_declared_twice_in_the_page():
+  # a merge that brings two "function evTitle" keeps only the last one, silently (05/11: the channel's evTitle(ev) and app-13's evTitle(kind))
+  import collections
+  import re
+  names = re.findall(r"^\s*(?:async\s+)?function\s+(\w+)\s*\(", (LOGIC.parent / "index.html").read_text(), re.M)
+  assert [n for n, c in collections.Counter(names).items() if c > 1] == []
+
+
+def test_a_kind_is_titled_by_kind_title_and_an_event_by_ev_title():
+  # evTitle(ev) reads ev.kind and ev.data: given a kind (a string) it says nothing. The "Silenciados" list holds kinds (CTO, 05/11)
+  html = (LOGIC.parent / "index.html").read_text()
+  muted = html[html.index('tf("Silenciados · {n}"'):]
+  muted = muted[:muted.index("out.push(list)")]
+  assert "kindTitle(k)" in muted and "evTitle(" not in muted
+  assert "evTitle(k)" not in html and "evTitle(kind)" not in html and "evTitle(a.kind)" not in html
+
+
+def test_skip_and_turning_a_kind_off_never_mark_and_turning_off_asks_first():
+  html = (LOGIC.parent / "index.html").read_text()
+  skip = html[html.index("function evSkip(ev)"):html.index("function openMute(")]
+  assert "api(" not in skip and 'evDone(ev.id, "skip")' in skip and "Desfazer" not in skip  # the button text lives in the HTML
+  ask = html[html.index("function openMute("):html.index("function closeMute(")]
+  assert "evMuted =" not in ask and "mutedSave" not in ask  # the box only
+  save = html[html.index("function saveMute()"):html.index("function copRadarStrip(")]
+  assert "mutedSave()" in save
+  assert '"lpCopMuted"' not in (LOGIC.read_text())  # a preference: "Apagar dados" leaves it
+
+
+def test_marking_is_two_steps_with_nothing_to_scroll_and_the_text_box_on_top():
+  # owner, 04/11: "tudo ao alcance do dedo, sem ter que rolar a tela"; the keyboard lost the scroll in the old box
+  html = (LOGIC.parent / "index.html").read_text()
+  sheet = html[html.index('id="markSheet"'):]
+  sheet = sheet[:sheet.index("</section>")]
+  one, two = sheet[sheet.index('id="markStep1"'):sheet.index('id="markStep2"')], sheet[sheet.index('id="markStep2"'):]
+  assert "<textarea" not in one and 'id="reasons"' in one and "<textarea" in two and 'id="markWin"' in two  # no keyboard on step 1
+  assert two.index('id="markSave"') > two.index("<textarea") and 'class="duo"' in two
+  pick = html[html.index("function drawReasons()"):html.index("function drawPointKinds(")]
+  assert "markStep(2, markTyping())" in pick  # one tap on a reason: on to the text
+  # the keyboard opens by itself only parked or in the copilot; moving, the box still leaves by itself untouched (CTO, 05/11)
+  assert "function markTyping() { return carStopped || copOpen; }" in html
+  opening = html[html.index("function openMarkNow("):html.index("const MARK_WIN =")]
+  assert "markStep(2, !editing.id && markTyping())" in opening and "if (!markTyping()) markTimer = setTimeout(closeMark, EDITOR_MS)" in opening
+  step = html[html.index("function markStep("):html.index("// Three groups")]
+  assert "\n  clearTimeout(markTimer);" not in step  # opening step 2 alone doesn't stop the timer: a tap or the text's focus does
+  assert '$("markSheet").classList.toggle("up", two)' in html and 'class="sheet up hidden" id="evSheet"' in html  # above the keyboard
+  assert "window: MARK_WIN_S[markWin]" in html
+
+
+def test_to_review_shows_the_newest_three_and_the_rest_behind_one_tap():
+  # owner, 04/11: "tem que ser só 3 e o outro um 3 pontinhos que você abre o resto"
+  evs = [{"id": f"e{i}", "kind": "stop_lead", "t": 1000 - i} for i in range(7)]
+  g = run("groupPending", list(reversed(evs)), None)
+  assert [e["id"] for e in g["shown"]] == ["e0", "e1", "e2"]  # newest first, whatever the order they came in
+  assert [e["id"] for e in g["rest"]] == ["e3", "e4", "e5", "e6"]
+  assert run("groupPending", evs[:2], None)["rest"] == []
+  html = (LOGIC.parent / "index.html").read_text()
+  assert 'tf("··· mais {n}"' in html and "evShowRest" in html

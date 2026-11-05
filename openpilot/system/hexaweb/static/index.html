@@ -111,6 +111,27 @@
   .reasons button.mine { border-style: dashed; }
   .reasons button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
   .pick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  /* Marcar in two steps, nothing to scroll (owner, 04/11): the reasons, three across; then the chosen one, when, the text and
+     Salvar/Cancelar side by side. The second step sits at the top: the keyboard comes from below and never covers it. */
+  .reasons.three { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .reasons.three button { flex-direction: column; justify-content: center; text-align: center; gap: 4px; min-height: 60px; padding: 6px 4px;
+                          font-size: 13.5px; line-height: 1.15; overflow-wrap: anywhere; }
+  .reasons.three .label { grid-column: 1 / -1; margin: 4px 0 0; }
+  #markSheet #pointKinds button { min-height: 52px; padding: 6px 4px; font-size: 13.5px; gap: 3px; }
+  .sheet.up { top: calc(8px + env(safe-area-inset-top, 0px)); bottom: auto; border-radius: 0 0 26px 26px; border-top: 0; border-bottom: 1px solid var(--line-2);
+               max-height: calc(100% - 16px - env(safe-area-inset-top, 0px)); padding-bottom: 14px; }
+  .sheet.up .grab { display: none; }
+  .mchosen { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; margin-top: 10px; padding: 8px 12px; border-radius: 14px;
+             border: 0; background: var(--accent); color: var(--on-accent); font: inherit; font-weight: 700; font-size: 16px; text-align: left; }
+  .mchosen .grow { min-width: 0; } .mchosen .small { color: var(--on-accent); opacity: .8; font-weight: 600; }
+  .sheet .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .sheet .duo .btn { margin: 0; }
+  @media (max-height: 720px) {  /* a small phone: the same two steps, tighter, so they still fit without scrolling */
+    .reasons.three button { min-height: 50px; font-size: 12.5px; gap: 2px; } .reasons.three button svg { width: 20px; height: 20px; }
+    #markSheet #pointKinds button { min-height: 44px; } #markSheet .label { margin-top: 6px !important; } #pointKindsNote { display: none; }
+    .mchosen { min-height: 44px; margin-top: 6px; } #markStep2 label.field { margin: 8px 0 4px !important; } #markWin button { min-height: 40px; }
+    .sheet .duo .btn { min-height: 48px; }
+  }
   .pick.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .pick button { min-height: 48px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); font-weight: 600; padding: 4px; }
   .pick button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
@@ -306,10 +327,20 @@
   .evrow { display: flex; gap: 10px; align-items: center; width: 100%; min-height: 52px; padding: 8px 12px; margin: 0; border-radius: 12px; text-align: left;
            background: var(--card-2); border: 0; border-left: 4px solid var(--line-2); color: var(--text); font: inherit; }
   .evrow.recent { border-left-color: var(--warn); } .evrow.live { border-left-color: var(--accent); }
-  .evrow .x { flex: 1; min-width: 0; } .evrow .w { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .evrow .x { flex: 1; min-width: 0; }
+  .evmore { width: 100%; min-height: 44px; border: 0; border-radius: 12px; background: transparent; color: var(--muted); font: inherit; font-size: 15px; letter-spacing: .04em; }
+  .evrow .w { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .copbar { position: sticky; bottom: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-top: 8px; margin-top: auto; background: var(--bg); }
   .copbar .btn { margin: 0; min-height: 56px; }
-  #markScrim, #pointScrim, #evScrim, #rcScrim { z-index: 13; } #markSheet, #pointSheet, #evSheet, #rcSheet { z-index: 14; }  /* over the copilot */
+  /* under the card, always at the same place (owner, 04/11): skip it, or stop showing this kind */
+  .evacts { display: flex; justify-content: space-between; gap: 8px; min-height: 44px; margin-top: -4px; }
+  .evacts .link { min-height: 44px; padding: 0 4px; color: var(--muted); }
+  .evacts .link[disabled] { visibility: hidden; }
+  .evundo { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; margin-top: -4px; padding: 0 12px; border-radius: 12px;
+            background: var(--text); color: var(--bg); font-weight: 600; }
+  .evundo .link { color: var(--bg); text-decoration: underline; min-height: 44px; }
+  .evrow .q { font-size: 12px; color: var(--muted); border: 1px solid var(--line-2); border-radius: 8px; padding: 1px 6px; margin-left: 6px; }
+  #markScrim, #pointScrim, #evScrim, #rcScrim, #muteScrim { z-index: 13; } #markSheet, #pointSheet, #evSheet, #rcSheet, #muteSheet { z-index: 14; }  /* over the copilot */
   .toast { position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 20; max-width: calc(100% - 32px);
            background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 15px; font-weight: 600; opacity: 0; transition: opacity .2s; pointer-events: none; }
   .toast.show { opacity: .96; }
@@ -371,6 +402,12 @@
     <!-- Início -->
     <div data-view="inicio">
       <div id="garage">
+        <section class="card att stack hidden" id="addrCard" style="gap:8px">
+          <div class="title" data-t>Este atalho usa um número que muda</div>
+          <div class="desc" id="addrWhat"></div>
+          <a class="btn" id="addrGo" href="#" data-t>Abrir por lizpilot.local</a>
+          <button class="link" id="addrLater" type="button" data-t>Agora não</button>
+        </section>
         <div class="card hidden" id="installCard">
           <div class="row"><div class="grow"><div class="title" data-t>Adicione à tela de início</div><div class="desc" id="installHow"></div></div>
             <button class="link" id="installDismiss" type="button" data-t>Ok</button></div>
@@ -636,7 +673,8 @@
       <div data-subview="celulares" class="hidden">
         <div class="label" data-t>Idioma deste celular</div>
         <div class="seg lang" role="radiogroup" data-t-aria="Idioma" aria-label="Idioma"></div>
-        <div class="label" data-t>Celulares pareados</div>
+        <div class="row" style="align-items:baseline"><div class="label grow" data-t>Celulares pareados</div><span class="small num" id="phoneCount"></span></div>
+        <div class="desc hidden" id="phoneFull" style="color:var(--warn);margin:0 4px 8px"></div>
         <div class="card list" id="phoneList"></div>
         <div class="label" data-t>Este celular</div>
         <section class="card ok stack hidden" id="fixedCard" style="gap:8px">
@@ -671,21 +709,34 @@
     <button class="link" id="copClose" type="button" data-t>Fechar</button></div>
   <div class="small" id="copNow" style="min-height:2.9em"></div>
   <div id="copMain"></div>
+  <div class="evacts" id="copActs"><button class="link" id="copSkip" type="button" data-t>Pular</button><button class="link" id="copMute" type="button" data-t>Não mostrar mais este tipo</button></div>
+  <div class="evundo hidden" id="copUndo"><span id="copUndoText"></span><button class="link" id="copUndoBtn" type="button" data-t>Desfazer</button></div>
+  <div id="copRadar"></div>
   <div id="copBody" class="stack" style="gap:12px"></div>
   <div class="copbar"><button class="btn" id="copMark" type="button" data-t>Marcar</button><button class="btn dark" id="copNote" type="button" data-t>Nota</button></div>
 </section>
 
 <!-- The answer to an event: the note, then Salvar or Cancelar. Nothing is saved by the answer tap alone (owner, 03/11). -->
 <div class="scrim hidden" id="evScrim"></div>
-<section class="sheet hidden" id="evSheet" role="dialog" aria-modal="true" aria-labelledby="evTitle">
+<section class="sheet up hidden" id="evSheet" role="dialog" aria-modal="true" aria-labelledby="evTitle">
   <span class="grab"></span>
   <h2 id="evTitle"></h2>
   <div class="small num" id="evWhen"></div>
   <div class="card stack" style="gap:2px;margin-top:12px"><span class="small" data-t>Sua resposta</span><b id="evAnswer"></b></div>
   <label class="field" for="evText" data-t>Observação (opcional)</label>
   <textarea id="evText" rows="2" maxlength="300" data-t-ph="ex.: saiu devagar, demorou uns 3 s" placeholder="ex.: saiu devagar, demorou uns 3 s"></textarea>
-  <button class="btn" id="evSave" type="button" style="margin-top:16px" data-t>Salvar</button>
-  <button class="btn ghost" id="evCancel" type="button" data-t>Cancelar</button>
+  <div class="duo"><button class="btn" id="evSave" type="button" data-t>Salvar</button><button class="btn ghost" id="evCancel" type="button" data-t>Cancelar</button></div>
+</section>
+
+<!-- Silenciar ou reativar um tipo de aviso do copiloto (owner, 04/11): always confirmed, Salvar or Cancelar. -->
+<div class="scrim hidden" id="muteScrim"></div>
+<section class="sheet hidden" id="muteSheet" role="dialog" aria-modal="true" aria-labelledby="muteTitle">
+  <span class="grab"></span>
+  <h2 id="muteTitle"></h2>
+  <p class="desc" id="muteWhat"></p>
+  <p class="desc hidden" id="muteMission" style="color:var(--warn)"></p>
+  <button class="btn" id="muteSave" type="button" style="margin-top:12px" data-t>Salvar</button>
+  <button class="btn ghost" id="muteCancel" type="button" data-t>Cancelar</button>
 </section>
 
 <!-- Confirmar um radar: the short way, the point as the list has it. Salvar confirms; Cancelar leaves it as it was. -->
@@ -703,20 +754,24 @@
 <div class="scrim hidden" id="markScrim"></div>
 <section class="sheet hidden" id="markSheet" role="dialog" aria-modal="true" aria-labelledby="markTitle">
   <span class="grab"></span>
-  <div class="row" style="align-items:baseline"><h2 class="grow" id="markTitle" data-t>Marcar</h2><span class="small num" id="markWhen"></span></div>
-  <div id="markPoints">
-    <div class="label" style="margin:14px 0 6px" data-t>Ponto neste lugar</div>
-    <div class="reasons" id="pointKinds"></div>
-    <div class="small" id="pointKindsNote" style="margin-top:6px"></div>
-    <div class="label" style="margin:14px 0 6px" data-t>Ou uma marca: o que aconteceu?</div>
+  <div class="row" style="align-items:baseline;gap:8px"><h2 class="grow" id="markTitle" data-t>Marcar</h2><span class="small num" id="markWhen"></span>
+    <button class="link" id="markClose" type="button" data-t>Cancelar</button></div>
+  <div id="markStep1">
+    <div id="markPoints">
+      <div class="label" style="margin:10px 0 6px" data-t>Ponto neste lugar</div>
+      <div class="reasons" id="pointKinds"></div>
+      <div class="small" id="pointKindsNote" style="margin-top:4px"></div>
+    </div>
+    <div class="reasons three" id="reasons" style="margin-top:6px"></div>
   </div>
-  <div class="reasons" id="reasons" style="margin-top:14px"></div>
-  <label class="field" for="markNote" data-t>Comentário (opcional)</label>
-  <textarea id="markNote" rows="2" maxlength="500" data-t-ph="ex.: ponte com junta, volante tremeu" placeholder="ex.: ponte com junta, volante tremeu"></textarea>
-  <div class="small" style="margin-top:6px" data-t>Dá para ditar pelo microfone do teclado.</div>
-  <button class="btn" id="markSave" type="button" style="margin-top:16px" disabled>—</button>
-  <button class="btn ghost" id="markCancel" type="button" data-t>Cancelar</button>
-  <div class="small" style="text-align:center" data-t>A marca só vale depois de Salvar e aciona a bandeira do comma.</div>
+  <div id="markStep2" class="hidden">
+    <button class="mchosen" id="markChosen" type="button"></button>
+    <div id="markWinBox"><label class="field" style="margin:12px 0 6px" data-t>Quando</label><div class="pick" id="markWin"></div></div>
+    <label class="field" for="markNote" style="margin:12px 0 6px" data-t>Comentário (opcional)</label>
+    <textarea id="markNote" rows="2" maxlength="500" data-t-ph="ex.: ponte com junta, volante tremeu" placeholder="ex.: ponte com junta, volante tremeu"></textarea>
+    <div class="duo"><button class="btn" id="markSave" type="button" disabled>—</button><button class="btn ghost" id="markCancel" type="button" data-t>Cancelar</button></div>
+    <div class="small" style="margin-top:8px" data-t>A marca só vale depois de Salvar e aciona a bandeira do comma. Dá para ditar pelo microfone do teclado.</div>
+  </div>
 </section>
 
 <!-- Ponto: radar, sinal, lombada (a blitz saved before still shows). Nothing changes before Salvar. -->
@@ -1540,7 +1595,8 @@ function renderMarks(m) {
   for (const x of done) {
     const row = el("div", "line");
     const txt = el("span", "mk desc"); txt.innerHTML = reasonIcon(x.reason, 20);
-    txt.append(el("span", "", `${hhmmss(x.t)} · ${t(x.label)}${x.note ? " — " + noteOf(x) : ""}${x.source === "comma" ? " " + t("(bandeira)") : x.source === "auto" ? " " + t("(automática)") : ""}`));
+    const win = Array.isArray(x.win) ? (x.win[0] ? tf("últimos {n} s", { n: x.win[0] }) : tf("próximos {n} s", { n: x.win[1] })) : "";
+    txt.append(el("span", "", `${hhmmss(x.t)} · ${t(x.label)}${win ? " (" + win + ")" : ""}${x.note ? " — " + noteOf(x) : ""}${x.source === "comma" ? " " + t("(bandeira)") : x.source === "auto" ? " " + t("(automática)") : ""}`));
     row.append(txt);
     const b = el("button", "link", t("editar")); b.type = "button"; b.addEventListener("click", () => openMark(x, x.reason));
     const acts = el("span", "row"); acts.style.gap = "4px";
@@ -1591,10 +1647,39 @@ function openMarkNow(mark, reason, tapped) {
   markPin = editing.id ? null : api("/api/radars/pin", {});  // the place of this tap, before anything is chosen
   drawPointKinds(null);
   if (markPin) markPin.then((r) => { if (editing && !editing.id) drawPointKinds(r); });
+  markWin = "now";
   drawReasons();
   $("markScrim").classList.remove("hidden"); $("markSheet").classList.remove("hidden");
-  if (carStopped || copOpen) $("markNote").focus({ preventScroll: true });  // the copilot is the passenger's: no box leaves by itself
-  else markTimer = setTimeout(closeMark, EDITOR_MS);
+  // the keyboard only parked or in the copilot (the passenger's): moving outside it, the text waits for a tap (as before app 15)
+  if (picked) markStep(2, !editing.id && markTyping());  // a reason already chosen (Nota, or a mark being edited): straight to the text
+  else markStep(1);
+  if (!markTyping()) markTimer = setTimeout(closeMark, EDITOR_MS);  // the driver alone: a box nobody touches leaves by itself
+}
+// When it happened, around the tap (owner, 04/11): seconds [before, after] the mark, for whoever reads the log
+const MARK_WIN = { now: "Na hora", b10: "Últimos 10 s", b30: "Últimos 30 s", a30: "Próximos 30 s" };
+const MARK_WIN_S = { now: [0, 0], b10: [10, 0], b30: [30, 0], a30: [0, 30] };
+let markWin = "now";
+function markTyping() { return carStopped || copOpen; }
+function markStep(n, focus = true) {
+  const two = n === 2;
+  $("markStep1").classList.toggle("hidden", two); $("markStep2").classList.toggle("hidden", !two);
+  $("markSheet").classList.toggle("up", two);  // the keyboard comes from below: the box goes up
+  $("markSheet").scrollTop = 0;
+  if (!two) { $("markNote").blur(); return; }
+  const r = marksState.reasons.find((x) => x.key === picked);
+  const c = $("markChosen"); c.replaceChildren();
+  const ic = el("span", ""); ic.innerHTML = reasonIcon(r && !r.custom ? r.key : null, 26);
+  const g = el("span", "grow", r ? t(r.label) : picked || "");
+  c.append(ic, g, el("span", "small", editing && editing.id ? "" : t("trocar")));
+  c.disabled = !!(editing && editing.id);
+  $("markWinBox").classList.toggle("hidden", !!(editing && editing.id));  // a new mark only: an old one keeps its time
+  $("markWin").replaceChildren(...Object.keys(MARK_WIN).map((k) => {
+    const b = el("button", "", t(MARK_WIN[k])); b.type = "button"; b.setAttribute("aria-pressed", k === markWin ? "true" : "false");
+    b.addEventListener("click", () => { clearTimeout(markTimer); markWin = k; markStep(2, false); });
+    return b;
+  }));
+  drawReasons();
+  if (focus) $("markNote").focus({ preventScroll: true });  // inside the tap: the keyboard opens with it
 }
 
 // Three groups (owner, 03/11): what openpilot did, what was on the road, or only a note
@@ -1603,7 +1688,7 @@ function drawReasons() {
   const btn = (r) => {
     const b = el("button", r.custom ? "mine" : ""); b.type = "button"; b.setAttribute("aria-pressed", r.key === picked ? "true" : "false");
     b.innerHTML = reasonIcon(r.custom ? null : r.key, 24); b.append(el("span", "", t(r.label)));
-    b.addEventListener("click", () => { clearTimeout(markTimer); picked = picked === r.key ? null : r.key; drawReasons(); });
+    b.addEventListener("click", () => { clearTimeout(markTimer); picked = r.key; markStep(2, markTyping()); });  // one tap: on to the text
     return b;
   };
   const out = [];
@@ -1635,14 +1720,17 @@ function drawPointKinds(pinned) {
     : (pinned.data.error || t("Sem GPS agora."));
 }
 
-function closeMark() { clearTimeout(markTimer); editing = null; picked = null; $("markScrim").classList.add("hidden"); $("markSheet").classList.add("hidden"); }
+function closeMark() {
+  clearTimeout(markTimer); editing = null; picked = null; $("markNote").blur();
+  $("markScrim").classList.add("hidden"); $("markSheet").classList.add("hidden"); markStep(1);
+}
 
 async function saveMark() {
   const e = editing, note = $("markNote").value;
   if (!e || !picked) return;
   $("markSave").disabled = true;
   const res = e.id ? await api("/api/mark/classify", { id: e.id, reason: picked, note, replace_note: true })
-                   : await api("/api/mark", { reason: picked, note, delay_s: (Date.now() - e.tapped) / 1000 });
+                   : await api("/api/mark", { reason: picked, note, delay_s: (Date.now() - e.tapped) / 1000, window: MARK_WIN_S[markWin] });
   $("markSave").disabled = false;
   if (res.status === 200) {
     if (navigator.vibrate) navigator.vibrate(40);
@@ -2001,6 +2089,13 @@ const EV_BY = { freio: "freio", acelerador: "acelerador", volante: "volante" };
 let evList = [], evSt = null, passSt = null, evPick = null, evPickAt = 0, evTick = null, evAns = null, evShown = null, evCardAt = 0;
 const EV_TAP_GUARD_MS = 800;
 let copReview = false, evShowAll = false;  // the review, parked or with the car off: what the drive left to answer
+// kinds the owner turned off (owner, 04/11): still detected and kept, never in the big card; a preference, not data (not wiped)
+const EV_MUTED_STORE = "lpCopMuted";
+let evMuted = [], evShowQuiet = false, undoTimer = null, muteAsk = null;
+let evShowRest = false;  // "A conferir": the older ones opened by a tap on "···"
+function mutedLoad() { try { evMuted = LPL.mutedKinds(JSON.parse(load(EV_MUTED_STORE) || "[]")); } catch (e) { evMuted = []; } }
+function mutedSave() { store(EV_MUTED_STORE, evMuted.length ? JSON.stringify(evMuted) : null); }
+function kindTitle(kind) { return t((EVENT_UI[kind] || {}).title || kind); }  // a kind (evTitle is an event)
 // the answers apart from the events, with kind and time: a log copy of an answered event never comes back (CTO review of app-12)
 const EV_ANS_STORE = "lpCopAnswers", EV_REVIEW_H = 48;
 let evAnswers = {};
@@ -2033,7 +2128,7 @@ function evRelevant(e) {
   if (e.kind === "disengage") return !["freio", "acelerador"].includes((e.data || {}).by);
   return e.kind === "radar" || !!evMission(e);
 }
-function reviewPending() { return reviewAll().filter((e) => !e.answer && Date.now() - e.t >= LPL.EV_RECENT_S * 1000 && (evShowAll || evRelevant(e))); }
+function reviewPending() { return reviewAll().filter((e) => !e.answer && Date.now() - e.t >= LPL.EV_RECENT_S * 1000 && (evShowAll || (evRelevant(e) && !LPL.quietEvent(e, evMuted)))); }
 function openReview() {
   if (copOpen) return;
   copReview = true; evShowAll = false; evPick = null;
@@ -2048,6 +2143,65 @@ function evDone(id, r) {
   if (ev) { evAnswers = LPL.answerKeep(evAnswers, ev, r, Date.now(), Date.now() - EV_REVIEW_H * 3600e3); ansSave(); }
   if (evPick === id) evPick = null;
   renderCop();
+}
+// Pular: no mark, no answer to keep; out of the card and of "A conferir". It goes at once, with "Desfazer" for a few seconds
+function evSkip(ev) {
+  evDone(ev.id, "skip");
+  $("copUndoText").textContent = tf("Pulado: {evento}", { evento: evTitle(ev) });
+  $("copUndo").classList.remove("hidden"); $("copActs").classList.add("hidden");
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(() => { $("copUndo").classList.add("hidden"); $("copActs").classList.remove("hidden"); }, 5000);
+  $("copUndoBtn").onclick = () => {
+    clearTimeout(undoTimer);
+    evList = evList.map((e) => (e.id === ev.id ? { ...e, answer: undefined } : e)); evSave();
+    delete evAnswers[ev.id]; ansSave();
+    evPick = ev.id; evPickAt = Date.now();
+    $("copUndo").classList.add("hidden"); $("copActs").classList.remove("hidden");
+    $("copMain").dataset.sig = ""; $("copBody").dataset.sig = ""; renderCop();
+  };
+}
+// Não mostrar mais (or show again): a box first, Salvar or Cancelar. A kind with a mission of this drive says which one stops being asked
+function openMute(kind, on) {
+  muteAsk = { kind, on };
+  $("muteTitle").textContent = on ? tf("Parar de mostrar \u201c{evento}\u201d?", { evento: kindTitle(kind) }) : tf("Voltar a mostrar \u201c{evento}\u201d?", { evento: kindTitle(kind) });
+  $("muteWhat").textContent = on ? t("Continua registrado no histórico e em \u201cA conferir\u201d, como silenciado; só não aparece no quadro grande. Dá para reativar em \u201cSilenciados\u201d.")
+    : t("Volta a aparecer no quadro grande quando acontecer.");
+  const act = missions ? mState().active : [], mk = (LPL.EV_MISSIONS[kind] || []).filter((k) => act.includes(k) && mOf(k));
+  $("muteMission").textContent = on && mk.length ? tf("A missão {m} deixa de ser perguntada na hora.", { m: mk.map((k) => t(mOf(k).title)).join(", ") }) : "";
+  $("muteMission").classList.toggle("hidden", !(on && mk.length));
+  $("muteScrim").classList.remove("hidden"); $("muteSheet").classList.remove("hidden");
+}
+function closeMute() { muteAsk = null; $("muteScrim").classList.add("hidden"); $("muteSheet").classList.add("hidden"); }
+function saveMute() {
+  const a = muteAsk;
+  if (!a) return;
+  evMuted = LPL.mutedKinds(a.on ? evMuted.concat([a.kind]) : evMuted.filter((k) => k !== a.kind)); mutedSave();
+  const picked = evPick && evList.concat(reviewAll()).find((e) => e.id === evPick);
+  if (a.on && picked && picked.kind === a.kind) evPick = null;  // the one on the card goes with its kind
+  closeMute();
+  toast(a.on ? tf("Silenciado: {evento}", { evento: kindTitle(a.kind) }) : tf("De volta: {evento}", { evento: kindTitle(a.kind) }));
+  $("copMain").dataset.sig = ""; $("copBody").dataset.sig = ""; renderCop();
+}
+// The next point of the list ahead that you haven't confirmed (owner, 04/11): confirm it or say it isn't there, right here.
+// A confirmed one never shows. Built again only when the point or its distance band changes, so a tap isn't lost
+function copRadarStrip() {
+  const box = $("copRadar");
+  const p = !copReview && near && near.near ? near.near.find((x) => x.ahead && x.key && !x.confirmed && x.distance <= 1000) : null;
+  const sig = p ? JSON.stringify([p.key, Math.round(p.distance / 50), L()]) : "";
+  if (box.dataset.sig === sig) return;
+  box.dataset.sig = sig;
+  if (!p) { box.replaceChildren(); return; }
+  const c = el("section", "card stack"); c.style.cssText = "gap:8px;margin:0";
+  const top = el("div", "row"); top.style.gap = "10px";
+  const ic = el("span", ""); ic.innerHTML = pointIcon(p, 36); ic.style.flex = "none";
+  const txt = el("span", "grow"); txt.style.minWidth = "0";
+  txt.append(el("b", "", t(POINT[p.kind] || p.kind) + (p.limit ? " · " + speedText(p) : "")), el("br"), el("span", "small", tf("a {m} m · ainda não confirmado", { m: p.distance })));
+  top.append(ic, txt);
+  const g = el("div", "grid2"), ok = el("button", "btn", t("Confirmar")), no = el("button", "btn warn", t("Não existe")), q = { ...p, own: p.mine };
+  [ok, no].forEach((b) => { b.type = "button"; b.style.cssText = "margin:0;min-height:48px"; });
+  ok.addEventListener("click", () => { const go = () => openRc(q); if (!askPassenger(go)) go(); });
+  no.addEventListener("click", () => openPoint(q, { removed: true }));
+  g.append(ok, no); c.append(top, g); box.replaceChildren(c);
 }
 function clockText(ev, now) {
   const c = LPL.eventClock(ev, now);
@@ -2211,7 +2365,7 @@ function waitCard(now) {  // nothing recent: what the copilot is watching for, n
   const c = el("section", "evcard wait");
   const head = el("div", "evhead"); head.append(el("span", "evbadge", t("Esperando · nada agora")));
   const act = missions ? mState().active.filter((k) => mOf(k) && !mProg()[k].full) : [];
-  const watched = Object.keys(LPL.EV_MISSIONS).filter((kind) => LPL.EV_MISSIONS[kind].some((k) => act.includes(k)));
+  const watched = Object.keys(LPL.EV_MISSIONS).filter((kind) => !evMuted.includes(kind) && LPL.EV_MISSIONS[kind].some((k) => act.includes(k)));
   const w = el("div", "evwait");
   w.append(watched.length ? tf("Aparece sozinho quando acontecer: {lista}.", { lista: watched.map((k) => t(EVENT_UI[k].title).toLowerCase()).join("; ") })
     : t("Aparece sozinho quando o carro da frente frear ou sair, quando você parar, quando um carro entrar na frente ou o LizPilot desligar."));
@@ -2235,7 +2389,12 @@ function renderCop() {
   if (copReview) { $("copNow").textContent = t("O que a viagem registrou. Responda só o que você lembrar; o resto pode ficar."); $("copNow").style.color = ""; }
   const pend = copReview ? reviewPending() : null;
   if (copReview && !pend.some((e) => e.id === evPick)) { evPick = pend.length ? pend[pend.length - 1].id : null; evPickAt = now; }  // the newest first
-  const v = LPL.copilotView(copReview ? pend : evList, now, evPick, evPickAt);
+  const v = LPL.copilotView(copReview ? pend : evList, now, evPick, evPickAt, evMuted);
+  // the row under the card: the same place on every card; nothing to skip or turn off on the waiting card
+  $("copSkip").disabled = !v.main; $("copMute").disabled = !v.main || evMuted.includes(v.main.kind);
+  $("copSkip").onclick = () => { if (v.main && Date.now() - evCardAt >= EV_TAP_GUARD_MS) evSkip(v.main); };
+  $("copMute").onclick = () => { if (v.main && Date.now() - evCardAt >= EV_TAP_GUARD_MS) openMute(v.main.kind, true); };
+  copRadarStrip();
   const main = $("copMain");
   const msig = JSON.stringify(v.main ? [v.main.id, v.stage, evSource(v.main), evMission(v.main), L()] : ["wait", mState().active, L()]);
   if (main.dataset.sig !== msig || !main.firstChild) {
@@ -2248,22 +2407,57 @@ function renderCop() {
   evShown = v.main ? v.main.id : null;
   const act = copReview ? [] : mState().active.map(mOf).filter((m) => m && !mProg()[m.key].full && !m.lock);
   const pk = missions.route && act.some((m) => m.route && m.option) ? missions.route : null;
-  const hidden = copReview && !evShowAll ? reviewAll().filter((e) => !e.answer && Date.now() - e.t >= LPL.EV_RECENT_S * 1000 && !evRelevant(e)).length : 0;
+  const hidden = copReview && !evShowAll ? reviewAll().filter((e) => !e.answer && Date.now() - e.t >= LPL.EV_RECENT_S * 1000 && (!evRelevant(e) || LPL.quietEvent(e, evMuted))).length : 0;
   $("copSheet").querySelector(".copbar").classList.toggle("hidden", copReview);  // marks belong to the drive, not to the review
-  const sig = JSON.stringify([v.pending.map((e) => [e.id, e.stage]), v.answered, act.map((m) => m.key), !!pk, hidden, copReview, L()]);
-  if (body.dataset.sig === sig) { body.querySelectorAll(".evrow").forEach((r, i) => { if (v.pending[i]) r.lastChild.textContent = clockText(v.pending[i], now); }); return; }
+  const sig = JSON.stringify([v.pending.map((e) => [e.id, e.stage]), v.quiet.map((e) => e.id), evMuted, evShowQuiet, evShowRest, v.answered, act.map((m) => m.key), !!pk, hidden, copReview, L()]);
+  if (body.dataset.sig === sig) {  // only the clocks move, each on its own row
+    body.querySelectorAll(".evrow[data-id]").forEach((r) => { const e = v.pending.find((x) => x.id === r.dataset.id) || v.quiet.find((x) => x.id === r.dataset.id); if (e) r.lastChild.textContent = clockText(e, now); });
+    return;
+  }
   body.dataset.sig = sig;
   const out = [];
   if (v.pending.length) {
     out.push(el("div", "label", tf("A conferir · {n}", { n: v.pending.length })));
-    for (const e of v.pending) {
-      const b = el("button", "evrow " + e.stage); b.type = "button";
+    const row = (e) => {
+      const b = el("button", "evrow " + e.stage); b.type = "button"; b.dataset.id = e.id;
       if (isPoint(e)) b.insertAdjacentHTML("beforeend", pointGlyph((e.data || {}).kind, 22));
       const lim = isPoint(e) && (e.data || {}).limit ? " · " + speedText({ kind: e.data.kind, limit: e.data.limit }) : "";
       b.append(el("span", "x", evTitle(e) + lim), el("span", "w", clockText(e, now)));
       b.addEventListener("click", () => { evPick = e.id; evPickAt = Date.now(); renderCop(); window.scrollTo(0, 0); $("copSheet").scrollTo(0, 0); });
+      return b;
+    };
+    const gp = LPL.groupPending(v.pending);
+    gp.shown.forEach((e) => out.push(row(e)));
+    if (gp.rest.length) {  // the older ones behind one tap, in the same rows
+      const b = el("button", "evmore", evShowRest ? t("menos") : tf("··· mais {n}", { n: gp.rest.length })); b.type = "button";
+      b.addEventListener("click", () => { evShowRest = !evShowRest; body.dataset.sig = ""; renderCop(); });
+      if (evShowRest) gp.rest.forEach((e) => out.push(row(e)));
       out.push(b);
     }
+  }
+  // what was detected but stays out of the big card: the kinds turned off and the points already confirmed (owner, 04/11)
+  if (!copReview && v.quiet.length) {
+    const b = el("button", "link", tf(v.quiet.length === 1 ? "1 registrado sem aparecer · {acao}" : "{n} registrados sem aparecer · {acao}",
+      { n: v.quiet.length, acao: evShowQuiet ? t("esconder") : t("ver") })); b.type = "button";
+    b.addEventListener("click", () => { evShowQuiet = !evShowQuiet; body.dataset.sig = ""; renderCop(); });
+    out.push(b);
+    if (evShowQuiet) for (const e of v.quiet) {
+      const r = el("button", "evrow past"); r.type = "button";
+      const x = el("span", "x", evTitle(e)); x.append(el("span", "q", e.kind === "radar" && e.data && e.data.confirmed ? t("confirmado") : t("silenciado")));
+      r.append(x, el("span", "w", clockText(e, now)));
+      r.addEventListener("click", () => { evPick = e.id; evPickAt = Date.now(); renderCop(); $("copSheet").scrollTo(0, 0); });
+      out.push(r);
+    }
+  }
+  if (evMuted.length) {
+    out.push(el("div", "label", tf("Silenciados · {n}", { n: evMuted.length })));
+    const list = el("div", "card list"); list.style.padding = "4px 16px";
+    for (const k of evMuted) {
+      const row = el("div", "line"), b = el("button", "link", t("Ativar")); b.type = "button";
+      b.addEventListener("click", () => openMute(k, false));
+      row.append(el("span", "", kindTitle(k)), b); list.append(row);
+    }
+    out.push(list);
   }
   if (hidden) {
     const b = el("button", "link", tf(hidden === 1 ? "Mostrar mais 1, sem missão aberta" : "Mostrar mais {n}, sem missão aberta", { n: hidden })); b.type = "button";
@@ -3376,9 +3570,16 @@ async function refreshHealth() {
 async function refreshPhones() {
   const r = await api("/api/phones");
   if (r.status !== 200) return;
+  const max = r.data.max || r.data.phones.length, n = r.data.phones.length;
+  $("phoneCount").textContent = tf("{n} de {max}", { n, max });
+  // full: the next pairing takes off the one unused the longest, so say which one before it happens
+  const oldest = n >= max ? r.data.phones.filter((p) => !p.you).sort((a, b) => (a.seen || a.created || 0) - (b.seen || b.created || 0))[0] : null;
+  $("phoneFull").textContent = oldest ? tf("Lista cheia: o próximo pareamento tira {nome}, o que está há mais tempo sem uso.", { nome: oldest.name }) : "";
+  $("phoneFull").classList.toggle("hidden", !oldest);
   $("phoneList").replaceChildren(...r.data.phones.map((p) => {
     const row = el("div", "line");
-    row.append(el("span", "desc", `${p.name}${p.you ? " " + t("(este)") : ""}${p.created ? " · " + tf("desde {data}", { data: new Date(p.created * 1000).toLocaleDateString(L()) }) : ""}`));
+    const used = p.you ? t("em uso agora") : p.seen ? tf("último uso {quando}", { quando: when(p.seen) }) : p.created ? tf("desde {data}", { data: new Date(p.created * 1000).toLocaleDateString(L()) }) : "";
+    row.append(el("span", "desc", `${p.name}${p.you ? " " + t("(este)") : ""}${used ? " · " + used : ""}`));
     if (!p.you) {
       const b = el("button", "link", t("desconectar")); b.type = "button";
       b.addEventListener("click", async () => {
@@ -3473,6 +3674,18 @@ async function commaSet(it, value, sw) {
   refreshCommaCtl();
 }
 
+// Opened by the comma's number while lizpilot.local answers here (owner, 04/11: a shortcut saved by the number stopped
+// opening when the comma got another one). Said on Início, with the way out; "Agora não" for a week.
+const ADDR_LATER = "lpAddrLater";
+async function renderAddrCard() {
+  const later = Number(load(ADDR_LATER) || 0);
+  if (!token || Date.now() - later < 7 * 86400e3) { $("addrCard").classList.add("hidden"); return; }
+  const plan = LPL.addressPlan(location.hostname, await fixedSame(), true);
+  $("addrCard").classList.toggle("hidden", plan !== "offer");
+  if (plan !== "offer") return;
+  $("addrWhat").textContent = tf("Ele está salvo pelo número {num}. Quando o comma troca de rede, esse número muda e o atalho para de abrir. Abra por lizpilot.local, pareie uma vez e salve o atalho de novo de lá: funciona em casa, no carro e no escritório.", { num: location.hostname });
+  $("addrGo").href = fixedUrl("#parear");
+}
 // ----- the fixed address: lizpilot.local, answered by the comma on the local network -----
 let fixedProbe = null;
 function fixedUrl(hash) { return `http://${LPL.FIXED_HOST}:${location.port || "80"}/${hash || ""}`; }
@@ -3528,10 +3741,11 @@ LP.ready.then(() => {
   if (!token) fixedSame().then((ok) => {
     if (!token && !$("pin").value && LPL.addressPlan(location.hostname, ok, false) === "move") location.replace(fixedUrl(location.hash === "#parear" ? "#parear" : ""));
   });
-  if (token) baseLoad().then((had) => { if (had && $("app").classList.contains("hidden")) show("app"); refresh(); });
+  if (token) { baseLoad().then((had) => { if (had && $("app").classList.contains("hidden")) show("app"); refresh(); }); renderAddrCard(); }
   else refresh();
 });
 
+$("addrLater").addEventListener("click", () => { store(ADDR_LATER, String(Date.now())); $("addrCard").classList.add("hidden"); });
 $("pin").addEventListener("input", () => {
   const v = $("pin").value.replace(/\D/g, "").slice(0, 6);
   $("pin").value = v;
@@ -3540,7 +3754,11 @@ $("pin").addEventListener("input", () => {
 $("pairBtn").addEventListener("click", async () => {
   $("pairErr").textContent = "";
   const r = await api("/api/pair", { pin: $("pin").value, name: $("name").value || defaultName() });
-  if (r.status === 200) { saveToken(r.data.token); $("pin").value = ""; history.replaceState(null, "", "/"); view = "inicio"; refresh(); }
+  if (r.status === 200) {
+    saveToken(r.data.token); $("pin").value = ""; history.replaceState(null, "", "/"); view = "inicio"; refresh();
+    const gone = r.data.removed || [];  // the list was full: the one unused the longest left it (owner, 04/11)
+    if (gone.length) toast(tf("Lista cheia: saiu {nome}, sem uso há mais tempo.", { nome: gone.join(", ") }));
+  }
   else $("pairErr").textContent = r.data.error || t("Não foi possível parear.");
 });
 document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => { showView(b.dataset.go); document.body.classList.toggle("driving", driving && b.dataset.go === "inicio"); }));
@@ -3550,6 +3768,8 @@ $("markSave").addEventListener("click", saveMark);
 $("markCancel").addEventListener("click", closeMark);
 $("markScrim").addEventListener("click", closeMark);
 $("markNote").addEventListener("focus", () => clearTimeout(markTimer));
+$("markClose").addEventListener("click", closeMark);
+$("markChosen").addEventListener("click", () => { if (!(editing && editing.id)) markStep(1); });
 $("markNote").addEventListener("input", () => { clearTimeout(markTimer); if (picked === "nota") drawReasons(); });
 $("pendingBtn").addEventListener("click", () => { const p = marksState.marks.filter((m) => !m.reason).pop(); if (p) openMark(p, null); });
 $("readyCard").addEventListener("click", () => { readyOpen = !readyOpen; renderGarage(); });
@@ -3591,6 +3811,9 @@ $("evSave").addEventListener("click", saveEv);
 $("evCancel").addEventListener("click", closeEv);
 $("evScrim").addEventListener("click", closeEv);
 $("rcSave").addEventListener("click", saveRc);
+$("muteSave").addEventListener("click", saveMute);
+$("muteCancel").addEventListener("click", closeMute);
+$("muteScrim").addEventListener("click", closeMute);
 $("rcCancel").addEventListener("click", closeRc);
 $("rcScrim").addEventListener("click", closeRc);
 $("rcEdit").addEventListener("click", () => { const p = rcPoint, after = rcAfter; closeRc(); if (p) openPointNow(p, null, after); });
@@ -3696,6 +3919,7 @@ $("logoutBtn").addEventListener("click", async () => {
   saveToken(null); show("pair");
 });
 evLoad();  // the copilot's events of this drive, if the page was reloaded
+mutedLoad();
 </script>
 </body>
 </html>

@@ -786,15 +786,29 @@
   // What the copilot shows: the newest open event in the big card while it is recent; otherwise the one picked for review,
   // or nothing (waiting). An event newer than the pick always takes the big card back. The rest, newest first, is "A conferir".
   // An event picked from the list for review keeps the card until a newer event arrives.
-  function copilotView(list, now, pick, pickAt) {
+  // Quiet (owner, 04/11): a kind the owner turned off, and a point of the list he already confirmed. Still detected and kept
+  // (history, "A conferir" under "silenciados"), never in the big card unless he picks it himself.
+  function quietEvent(e, muted) { return (muted || []).includes(e.kind) || (e.kind === "radar" && !!(e.data && e.data.confirmed)); }
+  function copilotView(list, now, pick, pickAt, muted) {
     const open = (list || []).filter((e) => !e.answer).sort((a, b) => b.t - a.t);
-    let main = open.find((e) => eventAge(e, now) < EV_RECENT_S) || null;
+    let main = open.find((e) => eventAge(e, now) < EV_RECENT_S && !quietEvent(e, muted)) || null;
     const picked = pick ? open.find((e) => e.id === pick) || null : null;
     if (picked && (!main || main.t <= (pickAt || 0))) main = picked;
+    const rest = open.filter((e) => e !== main).map((e) => ({ ...e, stage: eventStage(e, now) }));
     return { main, stage: main ? eventStage(main, now) : null, review: !!main && eventAge(main, now) >= EV_RECENT_S,
-             pending: open.filter((e) => e !== main).map((e) => ({ ...e, stage: eventStage(e, now) })),
+             pending: rest.filter((e) => !quietEvent(e, muted)), quiet: rest.filter((e) => quietEvent(e, muted)),
              answered: (list || []).filter((e) => e.answer).length };
   }
+  // "A conferir" (owner, 04/11: "tem que ser só 3 e o outro um 3 pontinhos que você abre o resto"): the newest three, and
+  // the rest behind one tap, newest first, in the same rows
+  const PENDING_SHOWN = 3;
+  function groupPending(pending, keep) {
+    const k = keep ?? PENDING_SHOWN, list = (pending || []).slice().sort((a, b) => b.t - a.t);
+    return { shown: list.slice(0, k), rest: list.slice(k) };
+  }
+  // The kinds the owner turned off, kept on the phone (a preference, not data): only kinds the copilot knows, once each
+  function mutedKinds(raw) { return Array.isArray(raw) ? [...new Set(raw.filter((k) => EV_KINDS.includes(k)))] : []; }
+  const EV_KINDS = ["lead_brake", "pull_away", "stop_lead", "stop_free", "go_free", "stop_long", "cut_in", "disengage", "bump", "radar"];
   // The age as the card shows it: "há 0:04" up to 10 min, then the clock time
   function eventClock(ev, now) {
     const a = Math.floor(eventAge(ev, now));
@@ -865,7 +879,7 @@
   // what "Apagar dados deste celular" takes from localStorage besides the copy: data, never the language or the view
   const DATA_KEYS = ["lpTrips", "lpMissionSnap", "lpCopEvents", "lpCopAnswers"];  // the copilot's events of the drive, and the answers
 
-  root.LPL = { eventStep, pointPassed, eventsMerge, logEvents, driveStart, reviewList, answerKeep, eventMission, copilotView, eventAge, eventStage, eventClock, EV_MISSIONS, EV_REASON, EV_LIVE_S, EV_RECENT_S, EV_KEEP, versionList, versionChips, VERSION_CHIPS, copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
+  root.LPL = { groupPending, quietEvent, mutedKinds, EV_KINDS, eventStep, pointPassed, eventsMerge, logEvents, driveStart, reviewList, answerKeep, eventMission, copilotView, eventAge, eventStage, eventClock, EV_MISSIONS, EV_REASON, EV_LIVE_S, EV_RECENT_S, EV_KEEP, versionList, versionChips, VERSION_CHIPS, copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
                tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

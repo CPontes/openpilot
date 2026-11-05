@@ -20,7 +20,15 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "05/11", "8066720", "Radar no Copiloto com ícone e placa",
+  Release("", "05/11", "8066720", "Copiloto com Pular, Marcar sem rolar e 10 celulares",
+          ("Copiloto: «Pular» tira o aviso sem marcar, com Desfazer; «Não mostrar mais este tipo» pede confirmação e o tipo segue registrado",
+           "Copiloto: o próximo radar a confirmar, até 1 km, aparece embaixo do cartão com Confirmar e Não existe",
+           "Copiloto: «A conferir» mostra os 3 mais novos e «··· mais N» abre o resto",
+           "Marcar em dois passos, sem rolar: o motivo, depois «Quando» (na hora, últimos 10 ou 30 s, próximos 30 s), o texto e Salvar",
+           "Até 10 celulares pareados; com a lista cheia sai o que está há mais tempo sem uso, e não o primeiro pareado",
+           "Início avisa quando o atalho foi salvo pelo número, que muda, e leva a salvar por lizpilot.local"),
+          driving=False),
+  Release("56e5787", "05/11", "8066720", "Radar no Copiloto com ícone e placa",
           ("No Copiloto, o ponto da lista diz o que é: radar de velocidade, radar de sinal, lombada ou blitz",
            "O desenho do radar, do semáforo ou da lombada ao lado do nome, e a placa com a velocidade",
            "Na lista «A conferir», o mesmo desenho e a velocidade em cada ponto"),

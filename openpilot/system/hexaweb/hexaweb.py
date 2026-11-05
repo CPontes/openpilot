@@ -207,7 +207,12 @@ class PanelBackend:
 
   def authenticate(self, token: str | None) -> dict | None:
     with self.lock:
-      who = phone.find_token(self._tokens(), token)
+      tokens = self._tokens()
+      who = phone.find_token(tokens, token)
+      if who is not None:  # its last use, at most once an hour: the list keeps the phones in use, and shows when each was
+        touched = phone.touch_token(tokens, who.get("id", ""), self.clock())
+        if touched is not None:
+          self.store.put(phone.TOKENS_PARAM, touched)
     return who
 
   def pair(self, pin: str, name: str) -> tuple[int, dict]:
@@ -225,10 +230,12 @@ class PanelBackend:
         return 403, {"error": "Código errado."}
       self.pin_failures = 0
       self.store.remove(phone.PIN_PARAM)  # single use
-      token, tokens = phone.issue_token(self._tokens(), name, self.clock())
+      before = self._tokens()
+      token, tokens = phone.issue_token(before, name, self.clock())
       self.store.put(phone.TOKENS_PARAM, tokens)
-      self._audit({"event": "paired", "who": tokens[-1]["name"]})
-      return 200, {"token": token, "name": tokens[-1]["name"]}
+      gone = phone.dropped(before, tokens)
+      self._audit({"event": "paired", "who": tokens[-1]["name"], **({"new": ", ".join(t.get("name", "") for t in gone)} if gone else {})})
+      return 200, {"token": token, "name": tokens[-1]["name"], "removed": [t.get("name", "") for t in gone]}
 
   def state(self, who: dict) -> dict:
     vs = self.vehicle_state()
@@ -622,7 +629,7 @@ class PanelBackend:
         return float(at)
     return None
 
-  def mark(self, who: dict, reason: str, note: str = "", delay=0., label: str | None = None, at=None) -> tuple[int, dict]:
+  def mark(self, who: dict, reason: str, note: str = "", delay=0., label: str | None = None, at=None, window=None) -> tuple[int, dict]:
     """Phone mark: always allowed (it doesn't change how the car drives), at most one per MIN_MARK_INTERVAL.
     at: with the car off, when the drive's event happened (seconds); no bookmark then, there is no log being written."""
     when = self._drive_time(at) if at is not None else None
@@ -639,6 +646,9 @@ class PanelBackend:
       mark = hexa_marks.new_mark("celular", who=who.get("name", ""), reason=reason, label=label,
                                  note=hexa_marks.clean_note(note), now=self.clock() - delay if when is None else when)
       mark["delay_s"] = delay
+      win = hexa_marks.clean_window(window)  # [seconds before, seconds after] the mark, when it wasn't just the instant
+      if win:
+        mark["win"] = win
       if when is None:
         mark["_req_mono_ns"] = int(now_mono * 1e9)
       self._put(hexa_marks.MARKS_PARAM, hexa_marks.append(self._marks(), mark))
@@ -1178,8 +1188,9 @@ class PanelBackend:
 
   def phones(self, who: dict) -> dict:
     with self.lock:
-      return {"phones": [{"id": t.get("id", ""), "name": t.get("name", ""), "created": t.get("created"), "you": t.get("id") == who.get("id")}
-                         for t in self._tokens()]}
+      return {"max": phone.MAX_TOKENS,
+              "phones": [{"id": t.get("id", ""), "name": t.get("name", ""), "created": t.get("created"), "seen": t.get("seen"),
+                          "you": t.get("id") == who.get("id")} for t in self._tokens()]}
 
   def revoke_phone(self, who: dict, token_id: str) -> tuple[int, dict]:
     if token_id == who.get("id"):
@@ -1432,7 +1443,8 @@ def make_handler(backend: PanelBackend):
         return
       routes = {
         "/api/option": lambda who, b: backend.set_option(who, str(b.get("key", "")), b.get("value")),
-        "/api/mark": lambda who, b: backend.mark(who, str(b.get("reason", "")), b.get("note", ""), b.get("delay_s", 0.), at=b.get("at")),
+        "/api/mark": lambda who, b: backend.mark(who, str(b.get("reason", "")), b.get("note", ""), b.get("delay_s", 0.), at=b.get("at"),
+                                                 window=b.get("window")),
         "/api/mark/classify": lambda who, b: backend.classify(who, str(b.get("id", "")), str(b.get("reason", "")), b.get("note", ""),
                                                              b.get("replace_note") is True),
         "/api/reasons": lambda who, b: backend.add_reason(who, str(b.get("label", ""))),
