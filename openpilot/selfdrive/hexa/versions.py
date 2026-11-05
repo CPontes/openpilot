@@ -20,7 +20,13 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "05/11", "8066720", "Marcar em 9 botões",
+  Release("", "05/11", "8066720", "Limite da via pelo mapa (em teste)",
+          ("Velocidade: «limite da via pelo mapa», desligado; «mostrar» põe o limite na tela do celular; «avisar» também toca um aviso",
+           "O aviso toca uma vez quando você passa do limite mais a tolerância (7 km/h até 100, 7% acima) por 2 s",
+           "O mapa vem do OpenStreetMap: instale e baixe o Rio pelo celular, com o carro desligado e num Wi-Fi",
+           "Nunca muda a velocidade: só mostra e avisa"),
+          driving=False),
+  Release("0020866", "05/11", "8066720", "Marcar em 9 botões",
           ("Marcar: 9 botões sem teclado; o que vinha em par (Balançou, Na estrada, Radar ou lombada) pergunta «Qual?» no segundo passo",
            "«Quando»: Agora, 10 s antes, 30 s antes ou 30 s depois; um Cancelar só, ao lado de Salvar",
            "Copiloto sem evento: o cartão «Esperando» fica curto"),

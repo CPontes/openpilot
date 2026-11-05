@@ -1562,7 +1562,6 @@
  "Salvar este destino": "Save this destination",
  "Sem internet no comma para buscar o endereço.": "The comma has no internet to look up the address.",
  "Siga em frente": "Go straight",
- "Só com o carro desligado.": "Only with the car off.",
  "Tirar \"{lugar}\" dos lugares salvos?": "Remove \"{lugar}\" from saved places?",
  "chave salva": "key saved",
  "em {d}": "in {d}",
@@ -1585,5 +1584,10 @@
  "Marcar em 9 botões": "Mark in 9 buttons",
  "Marcar: 9 botões sem teclado; o que vinha em par (Balançou, Na estrada, Radar ou lombada) pergunta «Qual?» no segundo passo": "Mark: 9 buttons without the keyboard; what came in pairs (Swayed, On the road, Camera or speed bump) asks «Which?» in the second step",
  "«Quando»: Agora, 10 s antes, 30 s antes ou 30 s depois; um Cancelar só, ao lado de Salvar": "«When»: Now, 10 s before, 30 s before or 30 s after; a single Cancel, next to Save",
- "Copiloto sem evento: o cartão «Esperando» fica curto": "Copilot without an event: the «Waiting» card is short"
+ "Copiloto sem evento: o cartão «Esperando» fica curto": "Copilot without an event: the «Waiting» card is short",
+ "Limite da via pelo mapa (em teste)": "Road speed limit from the map (testing)",
+ "Velocidade: «limite da via pelo mapa», desligado; «mostrar» põe o limite na tela do celular; «avisar» também toca um aviso": "Speed: «road limit from the map», off; «show» puts the limit on the phone's screen; «warn» also sounds a warning",
+ "O aviso toca uma vez quando você passa do limite mais a tolerância (7 km/h até 100, 7% acima) por 2 s": "The warning sounds once when you stay above the limit plus the tolerance (7 km/h up to 100, 7% above) for 2 s",
+ "O mapa vem do OpenStreetMap: instale e baixe o Rio pelo celular, com o carro desligado e num Wi-Fi": "The map comes from OpenStreetMap: install and download Rio from the phone, with the car off and on Wi-Fi",
+ "Nunca muda a velocidade: só mostra e avisa": "It never changes the speed: it only shows and warns"
 }
