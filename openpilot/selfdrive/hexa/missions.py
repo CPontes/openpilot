@@ -288,21 +288,25 @@ ROUTE: dict = {
 }
 
 
-def newest_version() -> str:
-  """The newest version with its commit in versions.py: what "Instalar a versão nova" waits for."""
+def newest_version(running: str = "") -> str:
+  """What "Instalar a versão nova" waits for: the newest version in versions.py. Its top entry has commit "" (a commit can't
+  hold its own hash): that one is the version this comma runs, so the running commit stands for it (CTO, 05/11)."""
   from openpilot.selfdrive.hexa import versions
+  top = versions.RELEASES[0].commit if versions.RELEASES else ""
+  if not top and running:
+    return str(running)[:7]
   return next((r.commit for r in versions.RELEASES if r.commit), "")
 
 
-def public() -> dict:
-  """What the phone needs, texts in Portuguese: the phone translates them."""
+def public(running: str = "") -> dict:
+  """What the phone needs, texts in Portuguese: the phone translates them. running: the comma's GitCommit."""
   trails = [(k, t) for k, t in TRAILS if any(m.trail == k for m in CATALOG)]
   tries = {} if edition.EDITION == "generic" else TRIES  # the owner's drives
   return {"trails": [{"key": k, "title": t} for k, t in trails], "levels": [list(lv) for lv in LEVELS], "max_active": MAX_ACTIVE,
           "route": dict({k: list(x) if isinstance(x, tuple) else x for k, x in ROUTE.items()}, key=ROUTE_KEY),
           "missions": [{"key": m.key, "trail": m.trail, "title": m.title, "total": m.total, "how": m.how, "note": m.note, "why": m.why,
                         "steps": list(m.steps), "option": m.option, "lock": m.lock, "drive": m.drive, "detect": m.detect,
-                        "arg": newest_version() if m.detect == "installed" else m.arg,
+                        "arg": newest_version(running) if m.detect == "installed" else m.arg,
                         "done": m.done, "proof": m.proof, "version": m.version, "route": m.route, "when": m.when, "goal": m.goal,
                         "tries": [vars(t) for t in tries.get(m.key, ())]} for m in CATALOG],
           "try_results": TRY_RESULTS}

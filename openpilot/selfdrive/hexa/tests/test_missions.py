@@ -128,3 +128,14 @@ def test_install_waits_for_the_newest_version_never_an_old_one():
 def test_a_returned_try_is_a_known_result():
   from openpilot.selfdrive.hexa import missions
   assert set(missions.RETURNED) <= set(missions.TRY_RESULTS) and missions.TRY_RESULTS["back"] == "devolvida"
+
+
+def test_install_waits_for_the_version_this_comma_runs_when_it_is_the_newest():
+  # the top entry of versions.py has commit "": it is the version this build ships, so the running commit stands for it (CTO, 05/11)
+  from openpilot.selfdrive.hexa import missions, versions
+  running = "0123456789abcdef"
+  inst = next(m for m in missions.public(running)["missions"] if m["key"] == "instalar")
+  if versions.RELEASES[0].commit == "":
+    assert inst["arg"] == running[:7]
+  else:
+    assert inst["arg"] == versions.RELEASES[0].commit

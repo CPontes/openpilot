@@ -720,7 +720,7 @@ class PanelBackend:
   # *** missions (owner, 02/11): the tests the car still needs ***
 
   def missions_state(self, since: str = "") -> dict:
-    catalog = hexa_missions.public()  # static: built from the code, no disk
+    catalog = hexa_missions.public(str(self.store.get("GitCommit") or ""))  # built from the code and the running commit, no disk
     if not self._catalog_v:
       self._catalog_v = hashlib.sha1(json.dumps(catalog, sort_keys=True, default=str).encode()).hexdigest()[:8]
     with self.lock:
