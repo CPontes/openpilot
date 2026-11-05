@@ -38,9 +38,9 @@ DEVICE_PARAM = "HexaShareDevice"  # {"id", "key", "registered"}: random, never t
 QUEUE_PARAM = "HexaShareQueue"  # [item]: what the owner asked to send, and how it went. DONT_LOG
 SHARE_DIR = "lizpilot_share"  # next to the log folder: the cuts waiting for a network
 
-# The receiver (tools/lizpilot/receiver/README.md): the owner's own Supabase project, in São Paulo. Empty until it is deployed: then
-# the queue waits and the phone says why. Only https (http only to this machine, for the tests and dev_server.ts).
-RECEIVER_URL = os.environ.get("LIZPILOT_SHARE_URL", "")
+# The receiver (tools/lizpilot/receiver/README.md): the owner's own Supabase project "lizpilot", in São Paulo. Empty (by the
+# environment) and the queue waits and the phone says why. Only https (http only to this machine, for the tests and dev_server.ts).
+RECEIVER_URL = os.environ.get("LIZPILOT_SHARE_URL", "https://aykuhzdtlkowzrxhppjc.supabase.co/functions/v1/lizpilot-share")  # in the air since 05/11
 # Only a LizPilot build registers (owner, 05/11: "qualquer um usando lizpilot"). The receiver keeps the same word in
 # LIZPILOT_BUILD_SECRETS. It is in a public repository: it keeps out what isn't LizPilot, not someone who reads the code.
 BUILD_SECRET = "lizpilot-share-2026-11-a7c3e91f"

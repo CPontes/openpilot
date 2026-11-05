@@ -20,7 +20,13 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "05/11", "8066720", "Copiloto com Pular, Marcar sem rolar e 10 celulares",
+  Release("", "05/11", "8066720", "Enviar um momento aos desenvolvedores",
+          ("Ajustes → Celular: «enviar trechos aos desenvolvedores», desligada; ligada, cada marca ganha «Enviar»",
+           "Vai o log de 30 s antes a 15 s depois da marca, sem GPS, câmeras, áudio, VIN nem o número do comma",
+           "A anotação só vai se você confirmar, vendo o texto; sobe só com o carro desligado, num Wi-Fi",
+           "Desligar a opção apaga o que ainda não saiu; o enviado mostra um código para pedir a exclusão; tudo se apaga em 12 meses"),
+          driving=False),
+  Release("3fcab9d", "05/11", "8066720", "Copiloto com Pular, Marcar sem rolar e 10 celulares",
           ("Copiloto: «Pular» tira o aviso sem marcar, com Desfazer; «Não mostrar mais este tipo» pede confirmação e o tipo segue registrado",
            "Copiloto: o próximo radar a confirmar, até 1 km, aparece embaixo do cartão com Confirmar e Não existe",
            "Copiloto: «A conferir» mostra os 3 mais novos e «··· mais N» abre o resto",
