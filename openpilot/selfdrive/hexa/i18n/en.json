@@ -1681,5 +1681,10 @@
  "O comma continua medindo e gravando o atraso, para um teste planejado": "The comma keeps measuring and logging the delay, for a planned test",
  "Aperte + uma vez, depois − uma vez, depois a distância uma vez, com uns 5 s entre cada um.": "Press + once, then − once, then the distance once, about 5 s apart.",
  "Por último, empurre a alavanca para cancelar.": "Last, push the lever to cancel.",
- "Não precisa tocar no celular andando: o comma grava cada botão e o CTO confere no log.": "No need to touch the phone while driving: the comma logs every button and the CTO checks the log."
+ "Não precisa tocar no celular andando: o comma grava cada botão e o CTO confere no log.": "No need to touch the phone while driving: the comma logs every button and the CTO checks the log.",
+ "Erros direto para análise e a tela que não rola atrás": "Errors straight to analysis and a screen that doesn't scroll behind",
+ "«Enviar para análise» mostra o que vai e manda direto aos desenvolvedores, com o código do envio; sem dados do carro, do comma ou de onde": "«Send for analysis» shows what goes and sends it straight to the developers, with the send code; nothing about the car, the comma or where",
+ "Os erros que são normais ficam em «ver todos», e a data errada vira «antes de o relógio acertar»": "Errors that are normal go under «see all», and a wrong date becomes «before the clock was set»",
+ "O Copiloto e as caixas não deixam mais a página de trás rolar; o título do Copiloto fica fixo": "The Copilot and the boxes no longer let the page behind scroll; the Copilot's title stays on top",
+ "Coleta para a comma: cada missão com o passo a passo, e cinco novas": "Collection for comma: each mission step by step, and five new ones"
 }

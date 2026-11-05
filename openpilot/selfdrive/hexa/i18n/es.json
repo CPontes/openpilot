@@ -1681,5 +1681,10 @@
  "O comma continua medindo e gravando o atraso, para um teste planejado": "El comma sigue midiendo y grabando el retardo, para una prueba planificada",
  "Aperte + uma vez, depois − uma vez, depois a distância uma vez, com uns 5 s entre cada um.": "Presiona + una vez, después − una vez, después la distancia una vez, con unos 5 s entre cada uno.",
  "Por último, empurre a alavanca para cancelar.": "Por último, empuja la palanca para cancelar.",
- "Não precisa tocar no celular andando: o comma grava cada botão e o CTO confere no log.": "No hace falta tocar el celular manejando: el comma graba cada botón y el CTO revisa el log."
+ "Não precisa tocar no celular andando: o comma grava cada botão e o CTO confere no log.": "No hace falta tocar el celular manejando: el comma graba cada botón y el CTO revisa el log.",
+ "Erros direto para análise e a tela que não rola atrás": "Errores directo al análisis y la pantalla que no se desplaza detrás",
+ "«Enviar para análise» mostra o que vai e manda direto aos desenvolvedores, com o código do envio; sem dados do carro, do comma ou de onde": "«Enviar para análisis» muestra lo que va y lo manda directo a los desarrolladores, con el código del envío; nada del auto, del comma ni de dónde",
+ "Os erros que são normais ficam em «ver todos», e a data errada vira «antes de o relógio acertar»": "Los errores normales quedan en «ver todos», y la fecha errónea pasa a «antes de que el reloj se ajustara»",
+ "O Copiloto e as caixas não deixam mais a página de trás rolar; o título do Copiloto fica fixo": "El Copiloto y las cajas ya no dejan que la página de atrás se desplace; el título del Copiloto queda fijo",
+ "Coleta para a comma: cada missão com o passo a passo, e cinco novas": "Recolección para comma: cada misión paso a paso, y cinco nuevas"
 }
