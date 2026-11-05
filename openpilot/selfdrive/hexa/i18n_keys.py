@@ -14,12 +14,13 @@ from openpilot.selfdrive.hexa import comma_ctl, i18n, live, marks, missions, opt
 HEXA = Path(__file__).parent
 ROOT = HEXA.parents[1]  # openpilot/openpilot
 PY_SOURCES = [ROOT / "system/hexaweb/hexaweb.py", HEXA / "phone.py", HEXA / "updates.py", HEXA / "marks.py", HEXA / "comma_ctl.py", HEXA / "missions.py",
+              HEXA / "share.py",
               ROOT / "selfdrive/ui/mici/layouts/settings/hexa.py", ROOT / "selfdrive/ui/layouts/settings/hexa.py"]
 PAGES = [ROOT / "system/hexaweb/static" / n for n in ("index.html", "viagens.html", "replay.html", "lp-logic.js")]
 # objects in the pages whose values are passed through t() by name
 PAGE_TABLES = ("UPDATE_ACTIONS", "EVENTS", "RADAR_ACTIONS", "RESUME", "SIDES", "SIDE_CHIPS", "POINT", "KINDS",
                "COMMA_ACTIONS", "LEVEL_TEXT", "SAFETY_TEXT", "SAFETY_NAMES", "MARK_POINTS", "HOW_TEXT", "HOW_LONG", "MOMENT_TEXT", "MARK_RESULT",
-               "EVENT_UI", "STAGE_TEXT", "EV_BUTTONS", "EV_BY", "REASON_GROUPS")
+               "EVENT_UI", "STAGE_TEXT", "EV_BUTTONS", "EV_BY", "REASON_GROUPS", "SHARE_TEXT")
 FIELD = re.compile(r"\{[^{}]*\}")
 PT = re.compile(r"[a-zà-ú]", re.I)
 
@@ -57,8 +58,11 @@ def python_texts() -> set[str]:
         name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
         if name in ("tr",) and node.args and (txt := _text(node.args[0])):  # comma screen
           out.add(txt)
-        if name == "ValueError" and node.args and (txt := _text(node.args[0])) and PT.search(txt) and " " in txt:
+        if name in ("ValueError", "ShareError") and node.args and (txt := _text(node.args[0])) and PT.search(txt) and " " in txt:
           out.add(txt)
+        for kw in node.keywords:  # share.py: a queue item's error=, shown on the phone
+          if kw.arg == "error" and (txt := _text(kw.value)) and " " in txt and PT.search(txt):
+            out.add(txt)
       elif isinstance(node, ast.Return) and isinstance(node.value, ast.Tuple):  # (False, "reason") from can_write / can_update
         for elt in node.value.elts:
           if (txt := _text(elt)) and " " in txt and PT.search(txt):

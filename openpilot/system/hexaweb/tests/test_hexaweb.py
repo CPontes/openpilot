@@ -1632,3 +1632,76 @@ def test_each_drive_keeps_its_clock_from_its_last_read_minute(panel, tmp_path):
   panel.json("/api/trips", token=token)
   jobs.pop()()
   assert panel.store.get(hexaweb.SUMMARY_PARAM)["0000000f--8784034901"]["t0"] == 840. - 70.
+
+
+# *** sending a mark's moment to the developers (selfdrive/hexa/share.py) ***
+
+def _sharing_panel(panel, tmp_path, enabled=True):
+  from openpilot.selfdrive.hexa import share
+  sent = []
+
+  def post(url, body, hdrs):
+    sent.append(url)
+    return 201, {"id": "s1"}
+  panel.backend.sharer = share.Sharer(panel.store, str(tmp_path / "realdata"), url="https://r.example", post=post, clock=lambda: panel.now,
+                                      cutter=lambda *a, **k: (b"cut", {"services": {"carState": 1}}), share_dir=tmp_path / "share")
+  panel.store.put(share.ENABLED_PARAM, enabled)
+  return sent
+
+
+def test_share_needs_a_paired_phone(panel, tmp_path):
+  _sharing_panel(panel, tmp_path)
+  assert panel.json("/api/share")[0] == 401
+  assert panel.json("/api/share", {"id": "x"})[0] == 401
+  assert panel.json("/api/share/forget", {})[0] == 401
+
+
+def test_share_a_mark_from_the_phone(panel, tmp_path):
+  sent = _sharing_panel(panel, tmp_path)
+  token = panel.pair()
+  status, body = panel.json("/api/mark", {"reason": "curva"}, token)
+  mark_id = body["mark"]["id"]
+  assert panel.json("/api/share", {"id": "nope"}, token)[0] == 404
+  status, body = panel.json("/api/share", {"id": mark_id}, token)
+  assert status == 200 and body["item"]["state"] == "fila"
+  assert panel.store.get("HexaWebAudit")[-1]["event"] == "share_queued"
+  assert panel.backend.share_step(network_ok=True) == "cortado"
+  assert panel.backend.share_step(network_ok=True) == "enviado" and sent[-1].endswith("/v1/share")
+  status, state = panel.json("/api/share", token=token)
+  assert status == 200 and state["enabled"] and state["receiver"] and state["sent"] == 1
+  assert state["items"][0]["id"] == mark_id and state["items"][0]["state"] == "enviado"
+
+
+def test_share_is_not_cut_with_the_car_on(panel, tmp_path):
+  _sharing_panel(panel, tmp_path)
+  token = panel.pair()
+  mark_id = panel.json("/api/mark", {"reason": "curva"}, token)[1]["mark"]["id"]
+  panel.json("/api/share", {"id": mark_id}, token)
+  panel.vs = VehicleState(onroad=True)
+  assert panel.backend.share_step(network_ok=True) == "nada"
+
+
+def test_share_off_says_where_to_turn_it_on(panel, tmp_path):
+  _sharing_panel(panel, tmp_path, enabled=False)
+  token = panel.pair()
+  mark_id = panel.json("/api/mark", {"reason": "curva"}, token)[1]["mark"]["id"]
+  status, body = panel.json("/api/share", {"id": mark_id}, token)
+  assert status == 409 and "Ajustes" in body["error"]
+
+
+def test_share_cancel_and_forget(panel, tmp_path):
+  _sharing_panel(panel, tmp_path)
+  token = panel.pair()
+  mark_id = panel.json("/api/mark", {"reason": "curva"}, token)[1]["mark"]["id"]
+  panel.json("/api/share", {"id": mark_id}, token)
+  assert panel.json("/api/share/cancel", {"id": mark_id}, token) == (200, {"ok": True})
+  assert panel.json("/api/share", token=token)[1]["items"] == []
+  panel.json("/api/share", {"id": mark_id}, token)
+  assert panel.json("/api/share/forget", {}, token) == (200, {"ok": True})
+  assert panel.json("/api/share", token=token)[1]["items"] == []
+
+
+def test_a_comma_without_sharing_answers_plainly(panel):
+  token = panel.pair()
+  assert panel.json("/api/share", token=token) == (200, {"enabled": False, "receiver": False, "items": [], "forgetting": False, "sent": 0})
+  assert panel.json("/api/share", {"id": "x"}, token)[0] == 404
