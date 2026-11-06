@@ -1378,3 +1378,71 @@ def test_ir_para_ca_asks_which_app_every_time():
   html = (LOGIC.parent / "index.html").read_text()
   assert '$("pickGo").addEventListener("click", () => { if (navPickP) openGo({ ...navPickP }); });' in html
   assert "if (askPassenger(() => openGo(p))) return;" in html
+
+
+# ----- Navegar (NAV-03): the route to glance at with the phone on its mount
+
+def test_navegar_opens_when_the_car_starts_moving_with_a_route():
+  # owner, 06/11: moving with a route, Início goes to Navegar; without one, the Mapa gives way to the Painel as before
+  def go(pane, **o):
+    return run("homeFor", pane, {"hasRoute": True, "driving": True, "wasDriving": False, **o})
+  assert go("painel") == "navegar" and go("mapa") == "navegar" and go("navegar") == "navegar"
+  assert go("mapa", hasRoute=False) == "painel" and go("painel", hasRoute=False) == "painel"
+  assert go("mapa", hasRoute=None) == "painel"  # the route not known yet at the start: as before
+  assert go("painel", wasDriving=None) == "painel"  # the page's first look is not a start
+  assert go("painel", wasDriving=True) == "painel" and go("mapa", wasDriving=True) == "mapa"  # already moving: what was picked stays
+  assert go("navegar", hasRoute=False, driving=False) == "painel"  # the route ended
+  assert go("navegar", hasRoute=None, driving=False, wasDriving=None) == "navegar"  # a reload before the comma answered stays
+
+
+def test_navegar_distances_are_big_and_round():
+  got = [run("navDist", m) for m in (0, 4, 346, 994, 996, 1049, 1250, 9949, 9951, 23400, None, -5)]
+  assert [(d["n"], d["unit"], d["dec"]) for d in got] == [
+    (0, "m", 0), (0, "m", 0), (350, "m", 0), (990, "m", 0), (1, "km", 1), (1, "km", 1), (1.3, "km", 1), (9.9, "km", 1),
+    (10, "km", 0), (23, "km", 0), (0, "m", 0), (0, "m", 0)]
+
+
+def test_navegar_shows_navd_route_and_waits_without_it():
+  assert run("navView", {"active": True}, False, T0) is None  # no destination: no Navegar
+  assert run("navView", None, True, T0) == {"wait": True, "turn": None, "arrive": None}
+  assert run("navView", {"active": False}, True, T0) == {"wait": True, "turn": None, "arrive": None}  # navd still computing
+  rt = {"active": True, "next": "Rua Inventada", "then": "Avenida Dois", "type": "turn", "modifier": "slight right",
+        "in_m": 346, "left_m": 8420, "left_s": 754}
+  v = run("navView", rt, True, T0)
+  assert v["wait"] is False
+  assert v["turn"] == {"kind": "slight-right", "dist": {"n": 350, "unit": "m", "dec": 0}, "street": "Rua Inventada", "then": "Avenida Dois"}
+  assert v["arrive"] == {"at": T0 + 754_000, "min": 13, "dist": {"n": 8.4, "unit": "km", "dec": 1}}
+  odd = run("navView", {"active": True, "left_s": -3, "in_m": None, "left_m": None}, True, T0)
+  assert odd["arrive"]["at"] == T0 and odd["arrive"]["min"] == 0 and odd["turn"]["street"] == "" and odd["turn"]["kind"] == "straight"
+
+
+def test_navegar_the_car_ahead_slower_faster_or_the_same():
+  assert run("leadView", live(lead=None)) is None and run("leadView", None) is None
+  slower = run("leadView", live(v=62, lead={"d": 34, "v": 58, "gap": 2.0}))
+  assert slower == {"gap": 2.0, "d": 34, "v": 58, "dv": -4, "how": "{n} km/h mais devagar"}
+  assert run("leadView", live(v=62, lead={"d": 40, "v": 70, "gap": 2.3}))["how"] == "{n} km/h mais rápido"
+  assert run("leadView", live(v=62, lead={"d": 40, "v": 62.4, "gap": 2.3}))["how"] == "mesma velocidade"
+  assert run("leadView", live(v=2, lead={"d": 6, "v": 0, "gap": None}))["gap"] is None  # stopped: no time gap, the distance shows
+
+
+def test_navegar_zooms_out_with_speed():
+  assert [run("navZoom", v) for v in (0, 49, 50, 89, 90, 130)] == [16.5, 16.5, 15.5, 15.5, 14.5, 14.5]
+
+
+def test_navegar_only_reads_and_the_streets_need_the_option():
+  # the rules that stay (NAV-03): no keyboard driving, the street map only with "Mostrar ruas", no camera nor microphone
+  html = (LOGIC.parent / "index.html").read_text()
+  block = html[html.index('<div id="navDrive"'):html.index('<div id="garage">')]
+  assert "<input" not in block and "<textarea" not in block and "<select" not in block and "contenteditable" not in block
+  buttons = re.findall(r"<button[^>]*>", block)
+  assert buttons and all("data-home=" in b for b in buttons)  # the only buttons go to Painel or Mapa
+  js = html[html.index("// ----- Navegar (NAV-03)"):html.index("// one finger moves the map")]
+  assert "api(" not in js and "addEventListener" not in js and "focus(" not in js  # reads navState and live; asks and sends nothing
+  assert "if (v && streets) for (const tl of LPL.mapTiles(v, w, h))" in js
+  assert "near.near.find((p) => p.ahead)" in js  # it opens by itself: the Painel's next radar or bump can't disappear with it
+  assert "getUserMedia" not in html and "webrtc" not in html.lower()
+  seg = html[html.index('id="homeSeg"'):html.index('id="mapPane"')]
+  assert seg.index('data-home="painel"') < seg.index('data-home="navegar"') < seg.index('data-home="mapa"')
+  assert 'class="hidden" data-home="navegar"' in seg  # shown by renderNav only with a destination
+  nav = html[html.index("function renderNav()"):html.index("function mapHome()")]
+  assert 'if (homePane === "navegar" && !dest) { showHome("painel"); return; }' in nav

@@ -386,6 +386,53 @@
     return "straight";
   }
 
+  // ----- Navegar (NAV-03): the screen to glance at with the phone on its mount, a route on. It only reads: no text box,
+  // no button that changes anything; the passenger changes the route on the Mapa.
+  // Início's pane. Navegar exists only with a destination. The car starting to move goes to Navegar with a route (owner,
+  // 06/11) and, without one, leaves the Mapa (the search, the passenger's) for the Painel, as before.
+  // o: { hasRoute, driving, wasDriving } — hasRoute null before the comma answered (a reload on Navegar stays there);
+  // wasDriving null on the first look, which is not a start
+  function homeFor(pane, o) {
+    if (pane === "navegar" && o.hasRoute === false) return "painel";
+    if (o.driving && o.wasDriving === false) return o.hasRoute ? "navegar" : pane === "mapa" ? "painel" : pane;
+    return pane;
+  }
+  // A distance to show big: metres to the 10 under 1 km, km with one decimal under 10 km, whole km after
+  function navDist(m) {
+    m = Math.max(0, Number(m) || 0);
+    const r = Math.round(m / 10) * 10;
+    if (r < 1000) return { n: r, unit: "m", dec: 0 };
+    const k = Math.round(m / 100) / 10;
+    return k < 10 ? { n: k, unit: "km", dec: 1 } : { n: Math.round(m / 1000), unit: "km", dec: 0 };
+  }
+  // What the screen shows of navd's route. rt: /api/nav route; null without a route.
+  //   turn:   the next maneuver (kind for the arrow, how far, the street and the one after), only while navd talks
+  //   arrive: the clock time (ms) and what is left; null until navd has the route
+  //   wait:   with a destination, the route isn't there yet (navd computing, no internet, the car off)
+  function navView(rt, hasDest, nowMs) {
+    if (!hasDest) return null;
+    const active = !!(rt && rt.active);
+    if (!active) return { wait: true, turn: null, arrive: null };
+    const left = Math.max(0, Number(rt.left_s) || 0);
+    return {
+      wait: false,
+      turn: { kind: maneuverKind(rt.type, rt.modifier), dist: navDist(rt.in_m), street: rt.next || "", then: rt.then || "" },
+      arrive: { at: nowMs + left * 1000, min: Math.round(left / 60), dist: navDist(rt.left_m) },
+    };
+  }
+  // The car ahead: the time to it (what the ACC keeps), its speed and how much slower (negative) or faster it goes.
+  // Under 1 km/h it is the same speed. Without our own speed (the gap needs it) only the distance.
+  function leadView(l) {
+    const ld = l && l.lead;
+    if (!ld) return null;
+    const dv = Number.isFinite(l.v) && Number.isFinite(ld.v) ? Math.round(ld.v - l.v) : null;
+    return { gap: ld.gap == null ? null : Number(ld.gap), d: ld.d, v: ld.v, dv,
+             how: dv == null ? "" : dv <= -1 ? T("{n} km/h mais devagar") : dv >= 1 ? T("{n} km/h mais rápido") : T("mesma velocidade") };
+  }
+  // The minimap's zoom: closer in town, farther on the road, so the next few hundred metres show at any speed
+  // (at zoom 16.5 a 240 px tall map is about 350 m; each step down doubles it)
+  function navZoom(kmh) { return kmh >= 90 ? 14.5 : kmh >= 50 ? 15.5 : 16.5; }
+
   // A wall clock time as the path counts it, from minute 0 of the route: the deleter may have taken the first minutes of the list
   function pathSecond(t, at) { return at - tripStart(t) + ((t.segments && t.segments[0]) || 0) * 60; }
   // The path point closest in time to s seconds from the start of the drive
@@ -1051,6 +1098,6 @@
   const DATA_KEYS = ["lpTrips", "lpMissionSnap", "lpCopEvents", "lpCopAnswers", "lpCopTally", "lpNavRecent"];  // the copilot's events of the drive, and the answers
 
   root.LPL = { approvalReport, groupPending, quietEvent, mutedKinds, EV_KINDS, eventStep, pointPassed, eventsMerge, logEvents, driveStart, reviewList, answerKeep, eventMission, copilotView, eventAge, eventStage, eventClock, EV_MISSIONS, EV_REASON, EV_LIVE_S, EV_RECENT_S, EV_KEEP, versionList, versionChips, VERSION_CHIPS, copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, rideKeys, rideKeep, rideOrder, mapCount, RIDE_KEEP, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
-               tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, appMode, shareFor, tallyAdd, canSilence, SILENCE_MIN, NAV_REMEMBER, navTargets, navChoice, navLink, navRecent, mapCenter, mapXY, mapLatLon, distanceM, shortPlace, maneuverKind, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
+               tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, appMode, shareFor, tallyAdd, canSilence, SILENCE_MIN, NAV_REMEMBER, navTargets, navChoice, navLink, navRecent, mapCenter, mapXY, mapLatLon, distanceM, shortPlace, maneuverKind, homeFor, navDist, navView, leadView, navZoom, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

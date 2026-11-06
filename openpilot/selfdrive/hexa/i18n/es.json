@@ -1870,5 +1870,14 @@
  "O carro não volta logo depois de parar na subida": "El auto no retrocede justo después de detenerse en una subida",
  "Parado e seguro pelo comma, o freio soltava quando a câmera da Haval decidia sair: o comma passava adiante o pedido dela": "Detenido y sostenido por el comma, el freno se soltaba cuando la cámara del Haval decidía salir: el comma pasaba su pedido",
  "Agora o pedido de sair da Haval só vai junto quando o comma também sai; parado, o freio segura (viagem de 06/11, 37 min)": "Ahora el pedido de salir del Haval solo va cuando el comma también sale; detenido, el freno sostiene (viaje del 06/11, 37 min)",
- "A saída não muda: com o gás do comma, o freio solta como antes": "La salida no cambia: con el gas del comma, el freno se suelta como antes"
+ "A saída não muda: com o gás do comma, o freio solta como antes": "La salida no cambia: con el gas del comma, el freno se suelta como antes",
+ "Navegar": "Navegar",
+ "chegada": "llegada",
+ "MAX do ACC": "MÁX del ACC",
+ "limite": "límite",
+ "Minimapa da rota": "Minimapa de la ruta",
+ "depois: {rua}": "después: {rua}",
+ "mesma velocidade": "misma velocidad",
+ "{n} km/h mais devagar": "{n} km/h más lento",
+ "{n} km/h mais rápido": "{n} km/h más rápido"
 }

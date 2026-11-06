@@ -296,6 +296,79 @@
   .mattr { position: absolute; left: 6px; bottom: 2px; z-index: 1; font-size: 10px; color: #0008; background: #fff8; padding: 0 4px; border-radius: 4px; }
   .navline { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; color: inherit; font: inherit; padding: 10px 14px; border-color: var(--ok-line); }
   .navline .arr { width: 40px; height: 40px; border-radius: 12px; background: var(--accent); color: var(--on-accent); display: flex; align-items: center; justify-content: center; flex: none; }
+  /* Navegar (NAV-03): the route to glance at, the phone on its mount; standing up it stacks, lying down two columns.
+     Nothing in it is a button but the way back to Painel or Mapa. */
+  [data-view="inicio"].onnav > #garage, [data-view="inicio"].onnav > #drive { display: none !important; }
+  .ndband { padding: calc(10px + env(safe-area-inset-top)) 16px 10px; }
+  .ndband .who { font-size: 24px; }
+  .ndband .why { font-size: 14px; margin-top: 2px; }
+  .ndband .ndseg { display: none; flex: none; background: #0003; border-color: transparent; padding: 3px; }
+  .ndband .ndseg button { min-height: 40px; padding: 0 12px; color: inherit; opacity: .8; }
+  .ndband .ndseg button[aria-selected="true"] { background: #0004; color: inherit; opacity: 1; }
+  .nd { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .nd .dim { opacity: .35; }
+  .ndturn { grid-area: turn; display: flex; gap: 14px; align-items: center; padding: 12px 14px; border-radius: 18px; background: #0F2219; border: 1.5px solid var(--accent); min-width: 0; }
+  .ndturn.wait { background: var(--card); border-color: var(--line); }
+  .ndarr { width: 84px; height: 84px; border-radius: 18px; background: var(--accent); color: var(--on-accent); display: flex; align-items: center; justify-content: center; flex: none; }
+  .ndturn.wait .ndarr { background: var(--card-2); color: var(--dim); }
+  .ndturn .grow { min-width: 0; }
+  .ndin { font-family: var(--font-display); font-weight: 700; font-size: 56px; line-height: 1; white-space: nowrap; }
+  .ndin small { font-family: var(--font); font-size: 22px; font-weight: 600; color: var(--muted); margin-left: 4px; }
+  .ndturn.wait .ndin { font-size: 24px; white-space: normal; }
+  .ndstreet { font-size: 21px; font-weight: 700; line-height: 1.15; margin-top: 4px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+  .ndturn.wait .ndstreet { font-size: 15px; font-weight: 400; color: var(--muted); }
+  .ndthen { margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ndeta { grid-area: eta; display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; }
+  .ndeta > div, .ndspeed > div, .ndlead { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 8px 12px; min-width: 0; }
+  .ndeta b { display: block; font-family: var(--font-display); font-size: 30px; line-height: 1.05; white-space: nowrap; }
+  .ndeta span, .ndspeed span, .ndlead .small { color: var(--muted); font-size: 13px; }
+  .ndmap { grid-area: map; position: relative; height: 220px; min-height: 120px; overflow: hidden; border-radius: 18px; background: var(--card-2); border: 1px solid var(--line); }
+  .ndmap .tiles { position: absolute; inset: 0; }
+  .ndmap .tiles img { position: absolute; max-width: none; pointer-events: none; user-select: none; -webkit-user-drag: none;
+                      filter: invert(1) hue-rotate(180deg) brightness(.8) contrast(.9) saturate(.5); }  /* the street map, dark like the panel */
+  .ndmap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .ndmap .ndnext { position: absolute; left: 8px; top: 8px; right: 8px; width: fit-content; max-width: calc(100% - 16px); display: flex; gap: 8px; align-items: center;
+                   padding: 4px 12px 4px 4px; border-radius: 14px; background: rgba(11, 14, 17, .9); border: 1px solid var(--line-2); font-weight: 700; font-size: 16px; }
+  .ndmap .ndnext svg { flex: none; }
+  .ndmap .ndmsg { position: absolute; left: 8px; right: 8px; bottom: 8px; font-size: 13px; color: var(--muted); text-align: center; }
+  .ndmap .ndattr { position: absolute; right: 0; bottom: 0; font-size: 11px; line-height: 1; padding: 4px 6px; background: rgba(11, 14, 17, .8); color: var(--muted); border-top-left-radius: 8px; }
+  .ndspeed { grid-area: speed; display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 8px; }
+  .ndspeed > div { display: flex; flex-direction: column; justify-content: center; }
+  .ndspeed b { font-family: var(--font-display); font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .ndv b { font-size: 52px; }
+  .ndv.over { border-color: var(--warn); } .ndv.over b { color: var(--warn); }
+  .ndlim { align-items: center; text-align: center; }
+  .ndlim .sign { width: 56px; height: 56px; border-radius: 50%; background: #fff; border: 7px solid #D7261E; color: #111; display: flex; align-items: center; justify-content: center; font: 700 22px var(--font-display); }
+  .ndlead { grid-area: lead; display: flex; gap: 12px; align-items: center; padding: 10px 14px; }
+  .ndlead b { font-family: var(--font-display); font-size: 34px; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .ndlead .grow { min-width: 0; }
+  body.on-inicio.on-nav main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }  /* standing up, it ends above the tab bar */
+  @media (orientation: landscape) and (max-height: 540px) {  /* the phone lying on its mount: everything on one screen, no scrolling */
+    body.on-inicio.on-nav main { max-width: none; padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right)); padding-bottom: 0; }
+    body.on-inicio.on-nav .top, body.on-inicio.on-nav #homeSeg { display: none; }
+    .ndband { padding-top: calc(6px + env(safe-area-inset-top)); padding-bottom: 6px; }
+    .ndband .ndseg { display: grid; }
+    /* three columns: the turn and the arrival | the map | the speeds and the car ahead */
+    .nd { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, .95fr); grid-template-rows: minmax(0, 1fr) auto;
+          grid-template-areas: "turn map speed" "eta map lead"; height: var(--ndh, auto); margin-top: 8px; }
+    .ndturn { flex-direction: column; align-items: flex-start; justify-content: center; gap: 8px; padding: 10px 14px; }
+    .ndturn .grow { width: 100%; }
+    .ndarr { width: 60px; height: 60px; border-radius: 14px; }
+    .ndin { font-size: 46px; }
+    .ndstreet { font-size: 19px; }
+    .ndmap { height: auto; }
+    .ndeta { gap: 6px; } .ndeta > div { padding: 6px 10px; }
+    .ndeta b { font-size: 24px; }
+    .ndspeed { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 6px; }
+    .ndspeed > div { padding: 6px 10px; }
+    .ndv { grid-column: 1 / -1; flex-direction: row !important; align-items: baseline; gap: 6px; }
+    .ndspeed b { font-size: 30px; }
+    .ndspeed .ndv b { font-size: 56px; }
+    .ndlim .sign { width: 46px; height: 46px; border-width: 6px; font-size: 19px; }
+    .ndlead { padding: 6px 10px; gap: 8px; } .ndlead svg { display: none; }
+    .ndlead b { font-size: 28px; }
+    .ndlead #ndLeadV { font-size: 14px; line-height: 1.2; }
+  }
   .placerow { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
   .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 11; max-height: calc(100% - 64px); overflow-y: auto; background: #151B21; border-top: 1px solid var(--line-2);
            border-radius: 26px 26px 0 0; padding: 10px 18px calc(18px + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto; }
@@ -467,7 +540,7 @@
 
     <!-- Início -->
     <div data-view="inicio">
-      <div class="seg" role="tablist" id="homeSeg" style="margin:4px 0 10px"><button type="button" role="tab" aria-selected="true" data-home="painel" data-t>Painel</button><button type="button" role="tab" aria-selected="false" data-home="mapa" data-t>Mapa</button></div>
+      <div class="seg" role="tablist" id="homeSeg" style="margin:4px 0 10px"><button type="button" role="tab" aria-selected="true" data-home="painel" data-t>Painel</button><button type="button" role="tab" aria-selected="false" class="hidden" data-home="navegar" data-t>Navegar</button><button type="button" role="tab" aria-selected="false" data-home="mapa" data-t>Mapa</button></div>
       <div id="mapPane" class="hidden">
         <div class="mapfull" id="mapBox">
           <div class="tiles" id="mapTiles"></div>
@@ -501,6 +574,42 @@
           </div>
           <div class="mmsg hidden" id="mapMsg"></div>
           <div class="mattr">© OpenStreetMap</div>
+        </div>
+      </div>
+      <!-- Navegar (NAV-03): only with a destination; to glance at, never to type. Changing the route is the Mapa's, the passenger's -->
+      <div id="navDrive" class="hidden">
+        <section class="band none ndband" id="ndBand">
+          <div style="min-width:0"><div class="who" id="ndWho">—</div><div class="why" id="ndWhy"></div></div>
+          <div class="seg ndseg" role="tablist"><button type="button" role="tab" aria-selected="false" data-home="painel" data-t>Painel</button><button type="button" role="tab" aria-selected="true" data-home="navegar" data-t>Navegar</button><button type="button" role="tab" aria-selected="false" data-home="mapa" data-t>Mapa</button></div>
+        </section>
+        <div class="alert hidden" id="ndAlert" role="alert" style="margin-top:8px"></div>
+        <div class="nd" id="ndBody">
+          <section class="ndturn" id="ndTurn">
+            <span class="ndarr" id="ndArrow"></span>
+            <div class="grow"><div class="ndin num" id="ndIn"></div><div class="ndstreet" id="ndStreet"></div><div class="ndthen small" id="ndThen"></div></div>
+          </section>
+          <section class="ndeta" id="ndEta">
+            <div><b class="num" id="ndAt">—</b><span data-t>chegada</span></div>
+            <div><b class="num" id="ndMin">—</b><span data-t>min</span></div>
+            <div><b class="num" id="ndKm">—</b><span id="ndKmUnit">km</span></div>
+          </section>
+          <div class="ndmap" id="ndMap">
+            <div class="tiles" id="ndTiles"></div>
+            <canvas id="ndCanvas" role="img" data-t-aria="Minimapa da rota" aria-label="Minimapa da rota"></canvas>
+            <div class="ndnext hidden" id="ndNext"></div>
+            <div class="ndmsg hidden" id="ndMapMsg"></div>
+            <div class="ndattr hidden" id="ndAttr">© OpenStreetMap</div>
+          </div>
+          <section class="ndspeed" id="ndSpeed">
+            <div class="ndv" id="ndV"><b id="ndVn">—</b><span>km/h</span></div>
+            <div id="ndAcc"><b id="ndAccN">—</b><span data-t>MAX do ACC</span></div>
+            <div class="ndlim" id="ndLim"><span class="sign" id="ndLimN">—</span><span data-t>limite</span></div>
+          </section>
+          <section class="ndlead" id="ndLead">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17h14v-4l-2-5H7l-2 5z"/><circle cx="8" cy="17" r="1.6"/><circle cx="16" cy="17" r="1.6"/></svg>
+            <b id="ndGap">—</b>
+            <div class="grow"><div id="ndLeadV" style="font-weight:600"></div><div class="small" id="ndLeadSub"></div></div>
+          </section>
         </div>
       </div>
       <div id="garage">
@@ -1509,8 +1618,10 @@ function auditText(a) {
 let homeWasDriving = null;
 function refreshHome(full) {
   refreshNav();
-  // the car starts moving: Início back on the driver's Painel; the passenger goes to the Mapa with one tap
-  if (driving && homeWasDriving === false && homePane === "mapa") showHome("painel");
+  // the car starts moving: Início on Navegar with a route (NAV-03, owner 06/11), else back on the driver's Painel;
+  // the passenger goes to the Mapa with one tap
+  const pane = LPL.homeFor(homePane, { hasRoute: navState ? !!navState.destination : null, driving, wasDriving: homeWasDriving });
+  if (pane !== homePane) showHome(pane);
   homeWasDriving = driving;
   if (!driving && (full || ticks % 3 === 0)) refreshLimit();
   $("garage").classList.toggle("hidden", driving);
@@ -1639,6 +1750,7 @@ function renderDrive() {
   $("liveAlert").textContent = alert || "";
   $("liveAlert").classList.toggle("hidden", !alert);
   $("liveAlert").classList.toggle("crit", b.cls === "fail");
+  renderNavDrive();  // NAV-03: the same second's data on Navegar
   if (b.stale || !l || !l.driving) return;  // the rest stays as it was, dimmed: nothing old passes as now
   const tileOf = (value, unit, label) => { const d = el("div", "tile"); const v = el("b", "", String(value)); if (unit) { v.append(" "); const u = el("small", "", unit); u.style.cssText = "font-size:16px;color:var(--muted);font-family:var(--font)"; v.append(u); } d.append(v, el("span", "", label)); return d; };
   const lim = l.limit && l.limit.fresh && l.limit.limit ? l.limit : null;  // the road's limit from the map (HexaSpeedLimit)
@@ -2047,7 +2159,7 @@ document.querySelectorAll("[data-odd]").forEach((b) => b.addEventListener("click
 // ----- the route (selfdrive/hexa/nav.py): the phone picks where to go, openpilot's navigation does the rest -----
 // openpilot keeps the lane and the speed: turning at a junction stays with the driver. Andando, só o passageiro mexe aqui.
 // The Mapa of Início (owner, 05/11): Painel | Mapa on top; search, "É aqui?" with the pin, the route; the driver's panel stays as it was.
-let navState = null, navAt = 0, homePane = load("lpHome") === "mapa" ? "mapa" : "painel";
+let navState = null, navAt = 0, navGot = 0, homePane = ["mapa", "navegar"].includes(load("lpHome")) ? load("lpHome") : "painel";
 let mv = null, mvMoved = false, navPickP = null, navAsk = null, mapImgs = new Map(), mapRaf = 0;
 const ARROWS = {
   left: '<path d="M17 20v-7a3 3 0 0 0-3-3H6"/><path d="M10 6l-4 4 4 4"/>', right: '<path d="M7 20v-7a3 3 0 0 1 3-3h8"/><path d="M14 6l4 4-4 4"/>',
@@ -2060,17 +2172,21 @@ async function refreshNav(force) {
   if (!online || (!force && Date.now() - navAt < 2000)) return;
   navAt = Date.now();
   const r = await api("/api/nav");
-  if (r.status === 200) { navState = r.data; renderNav(); }
+  if (r.status === 200) { navState = r.data; navGot = Date.now(); renderNav(); }
 }
 function navDistance(m) { return m >= 1000 ? `${num(m / 1000, 1)} km` : `${Math.max(0, Math.round(m / 10) * 10)} m`; }
 function navNear() { return navState && navState.near; }
 function navLeftText(rt) { return [tf("{m} min", { m: Math.round((rt.left_s || 0) / 60) }), navDistance(rt.left_m || 0)].join(" · "); }
 function showHome(pane) {
-  homePane = pane; store("lpHome", pane === "mapa" ? "mapa" : null);
+  homePane = pane; store("lpHome", pane === "painel" ? null : pane);
   document.querySelectorAll("[data-home]").forEach((b) => b.setAttribute("aria-selected", b.dataset.home === pane ? "true" : "false"));
   document.querySelector('[data-view="inicio"]').classList.toggle("onmap", pane === "mapa");
+  document.querySelector('[data-view="inicio"]').classList.toggle("onnav", pane === "navegar");
+  document.body.classList.toggle("on-nav", pane === "navegar");
   $("mapPane").classList.toggle("hidden", pane !== "mapa");
+  $("navDrive").classList.toggle("hidden", pane !== "navegar");
   if (pane === "mapa") { refreshNav(true); sizeMap(); mvMoved = false; mv = null; renderNav(); }
+  if (pane === "navegar") { refreshNav(true); renderNavDrive(); }
 }
 function sizeMap() {  // the map fills what is left above the tab bar: the page itself doesn't scroll on the Mapa
   const box = $("mapBox"), top = box.getBoundingClientRect().top + window.scrollY, tabs = document.querySelector("nav.tabs");
@@ -2099,6 +2215,9 @@ function renderNav() {
     return b;
   }), ...((s.places || []).length ? [(() => { const b = el("button", "chip", "⋯"); b.type = "button"; b.setAttribute("aria-label", t("Lugares salvos")); b.addEventListener("click", openPlaces); return b; })()] : []));
   $("navToken").placeholder = s.token ? t("chave salva") : "pk....";
+  document.querySelectorAll('#homeSeg [data-home="navegar"]').forEach((b) => b.classList.toggle("hidden", !dest));  // Navegar only with a route
+  if (homePane === "navegar" && !dest) { showHome("painel"); return; }  // the route ended: back to the Painel
+  if (homePane === "navegar") { renderNavDrive(); return; }
   if (homePane !== "mapa") return;
   const picking = !!navPickP;
   $("navBanner").classList.toggle("hidden", !active || picking);
@@ -2175,6 +2294,129 @@ function drawMap() {
     }
   });
 }
+// ----- Navegar (NAV-03): the route and the car's numbers, big, to glance at with the phone on its mount. It reads only:
+// navd's route from /api/nav (every 2 s) and the car from /api/live (every second). Old data is dimmed, never shown as now.
+const NAV_OLD_MS = 6000;  // three answers of /api/nav missed
+let ndImgs = new Map(), ndRaf = 0;
+function bigDist(d) {  // "350 m", "1,2 km": the unit small
+  const f = el("span", "", d.n.toLocaleString(L(), { minimumFractionDigits: d.dec, maximumFractionDigits: d.dec }));
+  f.append(el("small", "", d.unit));
+  return f;
+}
+function renderNavDrive() {
+  if (homePane !== "navegar") return;
+  const s = navState, dest = s && s.destination, nv = s ? LPL.navView(s.route, !!dest, Date.now()) : null;
+  if (!nv && !online) { showHome("painel"); return; }  // no comma, no route to show
+  // the band: who is driving, as on the Painel
+  const now = Date.now(), b = driving && copBand ? copBand : LPL.band(live, { online, age: now - liveAt, now }, null);
+  $("ndBand").className = "band ndband " + b.cls;
+  $("ndWho").textContent = t(b.who);
+  $("ndWhy").textContent = b.why ? tf(b.sub, { motivos: b.why.map(t).join(", ") }) : t(b.sub);
+  const carFresh = !b.stale && live && live.driving, l = carFresh ? live : null;
+  const alert = l ? l.alert : "";
+  $("ndAlert").textContent = alert || ""; $("ndAlert").classList.toggle("hidden", !alert); $("ndAlert").classList.toggle("crit", b.cls === "fail");
+  // the route
+  const routeOld = !online || now - navGot > NAV_OLD_MS;
+  const wait = !nv || nv.wait;
+  $("ndTurn").classList.toggle("wait", wait);
+  [$("ndTurn"), $("ndEta")].forEach((e) => e.classList.toggle("dim", routeOld && !wait));
+  $("ndMap").classList.toggle("dim", routeOld);  // the car's position came with the route: as old as it
+  if (wait) {
+    $("ndArrow").innerHTML = arrowSvg("arrive", 44);
+    $("ndIn").textContent = t("Calculando a rota…");
+    $("ndStreet").textContent = t("A rota aparece com o carro ligado e o comma na internet.");
+    $("ndThen").textContent = dest ? tf("até {lugar}", { lugar: LPL.shortPlace(dest.place_name).title }) : "";
+  } else {
+    const tn = nv.turn;
+    $("ndArrow").innerHTML = arrowSvg(tn.kind, 64);
+    $("ndIn").replaceChildren(bigDist(tn.dist));
+    $("ndStreet").textContent = tn.street || t("Siga em frente");
+    $("ndThen").textContent = tn.then ? tf("depois: {rua}", { rua: tn.then }) : dest ? tf("até {lugar}", { lugar: LPL.shortPlace(dest.place_name).title }) : "";
+  }
+  const ar = nv && nv.arrive;
+  $("ndAt").textContent = ar ? hhmm(ar.at / 1000) : "—";
+  $("ndMin").textContent = ar ? String(ar.min) : "—";
+  $("ndKm").textContent = ar ? ar.dist.n.toLocaleString(L(), { minimumFractionDigits: ar.dist.dec, maximumFractionDigits: ar.dist.dec }) : "—";
+  $("ndKmUnit").textContent = ar ? ar.dist.unit : "km";
+  // the car: speed, the ACC's MAX, the road's limit and the car ahead; without fresh data, dashes
+  const lim = l && l.limit && l.limit.fresh && l.limit.limit ? l.limit : null;
+  $("ndVn").textContent = l ? String(l.v) : "—";
+  $("ndV").classList.toggle("over", !!(l && lim && l.v > lim.limit));
+  $("ndAccN").textContent = l && b.acc != null ? String(b.acc) : "—";
+  $("ndLimN").textContent = lim ? String(lim.limit) : "—";
+  $("ndLim").classList.toggle("dim", !lim);
+  [$("ndV"), $("ndAcc")].forEach((e) => e.classList.toggle("dim", !l));
+  const ld = l ? LPL.leadView(l) : null;
+  $("ndLead").classList.toggle("dim", !l);
+  if (!ld) {
+    $("ndGap").textContent = "—";
+    $("ndLeadV").textContent = l ? t("nenhum carro à frente") : t("carro à frente");
+    $("ndLeadSub").textContent = "";
+  } else {
+    $("ndGap").textContent = ld.gap != null ? `${ld.gap.toLocaleString(L(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })} s` : `${ld.d} m`;
+    $("ndLeadV").textContent = tf("carro à frente, {v} km/h", { v: ld.v });
+    $("ndLeadSub").textContent = [ld.gap != null ? `${ld.d} m` : "", ld.how ? tf(ld.how, { n: Math.abs(ld.dv) }) : ""].filter(Boolean).join(" · ");
+  }
+  // the Painel's "Próximo à frente" (radar, lombada), one line over the map: Navegar opens by itself, so it can't hide it
+  const pt = l && near && near.near ? near.near.find((p) => p.ahead) : null;
+  $("ndNext").classList.toggle("hidden", !pt);
+  if (pt) { $("ndNext").innerHTML = pointIcon(pt, 34); $("ndNext").append(el("span", "num", `${t(POINT[pt.kind] || pt.kind)} · ${pt.distance} m`)); }
+  sizeNav();
+  drawNavMini();
+}
+// lying down, the screen is what is left above the tab bar: nothing scrolls (standing up the page flows as the Painel)
+function sizeNav() {
+  const body = $("ndBody");
+  if (!matchMedia("(orientation: landscape) and (max-height: 540px)").matches) { body.style.removeProperty("--ndh"); return; }
+  const top = body.getBoundingClientRect().top + window.scrollY, tabs = document.querySelector("nav.tabs");
+  const below = tabs && !tabs.classList.contains("hidden") ? tabs.getBoundingClientRect().height : 0;
+  body.style.setProperty("--ndh", Math.max(200, window.innerHeight - top - below - 8) + "px");
+}
+// The minimap: north up, on the car, the route over it; the street map only with "Mostrar ruas" on (lpStreets, CTO 02/11)
+function drawNavMini() {
+  cancelAnimationFrame(ndRaf);
+  ndRaf = requestAnimationFrame(() => {
+    const box = $("ndMap"), w = box.clientWidth, h = box.clientHeight; if (!w || !h) return;
+    const s = navState || {}, rt = s.route || {}, path = rt.path || [], car = navNear(), dest = s.destination;
+    let v = null;
+    if (car) v = LPL.mapCenter(car[0], car[1], LPL.navZoom(live && live.driving ? live.v : 0), w, h);
+    else if (path.length > 1) {  // no position: the whole route
+      const fit = LPL.mapFit(path, w, h, 18);
+      if (fit) { const zf = fit.z + Math.log2(fit.size / LPL.TILE), c = LPL.mapLatLon({ k: Math.pow(2, zf), ox: fit.ox, oy: fit.oy }, w / 2, h / 2); v = LPL.mapCenter(c[0], c[1], zf, w, h); }
+    } else if (dest) v = LPL.mapCenter(dest.latitude, dest.longitude, 15, w, h);
+    const msg = !car ? t("Sem a posição do carro ainda.") : "";
+    $("ndMapMsg").textContent = msg; $("ndMapMsg").classList.toggle("hidden", !msg);
+    const keep = new Set();
+    if (v && streets) for (const tl of LPL.mapTiles(v, w, h)) {
+      const key = `${tl.z}/${tl.x}/${tl.y}`; keep.add(key);
+      let im = ndImgs.get(key);
+      if (!im) { im = new Image(); im.alt = ""; im.referrerPolicy = "strict-origin"; im.onerror = () => im.remove(); im.src = `https://tile.openstreetmap.org/${key}.png`; ndImgs.set(key, im); $("ndTiles").append(im); }
+      im.style.cssText = `left:${tl.left}px;top:${tl.top}px;width:${tl.size + .5}px;height:${tl.size + .5}px`;
+    }
+    for (const [key, im] of ndImgs) if (!keep.has(key)) { im.remove(); ndImgs.delete(key); }
+    $("ndAttr").classList.toggle("hidden", !(v && streets));
+    const c = $("ndCanvas"), ratio = window.devicePixelRatio || 1;
+    c.width = Math.round(w * ratio); c.height = Math.round(h * ratio);
+    const g = c.getContext("2d"); g.setTransform(ratio, 0, 0, ratio, 0, 0); g.clearRect(0, 0, w, h);
+    if (!v) return;
+    const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+    const xy = path.map((p) => LPL.mapXY(v, p[0], p[1]));
+    if (xy.length > 1) {
+      g.lineCap = "round"; g.lineJoin = "round";
+      g.strokeStyle = "rgba(5, 7, 9, .8)"; g.lineWidth = 11; g.beginPath(); xy.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
+      g.strokeStyle = css("--accent"); g.lineWidth = 7; g.beginPath(); xy.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
+    }
+    if (dest) {
+      const [x, y] = LPL.mapXY(v, dest.latitude, dest.longitude);
+      g.fillStyle = "#FF6B5E"; g.strokeStyle = "#fff"; g.lineWidth = 2.5; g.beginPath(); g.arc(x, y, 8, 0, 7); g.fill(); g.stroke();
+    }
+    if (car) {
+      const [x, y] = LPL.mapXY(v, car[0], car[1]), you = css("--you");
+      g.fillStyle = you + "33"; g.beginPath(); g.arc(x, y, 20, 0, 7); g.fill();
+      g.fillStyle = you; g.strokeStyle = "#fff"; g.lineWidth = 3; g.beginPath(); g.arc(x, y, 9, 0, 7); g.fill(); g.stroke();
+    }
+  });
+}
 // one finger moves the map; + and − zoom; ◎ goes back to the car
 let mapDrag = null;
 $("mapBox").addEventListener("pointerdown", (e) => {
@@ -2196,7 +2438,7 @@ $("mapMe").addEventListener("click", () => {
 });
 document.querySelectorAll("[data-home]").forEach((b) => b.addEventListener("click", () => showHome(b.dataset.home)));
 document.querySelectorAll("[data-navline]").forEach((b) => b.addEventListener("click", () => { showHome("mapa"); window.scrollTo(0, 0); }));
-window.addEventListener("resize", () => { if (homePane === "mapa") { sizeMap(); drawMap(); } });
+window.addEventListener("resize", () => { if (homePane === "mapa") { sizeMap(); drawMap(); } if (homePane === "navegar") renderNavDrive(); });
 // the search: andando, the passenger's
 async function navSearch() {
   const q = $("navQuery").value.trim();

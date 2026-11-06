@@ -1870,5 +1870,14 @@
  "O carro não volta logo depois de parar na subida": "The car doesn't roll back right after stopping on a climb",
  "Parado e seguro pelo comma, o freio soltava quando a câmera da Haval decidia sair: o comma passava adiante o pedido dela": "Stopped and held by the comma, the brake let go when the Haval's camera decided to leave: the comma passed its request on",
  "Agora o pedido de sair da Haval só vai junto quando o comma também sai; parado, o freio segura (viagem de 06/11, 37 min)": "Now the Haval's request to leave only goes along when the comma leaves too; stopped, the brake holds (drive of 06/11, 37 min)",
- "A saída não muda: com o gás do comma, o freio solta como antes": "Leaving doesn't change: with the comma's gas, the brake lets go as before"
+ "A saída não muda: com o gás do comma, o freio solta como antes": "Leaving doesn't change: with the comma's gas, the brake lets go as before",
+ "Navegar": "Navigate",
+ "chegada": "arrival",
+ "MAX do ACC": "ACC MAX",
+ "limite": "limit",
+ "Minimapa da rota": "Route minimap",
+ "depois: {rua}": "then: {rua}",
+ "mesma velocidade": "same speed",
+ "{n} km/h mais devagar": "{n} km/h slower",
+ "{n} km/h mais rápido": "{n} km/h faster"
 }
