@@ -1860,5 +1860,11 @@
  "Uma rota pública para a comma": "Una ruta pública para comma",
  "Veja se o comma mostra a tela de dirigir e engata normalmente.": "Vea si el comma muestra la pantalla de manejo y se activa normalmente.",
  "se o carro tiver o aviso de ponto cego": "si el auto tiene aviso de punto ciego",
- "A troca de faixa e os avisos dependem de o aparelho ler cada seta.": "El cambio de carril y los avisos dependen de que el dispositivo lea cada direccional."
+ "A troca de faixa e os avisos dependem de o aparelho ler cada seta.": "El cambio de carril y los avisos dependen de que el dispositivo lea cada direccional.",
+ "O vídeo da marca começa antes, e a viagem abre sem o comma": "El video de la marca empieza antes, y el viaje abre sin el comma",
+ "O vídeo da marca começa 30 s antes do toque, ou conforme o «Quando» que você escolheu": "El video de la marca empieza 30 s antes del toque, o según el «Cuándo» que elegiste",
+ "«Rever viagem» abre sem o comma: a viagem fica no celular quando você a abre perto dele, sem nenhuma posição": "«Revisar viaje» abre sin el comma: el viaje queda en el teléfono cuando lo abres cerca de él, sin ninguna posición",
+ "Missões novas: sair da parada numa subida e desengatar pelo freio parado na subida": "Misiones nuevas: salir de una parada en subida y desactivar con el freno detenido en subida",
+ "As missões da aprovação na comma (cinto, portas, câmbio, pedais, piscas, ponto cego) se marcam sozinhas pelo log": "Las misiones de la aprobación en comma (cinturón, puertas, cambio, pedales, intermitentes, punto ciego) se marcan solas por el log",
+ "O comma passa a ler os botões + e − do ACC; nada muda ao dirigir": "El comma ahora lee los botones + y − del ACC; nada cambia al conducir"
 }

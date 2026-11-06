@@ -20,7 +20,14 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "06/11", "5d00685", "O carro não solta parado na subida",
+  Release("", "06/11", "505cb02", "O vídeo da marca começa antes, e a viagem abre sem o comma",
+          ("O vídeo da marca começa 30 s antes do toque, ou conforme o «Quando» que você escolheu",
+           "«Rever viagem» abre sem o comma: a viagem fica no celular quando você a abre perto dele, sem nenhuma posição",
+           "Missões novas: sair da parada numa subida e desengatar pelo freio parado na subida",
+           "As missões da aprovação na comma (cinto, portas, câmbio, pedais, piscas, ponto cego) se marcam sozinhas pelo log",
+           "O comma passa a ler os botões + e − do ACC; nada muda ao dirigir"),
+          driving=False),
+  Release("dcdf599", "06/11", "5d00685", "O carro não solta parado na subida",
           ("Parado atrás de um carro que anda devagar, o comma às vezes hesita entre sair e parar; agora ele volta a segurar com a mesma força",
            "Antes, nesse vaivém, o freio caía quase a zero e o carro podia voltar um pouco numa subida (viagem de 06/11)",
            "A saída normal não muda: quando o comma decide sair, vai direto ao acelerador"),

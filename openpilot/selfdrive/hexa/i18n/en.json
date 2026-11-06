@@ -1860,5 +1860,11 @@
  "Uma rota pública para a comma": "A public route for comma",
  "Veja se o comma mostra a tela de dirigir e engata normalmente.": "Check that the comma shows the driving screen and engages normally.",
  "se o carro tiver o aviso de ponto cego": "if the car has a blind spot warning",
- "A troca de faixa e os avisos dependem de o aparelho ler cada seta.": "Lane changes and warnings depend on the device reading each turn signal."
+ "A troca de faixa e os avisos dependem de o aparelho ler cada seta.": "Lane changes and warnings depend on the device reading each turn signal.",
+ "O vídeo da marca começa antes, e a viagem abre sem o comma": "The mark's video starts earlier, and the drive opens without the comma",
+ "O vídeo da marca começa 30 s antes do toque, ou conforme o «Quando» que você escolheu": "The mark's video starts 30 s before the tap, or as the «When» you picked",
+ "«Rever viagem» abre sem o comma: a viagem fica no celular quando você a abre perto dele, sem nenhuma posição": "«Review drive» opens without the comma: the drive stays on the phone once you open it near the comma, with no position",
+ "Missões novas: sair da parada numa subida e desengatar pelo freio parado na subida": "New missions: leaving a stop on a hill, and disengaging with the brake stopped on a hill",
+ "As missões da aprovação na comma (cinto, portas, câmbio, pedais, piscas, ponto cego) se marcam sozinhas pelo log": "The comma approval missions (seatbelt, doors, gears, pedals, turn signals, blind spot) tick themselves from the log",
+ "O comma passa a ler os botões + e − do ACC; nada muda ao dirigir": "The comma now reads the ACC's + and − buttons; nothing changes while driving"
 }
