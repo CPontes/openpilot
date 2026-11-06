@@ -88,7 +88,13 @@ SUMMARY_VERSION = 6  # 2: version, alerts. 3: the path. 4: the KPIs (wobble, lan
 # with no numbers on the phone, and the param rewritten 300 times). Take an entry out when a version adds more than that
 SUMMARY_STILL_GOOD = {5: COP_KEEP}
 ERRORS_EVERY_S = 30.
-CLIP_BEFORE_S = 10.  # the clip of a mark starts this long before it
+# The clip of a mark starts before it: the owner marks after it happened (owner, 06/11: "quando acontece um evento, normalmente
+# marca-se o que aconteceu"). The mark's own window says how far back; with none ("Agora", the comma's flag, the copilot),
+# 30 s, the same as Marcar's "30 s antes" and the log sent to the developers (30 s before, 15 after)
+CLIP_BEFORE_S = 30.
+CLIP_MARGIN_S = 10.  # past a "10 s antes" / "30 s antes" window: a little more, for when the owner guessed short
+CLIP_LEAD_S = 5.  # "30 s depois": from just before the mark
+CLIP_AFTER_S = 15.  # at least this much after the mark, so the next minute comes along when the mark is at its end
 CLIP_TICKET_S = 600.  # a clip link works this long, for that clip only
 FIXED_NONCE_S = 60.  # a same-comma check for lizpilot.local works this long, once
 NET_GUARD_MIN_S = 10.  # the phone counts as back on the new network only after this long
@@ -111,6 +117,28 @@ SECURITY_HEADERS = {
   "Content-Security-Policy": "; ".join(("default-src 'self'", "script-src 'self' 'unsafe-inline'", "style-src 'self' 'unsafe-inline'",
                                          "img-src 'self' data: https://tile.openstreetmap.org", f"connect-src 'self' http://{hexa_mdns.NAME}:{phone.PORT}")),
 }
+
+
+def clip_window(mark: dict) -> tuple[float, float]:
+  """Seconds of video [before, after] the mark, from the window chosen in Marcar (marks.py clean_window)."""
+  win = hexa_marks.clean_window(mark.get("win"))
+  if not win:
+    return CLIP_BEFORE_S, CLIP_AFTER_S  # "Agora", or a mark with no window
+  back, ahead = win
+  before = back + CLIP_MARGIN_S if back else CLIP_LEAD_S  # "30 s depois": the mark is where it starts
+  return before, max(CLIP_AFTER_S, ahead + CLIP_MARGIN_S)
+
+
+def clip_minutes(seg: int, offset: float, before: float, after: float, has: Callable[[int], bool]) -> tuple[int, int]:
+  """The first and last minute of the clip: every minute from `before` the mark to `after` it, next to each other.
+  A minute that isn't there (the drive's start or end, or cleaned up) stops the clip there."""
+  first = seg
+  while first > seg + math.floor((offset - before) / SEGMENT_S) and has(first - 1):
+    first -= 1
+  last = seg
+  while last < seg + math.floor((offset + after) / SEGMENT_S) and has(last + 1):
+    last += 1
+  return first, last
 
 
 class PanelBackend:
@@ -408,6 +436,7 @@ class PanelBackend:
     if mark is None or not mark.get("t"):
       return 404, {"error": "Marca não encontrada."}
     t = float(mark["t"])
+    before, after = clip_window(mark)
     with self._replay_lock:
       trips = self._trips()
     for trip in trips:
@@ -420,20 +449,26 @@ class PanelBackend:
       seg = next((n for n in segs if ends[n] - SEGMENT_S - 2 <= t <= ends[n] + 2), None)
       if seg is None:
         continue
-      offset = max(0., t - (ends[seg] - SEGMENT_S))
-      parts = [n for n in (seg - 1, seg, seg + 1) if n in videos and videos[n].is_file()
-               and (n == seg or (n < seg and offset < CLIP_BEFORE_S + 2) or (n > seg and offset > SEGMENT_S - CLIP_BEFORE_S - 2))]
-      if seg not in parts:
+      if not videos[seg].is_file():
         break
-      start = offset + (SEGMENT_S if parts[0] < seg else 0.) - CLIP_BEFORE_S
+      offset = max(0., t - (ends[seg] - SEGMENT_S))
+      first, last = clip_minutes(seg, offset, before, after, lambda n, v=videos: n in v and v[n].is_file())
+      parts = list(range(first, last + 1))
+      mark_at = offset + (seg - first) * SEGMENT_S  # where the mark is in the clip (and in the file to download)
+      start = max(0., mark_at - before)  # without the minute before (cleaned up, or the drive's first), from the mark's minute
       ticket = secrets.token_urlsafe(18)
       now = self.mono()
       self._clips = {k: v for k, v in self._clips.items() if v["expires"] > now}
       while len(self._clips) >= 8:
         self._clips.pop(next(iter(self._clips)))
-      self._clips[ticket] = {"expires": now + CLIP_TICKET_S, "files": [str(videos[n]) for n in parts], "start": max(0., start),
+      self._clips[ticket] = {"expires": now + CLIP_TICKET_S, "files": [str(videos[n]) for n in parts], "start": start,
                              "name": f"lizpilot-marca-{time.strftime('%Y%m%d-%H%M%S', time.localtime(t))}"}
-      return 200, {"ticket": ticket, "playlist": f"/api/clip.m3u8?ticket={ticket}", "video": f"/api/clip.ts?ticket={ticket}&n={parts.index(seg)}&download=1"}
+      # video: every minute of the clip in one file. The minutes' timestamps run on from one to the next
+      # (loggerd writes the frame's own time), so they play as one video
+      return 200, {"ticket": ticket, "playlist": f"/api/clip.m3u8?ticket={ticket}", "video": f"/api/clip.ts?ticket={ticket}&download=1",
+                   "start": round(start, 1), "mark_at": round(mark_at, 1), "lead": round(mark_at - start, 1),
+                   "short": mark_at - start < before - 1,  # the minute before isn't on the comma (anymore)
+                   "seconds": len(parts) * SEGMENT_S, "minutes": len(parts)}
     return 404, {"error": "Sem vídeo para esta marca."}
 
   def clip(self, ticket: str) -> dict | None:
@@ -1554,12 +1589,13 @@ def make_handler(backend: PanelBackend):
             self._send(200, playlist.encode(), "application/vnd.apple.mpegurl", compress=False)
         else:
           c = backend.clip(ticket)
-          n = (q.get("n") or ["0"])[0]
-          if c is None or not n.isdigit() or int(n) >= len(c["files"]):
+          n = (q.get("n") or [""])[0]  # one minute, for the player; none: the whole clip, the file to download
+          if c is None or (n and (not n.isdigit() or int(n) >= len(c["files"]))) or (not n and "download" not in q):
             self._json(404, {"error": "Esse link do clipe expirou. Abra a marca de novo."})
           else:
             extra = {"Content-Disposition": f'attachment; filename="{c["name"]}.ts"'} if "download" in q else None
-            self._send(200, Path(c["files"][int(n)]).read_bytes(), "video/mp2t", compress=False, extra=extra)
+            files = [c["files"][int(n)]] if n else c["files"]
+            self._send(200, b"".join(Path(f).read_bytes() for f in files), "video/mp2t", compress=False, extra=extra)
       elif path == "/api/options/export":
         if self._who() is not None:
           self._json(200, backend.options_export())

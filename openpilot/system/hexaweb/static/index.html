@@ -2402,12 +2402,23 @@ async function openClip(mark) {
   if (r.status !== 200) { toast(r.data.error || t("Não foi possível.")); return; }
   $("clipWhen").textContent = hhmmss(mark.t);
   $("clipWhat").textContent = t(mark.label || "") + (mark.note ? " — " + noteOf(mark) : "");
-  $("clipNote").textContent = t("Começa 10 s antes da marca. Vídeo leve da câmera da frente.");
-  $("clipVideo").src = r.data.playlist;
+  // where it starts comes from the comma: the mark's window ("30 s antes", "30 s depois"...), less when the minute before is gone
+  const c = r.data, at = Math.round(c.mark_at), pos = `${Math.floor(at / 60)}:${String(at % 60).padStart(2, "0")}`;
+  $("clipNote").textContent = (c.short ? tf("Começa {n} s antes da marca: o minuto anterior não está mais no comma.", { n: Math.round(c.lead) })
+    : tf("Começa {n} s antes da marca.", { n: Math.round(c.lead) })) + " "
+    + tf("O arquivo para baixar tem os {n} min inteiros; a marca fica em {pos}.", { n: c.minutes, pos }) + " " + t("Vídeo leve da câmera da frente.");
+  clipStart = c.start;
+  $("clipVideo").src = c.playlist;
   $("clipDownload").href = r.data.video;
   $("clipScrim").classList.remove("hidden"); $("clipSheet").classList.remove("hidden");
 }
-function closeClip() { const v = $("clipVideo"); v.pause(); v.removeAttribute("src"); v.load(); $("clipScrim").classList.add("hidden"); $("clipSheet").classList.add("hidden"); }
+let clipStart = null;  // where the clip opens: also for a player that skips the playlist's EXT-X-START
+$("clipVideo").addEventListener("loadedmetadata", () => {
+  const v = $("clipVideo");
+  if (clipStart !== null && Math.abs(v.currentTime - clipStart) > 1.5) v.currentTime = clipStart;
+  clipStart = null;  // once: seeking after that is the owner's
+});
+function closeClip() { clipStart = null; const v = $("clipVideo"); v.pause(); v.removeAttribute("src"); v.load(); $("clipScrim").classList.add("hidden"); $("clipSheet").classList.add("hidden"); }
 
 // ----- passenger: with the car moving, the phone is for the passenger. A reminder, not a check -----
 function carNow() { return { on: carOn, moving: carOn && !carStopped }; }

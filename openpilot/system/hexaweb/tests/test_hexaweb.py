@@ -1009,9 +1009,12 @@ def test_mark_clip_by_ticket_with_the_car_off(panel, tmp_path):
   assert status == 200 and c["ticket"]
   status, _, playlist = panel.request(c["playlist"])  # no token: the ticket is the key
   text = playlist.decode()
-  assert status == 200 and text.count("#EXTINF") == 2 and "TIME-OFFSET=55.0" in text  # minute 0 too: the clip starts 10 s before
-  status, headers, video = panel.request(c["video"])
-  assert status == 200 and video == b"video1" and headers["Content-Type"] == "video/mp2t" and "attachment" in headers["Content-Disposition"]
+  assert status == 200 and text.count("#EXTINF") == 2 and "TIME-OFFSET=35.0" in text  # minute 0 too: the clip starts 30 s before
+  assert (c["start"], c["mark_at"], c["lead"], c["minutes"], c["short"]) == (35., 65., 30., 2, False)
+  status, headers, video = panel.request(c["video"])  # the file to download: the same minutes, in one file
+  assert status == 200 and video == b"video0video1" and headers["Content-Type"] == "video/mp2t" and "attachment" in headers["Content-Disposition"]
+  assert panel.request(c["playlist"].replace("clip.m3u8", "clip.ts") + "&n=1")[2] == b"video1"  # the player: one minute
+  assert panel.request(c["playlist"].replace("clip.m3u8", "clip.ts"))[0] == 404  # no minute and no download: nothing
   assert panel.request("/api/clip.ts?ticket=wrong&n=0")[0] == 404
   assert panel.request(c["playlist"].replace(c["ticket"], c["ticket"] + "x"))[0] == 404
   panel.now += hexaweb.CLIP_TICKET_S + 1
@@ -1019,6 +1022,82 @@ def test_mark_clip_by_ticket_with_the_car_off(panel, tmp_path):
   assert panel.json("/api/mark/clip", {"id": "nope"}, token=token)[0] == 404
   panel.vs = VehicleState(onroad=True)
   assert panel.json("/api/mark/clip", {"id": "m1"}, token=token)[0] == 409
+
+
+def clip_drive(panel, tmp_path, video=(0, 1, 2)):
+  """Minutes 0..2 of a drive, minute n ending at 50_000 + 60 n; the light video only in the minutes of `video`."""
+  import os
+  for n in range(3):
+    d = tmp_path / f"00000022--abcdef0123--{n}"
+    d.mkdir()
+    (d / "qlog.zst").write_bytes(b"q")
+    files = ["qlog.zst"]
+    if n in video:
+      (d / "qcamera.ts").write_bytes(f"v{n}".encode())
+      files.append("qcamera.ts")
+    for f in files:
+      os.utime(d / f, (50_000. + 60 * n, 50_000. + 60 * n))
+  panel.backend.log_root = str(tmp_path)
+
+
+# (minute of the mark, seconds into it, Marcar's window) -> (start, where the mark is, minutes, minute before missing)
+CLIP_CASES = [
+  ((1, 5, None), (35., 65., 2, False)),  # "Agora" at a minute's start: 30 s before, from the minute before
+  ((1, 50, None), (20., 50., 2, False)),  # at its end: the next minute too, for the 15 s after
+  ((1, 5, [10, 0]), (45., 65., 2, False)),  # "10 s antes": 20 s
+  ((1, 25, [10, 0]), (5., 25., 1, False)),
+  ((1, 30, [30, 0]), (50., 90., 2, False)),  # "30 s antes": 40 s
+  ((1, 5, [0, 30]), (0., 5., 1, False)),  # "30 s depois": from 5 s before the mark
+  ((1, 30, [0, 30]), (25., 30., 2, False)),  # ...and the next minute for the 30 s after
+  ((1, 59, [0, 0]), (29., 59., 2, False)),  # an old mark with [0, 0]: like "Agora"
+  ((0, 5, None), (0., 5., 1, True)),  # the drive's first minute: there is no minute before
+  ((2, 30, [0, 30]), (25., 30., 1, False)),  # the drive's last minute: no next one
+]
+
+
+@pytest.mark.parametrize("where,want", CLIP_CASES)
+def test_a_clip_starts_before_the_mark(panel, tmp_path, where, want):
+  seg, offset, win = where
+  clip_drive(panel, tmp_path)
+  mark = {"id": "m3", "t": 50_000. + 60 * (seg - 1) + offset, "reason": "curva", "label": "curva"}
+  if win is not None:
+    mark["win"] = win
+  panel.store.put(marks.MARKS_PARAM, [mark])
+  status, c = panel.json("/api/mark/clip", {"id": "m3"}, token=panel.pair())
+  assert status == 200
+  start, mark_at, minutes, short = want
+  assert (c["start"], c["mark_at"], c["minutes"], c["short"]) == (start, mark_at, minutes, short)
+  assert c["lead"] == mark_at - start and c["seconds"] == 60 * minutes
+  text = panel.request(c["playlist"])[2].decode()
+  assert text.count("#EXTINF") == minutes and f"TIME-OFFSET={start:.1f}," in text
+  first = seg - (1 if mark_at >= 60 else 0)
+  assert panel.request(c["video"])[2] == b"".join(f"v{n}".encode() for n in range(first, first + minutes))
+
+
+def test_a_clip_without_the_minute_before(panel, tmp_path):
+  clip_drive(panel, tmp_path, video=(1, 2))  # minute 0's video was cleaned up
+  panel.store.put(marks.MARKS_PARAM, [{"id": "m4", "t": 50_005., "reason": "curva", "label": "curva", "win": [30, 0]}])
+  status, c = panel.json("/api/mark/clip", {"id": "m4"}, token=panel.pair())
+  assert status == 200 and (c["start"], c["lead"], c["minutes"], c["short"]) == (0., 5., 1, True)  # the phone says why it's short
+  assert panel.request(c["video"])[2] == b"v1"
+
+
+def test_no_clip_when_the_marks_own_minute_has_no_video(panel, tmp_path):
+  clip_drive(panel, tmp_path, video=(0, 2))
+  panel.store.put(marks.MARKS_PARAM, [{"id": "m5", "t": 50_030., "reason": "curva", "label": "curva"}])
+  assert panel.json("/api/mark/clip", {"id": "m5"}, token=panel.pair()) == (404, {"error": "Sem vídeo para esta marca."})
+
+
+def test_clip_window_from_marcar():
+  assert hexaweb.clip_window({}) == (30., 15.)
+  assert hexaweb.clip_window({"win": [0, 0]}) == (30., 15.)
+  assert hexaweb.clip_window({"win": [10, 0]}) == (20., 15.)
+  assert hexaweb.clip_window({"win": [30, 0]}) == (40., 15.)
+  assert hexaweb.clip_window({"win": [0, 30]}) == (5., 40.)
+  assert hexaweb.clip_window({"win": [60, 0]}) == (70., 15.)  # the most marks.py keeps: two minutes back
+  assert hexaweb.clip_minutes(5, 5., 70., 15., lambda n: True) == (3, 5)
+  assert hexaweb.clip_minutes(5, 5., 70., 15., lambda n: n != 3) == (4, 5)  # a gap stops it: the minutes play in a row
+  assert hexaweb.clip_minutes(5, 5., 70., 15., lambda n: n != 4) == (5, 5)
 
 
 def test_mark_clip_without_video(panel, tmp_path):
