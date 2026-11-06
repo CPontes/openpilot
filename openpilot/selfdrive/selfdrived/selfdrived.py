@@ -257,13 +257,18 @@ class SelfdriveD:
       self.events.add(EventName.bumpSlowdown)
 
     if self.limit_follow is not None and self.speed_limit_watch is not None:
-      bump = self.bump_slowdown is not None and self.bump_slowdown.target is not None
-      step = self.limit_follow.update(self.enabled, CS.cruiseState.driving, not CS.standstill, CS.cruiseState.speedCluster * 3.6,
-                                      self.speed_limit_watch.limit_kph, CS.gasPressed, CS.brakePressed, bump)
-      if step > 0:
-        self.events.add(EventName.speedLimitUp)
-      elif step < 0:
-        self.events.add(EventName.speedLimitDown)
+      # CTO review of codeweb-14: like the warning, following the limit is never worth taking selfdrived down
+      try:
+        bump = self.bump_slowdown is not None and self.bump_slowdown.target is not None
+        step = self.limit_follow.update(self.enabled, CS.cruiseState.driving, not CS.standstill, CS.cruiseState.speedCluster * 3.6,
+                                        self.speed_limit_watch.limit_kph, CS.gasPressed, CS.brakePressed, bump)
+        if step > 0:
+          self.events.add(EventName.speedLimitUp)
+        elif step < 0:
+          self.events.add(EventName.speedLimitDown)
+      except Exception:
+        cloudlog.exception("speed limit follow failed")
+        self.limit_follow = None
 
     if self.acc_lost_alert is not None and self.acc_lost_alert.update(self.enabled, CS.cruiseState.driving, CS.vEgo, CS.gasPressed, CS.brakePressed):
       self.events.add(EventName.accLost)

@@ -1767,5 +1767,9 @@
  "Rota no comma": "Ruta en el comma",
  "voz, trânsito e radares; abre o app": "voz, tráfico y radares; abre la app",
  "voz e trânsito; abre o app": "voz y tráfico; abre la app",
- "a seta na tela do comma; pesa no processador": "la flecha en la pantalla del comma; carga el procesador"
+ "a seta na tela do comma; pesa no processador": "la flecha en la pantalla del comma; carga el procesador",
+ "Ajustar a velocidade ao limite e escolher Waze, Google Maps ou comma": "Ajustar la velocidad al límite y elegir Waze, Google Maps o comma",
+ "Limite da via pelo mapa ganha «ajustar»: o comma leva a velocidade do ACC até o limite, um toque de + ou − por vez, só abaixo de 110 km/h": "Límite de la vía por el mapa gana «ajustar»: el comma lleva la velocidad del ACC al límite, un toque de + o − por vez, solo debajo de 110 km/h",
+ "Qualquer pedal ou botão seu para o ajuste até o próximo limite; fica desligado até você escolher": "Cualquier pedal o botón tuyo detiene el ajuste hasta el próximo límite; queda apagado hasta que lo elijas",
+ "«Ir para cá» pergunta quem navega: Waze, Google Maps ou a rota no comma; e mostra os destinos recentes": "«Ir aquí» pregunta quién navega: Waze, Google Maps o la ruta en el comma; y muestra los destinos recientes"
 }

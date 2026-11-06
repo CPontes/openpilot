@@ -20,7 +20,12 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "06/11", "8066720", "Missões da aprovação na comma",
+  Release("", "06/11", "72b221d", "Ajustar a velocidade ao limite e escolher Waze, Google Maps ou comma",
+          ("Limite da via pelo mapa ganha «ajustar»: o comma leva a velocidade do ACC até o limite, um toque de + ou − por vez, só abaixo de 110 km/h",
+           "Qualquer pedal ou botão seu para o ajuste até o próximo limite; fica desligado até você escolher",
+           "«Ir para cá» pergunta quem navega: Waze, Google Maps ou a rota no comma; e mostra os destinos recentes"),
+          driving=True),
+  Release("914fd08", "06/11", "8066720", "Missões da aprovação na comma",
           ("A trilha «Aprovação na comma» vem primeiro, e o roteiro da próxima viagem são os testes que a comma pede",
            "Nada de celular andando: o passageiro marca, ou você marca parado; os botões do ACC o CTO confere no log"),
           driving=False),

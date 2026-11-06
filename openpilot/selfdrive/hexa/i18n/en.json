@@ -1767,5 +1767,9 @@
  "Rota no comma": "Route on the comma",
  "voz, trânsito e radares; abre o app": "voice, traffic and cameras; opens the app",
  "voz e trânsito; abre o app": "voice and traffic; opens the app",
- "a seta na tela do comma; pesa no processador": "the arrow on the comma's screen; loads the processor"
+ "a seta na tela do comma; pesa no processador": "the arrow on the comma's screen; loads the processor",
+ "Ajustar a velocidade ao limite e escolher Waze, Google Maps ou comma": "Adjust the speed to the limit, and pick Waze, Google Maps or comma",
+ "Limite da via pelo mapa ganha «ajustar»: o comma leva a velocidade do ACC até o limite, um toque de + ou − por vez, só abaixo de 110 km/h": "Road limit from the map gets «adjust»: the comma takes the ACC's speed to the limit, one + or − press at a time, only below 110 km/h",
+ "Qualquer pedal ou botão seu para o ajuste até o próximo limite; fica desligado até você escolher": "Any pedal or button of yours stops the adjusting until the next limit; it stays off until you choose it",
+ "«Ir para cá» pergunta quem navega: Waze, Google Maps ou a rota no comma; e mostra os destinos recentes": "«Go here» asks who navigates: Waze, Google Maps or the route on the comma; and shows the recent destinations"
 }
