@@ -1745,5 +1745,9 @@
  "sua mão: nenhuma": "your hand: none",
  "{n} respostas · {ok} deu certo": "{n} answers · {ok} worked",
  "fechar a lista": "close the list",
- "último {hora} · ver": "last {hora} · see"
+ "último {hora} · ver": "last {hora} · see",
+ "Mapa no Início, Usar | Melhorar e o Copiloto como painel": "Map on Home, Use | Improve and the Copilot as a panel",
+ "Início com Painel | Mapa: buscar o endereço, conferir no mapa («É aqui?»), a rota e os lugares salvos; toda troca pede confirmação": "Home with Panel | Map: search the address, check it on the map («Is it here?»), the route and saved places; every change asks first",
+ "Usar | Melhorar: Usar mostra só o essencial; Melhorar mostra tudo e liga o envio aos desenvolvedores, com confirmação": "Use | Improve: Use shows only the essentials; Improve shows everything and turns on sending to the developers, after asking",
+ "Copiloto sem evento mostra o painel ao vivo; «Avisos» liga e desliga cada tipo; Pular dentro do cartão; «A conferir» numa linha": "Copilot without an event shows the live panel; «Alerts» turns each type on and off; Skip inside the card; «To check» in one line"
 }

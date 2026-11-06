@@ -247,7 +247,8 @@ CATALOG: tuple[Mission, ...] = (
                  "Ligue o carro: o comma reconhece o carro de primeira?")),
   Mission("botoes-acc", "coleta", "Botões do ACC: +, −, distância e cancelar", 4, "cto",  # CTO, 05/11: no phone while driving
           why="A comma confere se cada botão chega certo ao aparelho.",
-          steps=("Numa reta, com o ACC ligado e o trânsito permitindo.", "Aperte + uma vez, depois − uma vez, depois a distância uma vez, com uns 5 s entre cada um.",
+          steps=("Numa reta, com o ACC ligado e o trânsito permitindo.",
+                 "Aperte + uma vez, depois − uma vez, depois a distância uma vez, com uns 5 s entre cada um.",
                  "Por último, empurre a alavanca para cancelar.", "Não precisa tocar no celular andando: o comma grava cada botão e o CTO confere no log.")),
   Mission("sem-fingerprint", "coleta", "O comma reconhece o carro sozinho", 3, "parado",
           lock="Precisa de uma versão de teste que não força o reconhecimento (CTO)",

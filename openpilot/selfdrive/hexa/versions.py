@@ -20,7 +20,12 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "05/11", "8066720", "Erros direto para análise e a tela que não rola atrás",
+  Release("", "05/11", "8066720", "Mapa no Início, Usar | Melhorar e o Copiloto como painel",
+          ("Início com Painel | Mapa: buscar o endereço, conferir no mapa («É aqui?»), a rota e os lugares salvos; toda troca pede confirmação",
+           "Usar | Melhorar: Usar mostra só o essencial; Melhorar mostra tudo e liga o envio aos desenvolvedores, com confirmação",
+           "Copiloto sem evento mostra o painel ao vivo; «Avisos» liga e desliga cada tipo; Pular dentro do cartão; «A conferir» numa linha"),
+          driving=False),
+  Release("001fa00", "05/11", "8066720", "Erros direto para análise e a tela que não rola atrás",
           ("«Enviar para análise» mostra o que vai e manda direto aos desenvolvedores, com o código do envio; sem dados do carro, do comma ou de onde",
            "Os erros que são normais ficam em «ver todos», e a data errada vira «antes de o relógio acertar»",
            "O Copiloto e as caixas não deixam mais a página de trás rolar; o título do Copiloto fica fixo",
