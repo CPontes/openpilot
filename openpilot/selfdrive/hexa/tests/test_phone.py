@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+
 from openpilot.selfdrive.hexa import phone
 from openpilot.selfdrive.hexa.options import HexaOption
 from openpilot.selfdrive.hexa.phone import VehicleState
@@ -62,6 +65,33 @@ def test_tokens():
   assert phone.find_token(tokens, None) is None and phone.find_token(tokens, "wrong") is None
   tokens = phone.revoke_token(tokens, entry["id"])
   assert phone.find_token(tokens, issued[-1]) is None
+
+
+
+def _mac(token: str, nonce: str) -> str:  # the protocol written out, as the LizPilot app computes it (Ident.java)
+  key = hashlib.sha256(token.encode()).hexdigest().encode()
+  return hmac.new(key, ("lizpilot-ident|v1|" + nonce).encode(), hashlib.sha256).hexdigest()
+
+
+def test_ident_only_the_comma_that_paired_the_phone_can_answer():  # APP-02
+  token, tokens = phone.issue_token([], "celular", now=1.0)
+  other, tokens = phone.issue_token(tokens, "outro", now=2.0)
+  me = hashlib.sha256(hashlib.sha256(token.encode()).hexdigest().encode()).hexdigest()[:16]
+  nonce = "n" * 22
+  assert phone.ident_answer(tokens, me, nonce) == {"v": 1, "mac": _mac(token, nonce)}
+  assert phone.ident_answer(tokens, me, "m" * 22)["mac"] != _mac(token, nonce)  # a new nonce, a new answer
+  _, elsewhere = phone.issue_token([], "celular", now=1.0)  # another comma: never paired with this phone
+  assert phone.ident_answer(elsewhere, me, nonce) == {"v": 1, "mac": None}
+  assert phone.ident_answer(phone.revoke_token(tokens, tokens[0]["id"]), me, nonce) == {"v": 1, "mac": None}
+  assert token not in str(phone.ident_answer(tokens, me, nonce)) and _mac(other, nonce) != _mac(token, nonce)
+
+
+def test_ident_refuses_a_malformed_question():
+  token, tokens = phone.issue_token([], "celular", now=1.0)
+  me = phone.ident_phone(phone.hash_token(token))
+  for bad_phone, bad_nonce in ((me, "short"), (me, "n" * 65), (me, "n" * 20 + "/"), (me, None), ("ABCDEF0123456789", "n" * 22),
+                               (me[:15], "n" * 22), (None, "n" * 22)):
+    assert phone.ident_answer(tokens, bad_phone, bad_nonce) is None
 
 
 def test_a_full_list_drops_the_phone_unused_the_longest_not_the_first_paired():

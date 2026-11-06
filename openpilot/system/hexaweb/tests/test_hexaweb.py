@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import json
 from pathlib import Path
 import re
@@ -1146,6 +1148,21 @@ def test_the_fixed_name_check_is_local_only(panel, monkeypatch):
   monkeypatch.setattr(hexaweb.phone, "is_local_address", lambda ip: False)
   assert panel.json("/api/fixed/nonce")[0] == 403
   assert panel.json("/api/fixed/check?n=x")[0] == 403
+
+
+def test_the_app_checks_this_is_its_comma_without_the_token(panel):  # APP-02: before it opens a page or sends the token
+  token = panel.pair()
+  key = hashlib.sha256(token.encode()).hexdigest()
+  me, nonce = hashlib.sha256(key.encode()).hexdigest()[:16], "abcDEF_-0123456789xyz"
+  status, body = panel.json(f"/api/ident?p={me}&n={nonce}")  # no Authorization header
+  assert status == 200 and body == {"v": 1, "mac": hmac.new(key.encode(), ("lizpilot-ident|v1|" + nonce).encode(), hashlib.sha256).hexdigest()}
+  assert panel.json(f"/api/ident?p={'0' * 16}&n={nonce}") == (200, {"v": 1, "mac": None})  # a phone this comma doesn't know
+  assert panel.json(f"/api/ident?p={me}&n=x")[0] == 400 and panel.json("/api/ident")[0] == 400
+
+
+def test_the_app_check_is_local_only(panel, monkeypatch):
+  monkeypatch.setattr(hexaweb.phone, "is_local_address", lambda ip: False)
+  assert panel.json(f"/api/ident?p={'0' * 16}&n={'n' * 22}")[0] == 403
 
 
 def clip_ready(panel, tmp_path):

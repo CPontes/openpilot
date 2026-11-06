@@ -270,6 +270,12 @@ class PanelBackend:
           self.store.put(phone.TOKENS_PARAM, touched)
     return who
 
+  def ident(self, phone_id: str, nonce: str) -> tuple[int, dict]:
+    """The LizPilot app asks if this is the comma it paired with (phone.ident_answer): no token, opens nothing."""
+    with self.lock:
+      out = phone.ident_answer(self._tokens(), phone_id, nonce)
+    return (400, {"error": "Valor inválido."}) if out is None else (200, out)
+
   def pair(self, pin: str, name: str) -> tuple[int, dict]:
     with self.lock:
       stored = self.store.get(phone.PIN_PARAM)
@@ -1576,6 +1582,9 @@ def make_handler(backend: PanelBackend):
       elif path == "/api/comma":
         if self._who() is not None:
           self._json(200, backend.comma_state())
+      elif path == "/api/ident":  # the LizPilot app: is this the comma that paired me? No token, opens nothing
+        q = parse_qs(query)
+        self._json(*backend.ident((q.get("p") or [""])[0], (q.get("n") or [""])[0]))
       elif path == "/api/fixed/nonce":  # before pairing: carries no secret and opens nothing
         self._json(200, backend.fixed_nonce(self.client_address[0]))
       elif path == "/api/fixed/check":  # asked by a page served by address: it may read only this yes or no

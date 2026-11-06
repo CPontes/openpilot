@@ -9,6 +9,7 @@
 import hashlib
 import hmac
 import ipaddress
+import re
 import secrets
 import socket
 import time
@@ -134,6 +135,35 @@ def find_token(tokens: list[dict] | None, token: str | None) -> dict | None:
     if hmac.compare_digest(str(entry.get("hash", "")), h):
       return entry
   return None
+
+
+# *** this is my comma (the LizPilot app, APP-02) ***
+# The app keeps hash_token() of its own pairing. Before it opens a page or lets the token go out, it asks for
+# HMAC(hash, nonce) with a nonce of its own. Only the comma that paired the phone knows the hash: another comma on the
+# same hotspot address, or a device answering for lizpilot.local, can't answer. The token never travels for this.
+IDENT_PREFIX = "lizpilot-ident|v1|"
+IDENT_NONCE = re.compile(r"[A-Za-z0-9_-]{16,64}")
+IDENT_PHONE = re.compile(r"[0-9a-f]{16}")
+
+
+def ident_phone(token_hash: str) -> str:
+  """How the app says which phone it is: a hash of the stored hash, so it opens nothing."""
+  return hashlib.sha256(token_hash.encode()).hexdigest()[:16]
+
+
+def ident_mac(token_hash: str, nonce: str) -> str:
+  return hmac.new(token_hash.encode(), (IDENT_PREFIX + nonce).encode(), hashlib.sha256).hexdigest()
+
+
+def ident_answer(tokens: list[dict] | None, phone_id, nonce) -> dict | None:
+  """None for a malformed question. mac None: this comma doesn't know that phone (never paired here, or taken off)."""
+  if not (isinstance(nonce, str) and IDENT_NONCE.fullmatch(nonce) and isinstance(phone_id, str) and IDENT_PHONE.fullmatch(phone_id)):
+    return None
+  for entry in tokens or []:
+    h = str(entry.get("hash", ""))
+    if h and hmac.compare_digest(ident_phone(h), phone_id):
+      return {"v": 1, "mac": ident_mac(h, nonce)}
+  return {"v": 1, "mac": None}
 
 
 def revoke_token(tokens: list[dict] | None, token_id: str) -> list[dict]:
