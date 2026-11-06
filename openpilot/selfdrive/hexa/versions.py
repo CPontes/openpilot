@@ -20,7 +20,13 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "06/11", "72b221d", "Ajustar a velocidade ao limite e escolher Waze, Google Maps ou comma",
+  Release("", "06/11", "6c1c3d3", "O panda confere o comando do ACC",
+          ("Sem o openpilot no controle, o panda só deixa sair o comando do ACC que não acelera nem freia",
+           "O panda confere o código de checagem do acelerador, do freio e do volante; nos seus logs, 100% passam",
+           "Se o ACC da Haval cair por 0,5 s com o openpilot engatado, o openpilot desengata; na direção sempre ativa, não",
+           "Parado, o segurar da Haval continua como hoje, também ao sair pelo acelerador"),
+          panda=True),
+  Release("badc5ec", "06/11", "72b221d", "Ajustar a velocidade ao limite e escolher Waze, Google Maps ou comma",
           ("Limite da via pelo mapa ganha «ajustar»: o comma leva a velocidade do ACC até o limite, um toque de + ou − por vez, só abaixo de 110 km/h",
            "Qualquer pedal ou botão seu para o ajuste até o próximo limite; fica desligado até você escolher",
            "«Ir para cá» pergunta quem navega: Waze, Google Maps ou a rota no comma; e mostra os destinos recentes"),

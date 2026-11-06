@@ -1771,5 +1771,10 @@
  "Ajustar a velocidade ao limite e escolher Waze, Google Maps ou comma": "Adjust the speed to the limit, and pick Waze, Google Maps or comma",
  "Limite da via pelo mapa ganha «ajustar»: o comma leva a velocidade do ACC até o limite, um toque de + ou − por vez, só abaixo de 110 km/h": "Road limit from the map gets «adjust»: the comma takes the ACC's speed to the limit, one + or − press at a time, only below 110 km/h",
  "Qualquer pedal ou botão seu para o ajuste até o próximo limite; fica desligado até você escolher": "Any pedal or button of yours stops the adjusting until the next limit; it stays off until you choose it",
- "«Ir para cá» pergunta quem navega: Waze, Google Maps ou a rota no comma; e mostra os destinos recentes": "«Go here» asks who navigates: Waze, Google Maps or the route on the comma; and shows the recent destinations"
+ "«Ir para cá» pergunta quem navega: Waze, Google Maps ou a rota no comma; e mostra os destinos recentes": "«Go here» asks who navigates: Waze, Google Maps or the route on the comma; and shows the recent destinations",
+ "O panda confere o comando do ACC": "The panda checks the ACC command",
+ "Sem o openpilot no controle, o panda só deixa sair o comando do ACC que não acelera nem freia": "Without openpilot in control, the panda only lets out the ACC commands that neither accelerate nor brake",
+ "O panda confere o código de checagem do acelerador, do freio e do volante; nos seus logs, 100% passam": "The panda checks the checksum of the gas, the brake and the steering; in your logs, 100% pass",
+ "Se o ACC da Haval cair por 0,5 s com o openpilot engatado, o openpilot desengata; na direção sempre ativa, não": "If the Haval's ACC drops for 0.5 s with openpilot engaged, openpilot disengages; not with always-on steering",
+ "Parado, o segurar da Haval continua como hoje, também ao sair pelo acelerador": "Stopped, the Haval's hold stays as it is today, also when you leave on the gas"
 }
