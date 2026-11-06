@@ -20,7 +20,15 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "06/11", "9fe1215", "O carro não volta logo depois de parar na subida",
+  Release("", "06/11", "9fe1215", "O Mapa em três passos e a aba Navegar",
+          ("Mapa: Para onde → É aqui? → Quem mostra o caminho; um lugar salvo ou recente vai direto à escolha, com a última primeiro",
+           "Navegar: com uma rota, ao sair andando o Início mostra a próxima manobra, a chegada e um minimapa; só mostra, sem nada para tocar",
+           "Andando, abrir o Mapa pergunta uma vez por viagem se é o passageiro",
+           "«Rever viagem» no visual do Início: quem dirigiu em três cores, e as marcas e os desengates com a hora",
+           "Trilha nova «Calibragem do veículo»: o que o comma aprendeu do carro (câmera, direção, torque, rodas × GPS) se marca pelo log",
+           "O comma responde ao app do LizPilot se é o comma daquele celular, sem mandar o token; nada muda ao dirigir"),
+          driving=False),
+  Release("786b3f5", "06/11", "9fe1215", "O carro não volta logo depois de parar na subida",
           ("Parado e seguro pelo comma, o freio soltava quando a câmera da Haval decidia sair: o comma passava adiante o pedido dela",
            "Agora o pedido de sair da Haval só vai junto quando o comma também sai; parado, o freio segura (viagem de 06/11, 37 min)",
            "A saída não muda: com o gás do comma, o freio solta como antes"),
