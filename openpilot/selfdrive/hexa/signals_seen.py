@@ -10,7 +10,7 @@ GEAR_BITS = {g: 1 << i for i, g in enumerate(GEARS)}
 GEAR_OTHER = 1 << len(GEARS)
 STOPPED = 0.1  # m/s: the pedal checks are done parked
 
-COUNT_KEYS = ("sg_belt", "sg_door", "sg_brake", "sg_gas", "sg_left", "sg_right", "sg_hazard", "sg_bsm_l", "sg_bsm_r")
+COUNT_KEYS = ("sg_belt", "sg_door", "sg_brake", "sg_gas", "sg_left", "sg_right", "sg_hazard", "sg_bsm_l", "sg_bsm_r", "sg_steer_fault")
 MASK_KEYS = ("sg_gears",)
 KEYS = COUNT_KEYS + MASK_KEYS
 
@@ -35,6 +35,8 @@ class SignalsSeen:
       "hazard": left and right,
       "bsm_l": bool(getattr(cs, "leftBlindspot", False)),
       "bsm_r": bool(getattr(cs, "rightBlindspot", False)),
+      # a steering fault lasts seconds: the qlog's carStates catch it. A button press lasts one frame and may not be there
+      "steer_fault": bool(getattr(cs, "steerFaultTemporary", False) or getattr(cs, "steerFaultPermanent", False)),
     }
     if self.prev is not None:
       for k, on in now.items():

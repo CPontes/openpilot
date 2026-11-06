@@ -89,7 +89,7 @@ def option_texts() -> set[str]:
 def mission_texts() -> set[str]:
   """The missions as the phone shows them (missions.py)."""
   out = {title for _, title in missions.TRAILS} | set(missions.RESULTS.values()) | set(missions.TRY_RESULTS.values())
-  for m in missions.CATALOG:
+  for m in dict.fromkeys(missions.CATALOG + missions.APPROVAL):  # the approval of a new car shows in the generic edition (MISS-01)
     out |= {m.title, m.note, m.why, m.proof, m.lock, m.goal, *m.steps}
   out |= {t.measured for tries in missions.TRIES.values() for t in tries}
   pk = missions.ROUTE

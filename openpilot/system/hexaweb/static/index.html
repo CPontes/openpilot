@@ -3321,6 +3321,24 @@ function renderMissions() {
     const list = el("div", "card list"); list.style.padding = "4px 16px";
     for (const m of LPL.missionOrder(ms, prog)) list.append(mPickRow(m, prog[m.key], () => openMission(m.key, s)));
     out.push(list);
+    if (String(s.tr).startsWith("ap-")) {  // a new car's approval (MISS-01): the checklist, filled, for the pull request
+      const rb = el("button", "btn dark", t("Relatório para a comma")); rb.type = "button";
+      rb.addEventListener("click", () => openMissions({ s: "relatorio", from: s.tr })); out.push(rb);
+    }
+  } else if (s.s === "relatorio") {
+    mBack(t("Trilha"), { s: "trilha", tr: s.from || "ap-envio" });
+    out.push(h1(t("Relatório para a comma")), el("p", "sub", t("O checklist da comma preenchido com o que este carro já mostrou, em inglês. Copie e cole no pedido (pull request). Não leva nome do carro, chassi nem lugar.")));
+    const box = el("textarea", "report"); box.readOnly = true; box.rows = 18; box.style.width = "100%"; box.style.fontFamily = "monospace"; box.style.fontSize = "12px";
+    box.value = LPL.approvalReport(missions, prog, trips || []); out.push(box);
+    const cb = el("button", "btn", t("Copiar")); cb.type = "button";
+    cb.addEventListener("click", async () => {  // the panel is plain http: the clipboard API may be missing, the selection always works
+      box.focus(); box.select();
+      let ok = false;
+      try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(box.value); ok = true; } } catch (e) { ok = false; }
+      if (!ok) { try { ok = document.execCommand("copy"); } catch (e) { ok = false; } }
+      cb.textContent = ok ? t("Copiado") : t("Selecionado: copie pelo menu do celular");
+    });
+    out.push(cb);
   } else if (s.s === "missao") {
     const m = mOf(s.key), p = prog[m.key], back = s.from && s.from.s ? s.from : { s: "trilha", tr: m.trail };
     mBack(back.s === "trilhas" ? t("Missões") : back.s === "roteiro" ? t("Roteiro") : back.s === "resultado" ? t("Resultado") : back.s === "feitas" ? t("Feitas") : t("Trilha"), back);

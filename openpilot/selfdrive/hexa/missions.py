@@ -33,7 +33,7 @@ MAX_PACK = 12
 MAX_PENDING = 300
 HOW = ("auto", "marca", "parado", "cto", "decisao")
 # the comma approval checks (MISS-01), from the car's signals each drive summary saw change (signals_seen.py)
-APPROVAL_DETECT = ("belt", "doors", "gears", "pedals", "blinkers", "bsm", "ign3")
+APPROVAL_DETECT = ("belt", "doors", "gears", "pedals", "blinkers", "bsm", "ign3", "engaged", "brake_off", "lat30")
 DETECT = ("slow10", "night30", "highway", "km200", "marks10", "installed", *APPROVAL_DETECT)
 # the passenger's copilot (owner, 03/11): what the live data says fits now
 WHEN = ("stop_free", "stop_queue", "stop_long", "follow_mid", "slow_follow", "moving", "city")
@@ -49,6 +49,13 @@ RETURNED = ("back", "bad")
 # The approval of the car by comma comes first (owner, 06/11: "o próximo passo importante"): its trails lead, and the next
 # drive's route is its tests
 TRAILS: tuple[tuple[str, str], ...] = (
+  # LizPilot for every car (MISS-01, step B): comma's porting checklist for a new car, a trail per group. Only in the
+  # generic edition: the Haval has its own "coleta"
+  ("ap-carro", "Aprovação: o carro e a versão"),
+  ("ap-sinais", "Aprovação: sinais do carro"),
+  ("ap-engate", "Aprovação: engate e botões"),
+  ("ap-direcao", "Aprovação: direção"),
+  ("ap-envio", "Aprovação: o pedido à comma"),
   ("coleta", "Aprovação na comma"),
   ("versao", "Versão e envio à comma"),
   ("direcao", "Direção"),
@@ -296,11 +303,79 @@ CATALOG: tuple[Mission, ...] = (
   Mission("rota-publica", "versao", "Rota pública para a comma", 1, "decisao", note="privacidade: você escolhe"),
   Mission("checklist-comma", "versao", "Checklist da comma", 52, "cto", done=2, proof="UP-01"),
 )
+# *** Aprovar um carro na comma (MISS-01, step B): comma's porting checklist (opendbc docs/CAR_PORTING_CHECKLIST.md), for
+# whoever ports a car on the LizPilot for every car. Car-agnostic texts; the log ticks what it can see (signals_seen.py) ***
+SAFE_PLACE = "Num lugar seguro, sem pressa e sem carro atrás."
+APPROVAL: tuple[Mission, ...] = (
+  Mission("ap-reconhece", "ap-carro", "O comma reconhece o carro sozinho", 3, "parado",
+          why="A comma exige que o aparelho descubra o carro sozinho, toda vez que ele liga.",
+          steps=("Com o carro parado há pelo menos 1 hora, ligue.", "Veja se o comma mostra a tela de dirigir e engata normalmente.",
+                 "Repita em 3 dias diferentes.")),
+  Mission("ap-ligar", "ap-carro", "Ligar e desligar o carro 3 vezes", 3, "parado", detect="ign3",
+          why="O aparelho tem que reconhecer o carro depois de cada partida, sem aviso no painel.",
+          steps=("Desligue o carro e espere 1 minuto.", "Ligue e espere o comma mostrar a tela de dirigir.",
+                 "Veja se o painel do carro mostra algum aviso.", "Repita 3 vezes, em menos de 15 minutos.")),
+  Mission("ap-dormir", "ap-carro", "Carro dormindo: o comma desliga sozinho", 1, "parado",
+          why="O comma não pode acordar o carro nem gastar a bateria de 12 V com o carro parado.",
+          steps=("Desligue e tranque o carro por 30 minutos.", "Ao voltar, veja se a tela do comma está apagada.",
+                 "Ligue o carro: o comma reconhece o carro de primeira?")),
+  Mission("ap-cinto", "ap-sinais", "Cinto: tirar e pôr", 1, "parado", detect="belt",
+          why="A comma confere se o aparelho lê o cinto do motorista.",
+          steps=("Carro ligado, parado.", "Solte o cinto, espere 5 s e prenda de novo.")),
+  Mission("ap-portas", "ap-sinais", "Portas: abrir e fechar cada uma", 4, "parado", detect="doors",
+          why="A comma confere se o aparelho vê cada porta aberta.",
+          steps=("Carro ligado, parado.", "Abra cada porta, espere 3 s e feche, uma de cada vez.")),
+  Mission("ap-cambio", "ap-sinais", "Câmbio: P, R, N, D", 1, "parado", detect="gears",
+          why="Uma posição que o comma não conhece nunca pode virar D.",
+          steps=("Pé no freio.", "Passe P, R, N e D, parando 3 s em cada, e as outras posições que o câmbio tiver.", "Volte a P.")),
+  Mission("ap-pedais", "ap-sinais", "Pedais: freio e acelerador", 2, "parado", detect="pedals",
+          why="A comma confere se o aparelho lê o começo e o fim de cada pedal.",
+          steps=("Em P.", "Pise o freio até o fim, devagar, e solte devagar.", "Pise o acelerador até a metade, devagar, e solte.")),
+  Mission("ap-piscas", "ap-sinais", "Piscas: esquerda, direita, alerta", 3, "parado", detect="blinkers",
+          why="A troca de faixa e os avisos dependem de o aparelho ler cada seta.",
+          steps=("Carro ligado, parado.", "Seta para a esquerda 5 s, depois para a direita 5 s.", "Pisca-alerta 5 s.")),
+  Mission("ap-cego", "ap-sinais", "Ponto cego: um carro de cada lado", 2, "marca", detect="bsm", when="moving",
+          note="se o carro tiver o aviso de ponto cego", why="A luz do retrovisor e o que o comma lê precisam bater.",
+          steps=("Numa avenida, quando a luz do ponto cego acender, toque em Fiz agora.", "Uma vez de cada lado.")),
+  Mission("ap-freio-mao", "ap-sinais", "Freio de mão", 1, "parado",
+          why="Com o freio de mão puxado, o openpilot não pode tentar andar.",
+          steps=("Em P, puxe o freio de mão, espere 5 s e solte.", "Na resposta, diga se o comma mostrou o freio de mão.")),
+  Mission("ap-engatar", "ap-engate", "Engatar e dirigir 1 minuto", 1, "auto", detect="engaged",
+          why="O primeiro passo: o openpilot engata pelo botão do controle de cruzeiro do carro e dirige.",
+          steps=(SAFE_PLACE, "Ligue o controle de cruzeiro do carro e engate o openpilot.", "Dirija 1 minuto com ele.")),
+  Mission("ap-freio-desliga", "ap-engate", "O freio desliga o openpilot", 1, "auto", detect="brake_off",
+          why="A comma exige que pisar no freio desligue o openpilot, andando e parado.",
+          steps=("Com o openpilot engatado, pise no freio.", "Certo: o openpilot desliga na hora.")),
+  Mission("ap-cancelar", "ap-engate", "O botão de cancelar desliga", 1, "marca", when="moving",
+          why="O botão de cancelar do carro tem que desligar o openpilot.",
+          steps=("Com o openpilot engatado, aperte o cancelar do controle de cruzeiro.", "Toque em Fiz agora.")),
+  Mission("ap-botoes", "ap-engate", "Botões + e − do controle de cruzeiro", 2, "marca", when="moving",
+          why="A comma confere se cada botão chega ao aparelho.",
+          steps=("Com o controle de cruzeiro ligado e o trânsito permitindo, aperte + uma vez e toque em Fiz agora.",
+                 "Depois − uma vez e toque em Fiz agora.")),
+  Mission("ap-curvas", "ap-direcao", "Curvas para os dois lados", 2, "marca", when="city",
+          why="O volante tem que virar para o lado certo, com a força certa, nos dois sentidos.",
+          steps=("Com o openpilot no volante, faça uma curva para a esquerda e toque em Fiz agora.",
+                 "Depois uma para a direita. Se o volante soltar, puxar para o lado errado ou der aviso, marque.")),
+  Mission("ap-sem-falha", "ap-direcao", "30 minutos sem falha da direção", 1, "auto", detect="lat30",
+          why="Uma falha falsa da direção atrapalha e esconde as de verdade: a comma quer viagens sem nenhuma.",
+          steps=("Dirija 30 minutos com o openpilot no volante, numa viagem só.",)),
+  Mission("ap-perto-zero", "ap-direcao", "Direção perto de 0 km/h", 1, "marca", when="slow_follow",
+          why="A comma registra até que velocidade a direção funciona.",
+          steps=("No trânsito lento, deixe o carro parar e sair de novo com o openpilot no volante.", "Toque em Fiz agora.")),
+  Mission("ap-rota", "ap-envio", "Uma rota pública para a comma", 1, "decisao", note="privacidade: você escolhe",
+          why="O pedido à comma leva uma viagem pública, que mostra por onde você dirigiu. Escolha uma que não mostre a sua casa.",
+          steps=("No connect.comma.ai, abra a viagem e deixe-a pública.", "Copie o endereço dela para o relatório.")),
+  Mission("ap-relatorio", "ap-envio", "O relatório do checklist", 1, "parado",
+          why="O pedido à comma leva o checklist preenchido. O relatório junta o que você já provou e o que falta.",
+          steps=("Abra «Relatório para a comma», no fim desta trilha.", "Copie o texto e cole no pedido (pull request) à comma.")),
+)
+
 # The generic edition (edition.py) offers only what any car can test, from zero: the rest is the Haval's own test plan,
-# and its proofs and tries are the owner's drives.
+# and its proofs and tries are the owner's drives. It gets the approval of a new car instead (MISS-01)
 GENERIC_TRAILS = ("avisos", "celular")
 if edition.EDITION == "generic":
-  CATALOG = tuple(replace(m, done=0, proof="", note="") for m in CATALOG if m.trail in GENERIC_TRAILS and not m.route)
+  CATALOG = APPROVAL + tuple(replace(m, done=0, proof="", note="") for m in CATALOG if m.trail in GENERIC_TRAILS and not m.route)
 
 BY_KEY = {m.key: m for m in CATALOG}
 

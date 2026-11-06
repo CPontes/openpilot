@@ -6,7 +6,8 @@ from openpilot.selfdrive.hexa import signals_seen as sg
 
 def cs(**kw):
   base = {"gearShifter": "park", "vEgo": 0., "seatbeltUnlatched": False, "doorOpen": False, "brakePressed": False,
-          "gasPressed": False, "leftBlinker": False, "rightBlinker": False, "leftBlindspot": False, "rightBlindspot": False}
+          "gasPressed": False, "leftBlinker": False, "rightBlinker": False, "leftBlindspot": False, "rightBlindspot": False,
+          "steerFaultTemporary": False, "steerFaultPermanent": False}
   return SimpleNamespace(**{**base, **kw})
 
 
@@ -57,6 +58,11 @@ def test_turn_signals_and_the_hazard_apart():
 def test_blind_spots_each_side():
   r = feed(cs(), cs(leftBlindspot=True), cs(), cs(rightBlindspot=True), cs(rightBlindspot=False))
   assert r["sg_bsm_l"] == 1 and r["sg_bsm_r"] == 1
+
+
+def test_a_steering_fault_counts_once():
+  r = feed(cs(), cs(steerFaultTemporary=True), cs(steerFaultTemporary=True), cs(), cs(steerFaultPermanent=True))
+  assert r["sg_steer_fault"] == 2
 
 
 def test_minutes_add_up_and_gears_join():

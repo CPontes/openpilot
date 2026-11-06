@@ -541,6 +541,35 @@ def test_the_approval_checks_tick_from_the_drive_summary():  # MISS-01: the log 
   assert not run("missionProgress", cat, {}, [hidden])["cinto"]["full"]  # a hidden drive doesn't count
 
 
+def test_a_new_cars_approval_and_its_report():  # MISS-01 B, the generic edition
+  ms = [dict(_m("ap-cinto", "parado", detect="belt"), trail="ap-sinais"), dict(_m("ap-portas", "parado", 4, detect="doors"), trail="ap-sinais"),
+        dict(_m("ap-engatar", "auto", detect="engaged"), trail="ap-engate"), dict(_m("ap-freio-desliga", "auto", detect="brake_off"), trail="ap-engate"),
+        dict(_m("ap-cancelar", "marca"), trail="ap-engate"), dict(_m("ap-sem-falha", "auto", detect="lat30"), trail="ap-direcao"),
+        dict(_m("ap-freio-mao", "parado"), trail="ap-sinais"), dict(_m("outra", "parado"), trail="celular")]
+  cat = {"levels": CAT["levels"], "trails": [], "missions": ms}
+
+  def drive(**sg):
+    t = trip()
+    t["summary"].update(sg)
+    return t
+  trips = [drive(sg_belt=1, sg_door=2, on_s=2000, brake=1, sg_steer_fault=0)]
+  p = run("missionProgress", cat, {"answers": {"ap-freio-mao": 1}, "pending": [{"key": "ap-cancelar", "t": 1}]}, trips)
+  assert p["ap-engatar"]["full"] and p["ap-freio-desliga"]["full"] and p["ap-sem-falha"]["full"]
+  assert not run("missionProgress", cat, {}, [drive(on_s=2000, sg_steer_fault=1)])["ap-sem-falha"]["full"]  # a fault in it
+  assert not run("missionProgress", cat, {}, [drive(on_s=2000)])["ap-sem-falha"]["full"]  # an old summary, faults not counted
+  assert not run("missionProgress", cat, {}, [drive(on_s=30)])["ap-engatar"]["full"]  # half a minute
+  rep = run("approvalReport", cat, p, trips)
+  assert rep.startswith("# comma porting checklist") and "outra" not in rep and "Outra" not in rep
+  lines = rep.split("\n")
+  assert "- [x] Seatbelt: seen in the drive logs" in lines
+  assert "- [~] Doors (2/4)" in lines
+  assert "- [x] Parking brake: confirmed by the driver" in lines
+  assert "- [x] The cancel button disengages: marked while driving, to check in the logs" in lines
+  assert "- [x] 30 min of openpilot steering with no steering fault: seen in the drive logs" in lines
+  assert "## Vehicle state" in lines and "## Lateral control" in lines and "## Submission" not in lines  # no mission of it here
+  assert run("approvalReport", {"missions": [_m("x", "parado")]}, {}, []) == ""  # the Haval build: no approval trails
+
+
 def test_the_level_and_what_moved_after_a_drive():
   before = run("missionProgress", CAT, {}, [])
   after = run("missionProgress", CAT, {"pending": [{"key": "fila"}]}, [trip(slow=650, commit="b3ac6fe")])

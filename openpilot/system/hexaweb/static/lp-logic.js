@@ -509,6 +509,8 @@
   // the comma approval checks (MISS-01): the car's signals the drive summary saw change (timeline sg_*, signals_seen.py).
   // Three starts within IGNITION_WINDOW_S are the "turn it off and on 3 times"; the four gears are P, R, N and D
   const IGNITION_WINDOW_S = 900, GEARS_PRND = 15;
+  // a new car's approval (MISS-01 B): a minute engaged, and half an hour of openpilot steering in one drive with no fault
+  const ENGAGED_MIN_S = 60, LAT_NO_FAULT_S = 1800;
   // The week of a time (Monday 00:00 local, as a day number): 200 km in one week, whatever versions it had
   function weekOf(s) { const d = new Date(s * 1000); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return Math.round(d.getTime() / 86400000); }
   function missionAuto(m, trips) {
@@ -529,10 +531,49 @@
       case "ign3": { const at = ts.map(tripStart).sort((a, b) => a - b);  // the most starts within the window
         let best = 0; at.forEach((s, i) => { best = Math.max(best, at.slice(i).filter((x) => x - s <= IGNITION_WINDOW_S).length); });
         return best >= 2 ? Math.min(m.total, best) : 0; }  // one start is any drive: the check is turning it off and on
+      case "engaged": return ts.some((t) => (S(t).on_s || 0) >= ENGAGED_MIN_S) ? 1 : 0;
+      case "brake_off": return ts.some((t) => (S(t).brake || 0) > 0) ? 1 : 0;  // the driver's brake with openpilot engaged
+      // a summary from before the faults were counted (SUMMARY_VERSION 7) knows nothing of them: it proves nothing
+      case "lat30": return ts.some((t) => (S(t).on_s || 0) >= LAT_NO_FAULT_S && S(t).sg_steer_fault === 0) ? 1 : 0;
       case "km200": { const km = {}; ts.forEach((t) => { const w = weekOf(tripStart(t)); km[w] = (km[w] || 0) + (S(t).km || 0); });  // a week: versions change daily
         return Object.values(km).some((x) => x >= MISSION_VERSION_KM) ? 1 : 0; }
       default: return 0;
     }
+  }
+  // The approval report (MISS-01 B): comma's porting checklist, filled from the approval trails, in English for the pull
+  // request. Only what the phone knows: no car name, VIN, place or date beyond the day a drive proved it
+  const REPORT_LINES = {
+    "ap-reconhece": "Identifies the car on repeated cold starts without a forced fingerprint",
+    "ap-ligar": "Ignition off and on: recognized and engages after each start, no dash warnings",
+    "ap-dormir": "Car asleep: the device shuts down and doesn't keep the car awake",
+    "ap-cinto": "Seatbelt", "ap-portas": "Doors", "ap-cambio": "Gears (P, R, N, D and others)", "ap-pedais": "Brake and gas pedals",
+    "ap-piscas": "Turn signals and hazard", "ap-cego": "Blind spot, each side", "ap-freio-mao": "Parking brake",
+    "ap-engatar": "Engages on the car's cruise button and drives", "ap-freio-desliga": "Brake press disengages",
+    "ap-cancelar": "The cancel button disengages", "ap-botoes": "Cruise + and − buttons reach openpilot",
+    "ap-curvas": "Steering direction and torque, both ways", "ap-sem-falha": "30 min of openpilot steering with no steering fault",
+    "ap-perto-zero": "Steering near 0 km/h", "ap-rota": "Public route for the PR", "ap-relatorio": "This report",
+  };
+  const REPORT_GROUPS = { "ap-carro": "Vehicle and identification", "ap-sinais": "Vehicle state", "ap-engate": "Buttons and engagement",
+                          "ap-direcao": "Lateral control", "ap-envio": "Submission" };
+  function approvalReport(cat, prog, trips) {
+    const ms = ((cat && cat.missions) || []).filter((m) => String(m.trail).startsWith("ap-"));
+    if (!ms.length) return "";
+    const out = ["# comma porting checklist: what this car has shown", "",
+                 "Filled by LizPilot from the drive logs and the driver's checks. [x] done · [~] partly · [ ] to do.", ""];
+    for (const [g, title] of Object.entries(REPORT_GROUPS)) {
+      const gm = ms.filter((m) => m.trail === g);
+      if (!gm.length) continue;
+      out.push(`## ${title}`);
+      for (const m of gm) {
+        const p = (prog && prog[m.key]) || { d: 0, total: m.total }, line = REPORT_LINES[m.key] || m.title;
+        const byLog = m.detect && missionAuto(m, trips) >= m.total;
+        const how = byLog ? "seen in the drive logs" : p.checked ? "confirmed by the driver" : p.full ? "marked while driving, to check in the logs" : "";
+        const box = p.full ? "[x]" : p.d > 0 ? "[~]" : "[ ]";
+        out.push(`- ${box} ${line}${m.total > 1 ? ` (${Math.min(p.d, m.total)}/${m.total})` : ""}${how ? `: ${how}` : ""}`);
+      }
+      out.push("");
+    }
+    return out.join("\n");
   }
   // A mark's result (missions.py RESULTS): "Fiz agora" and "Deu certo" wait for the CTO as a mission advanced; "Não deu" and
   // "Parei o teste" wait too, but never as progress (CTO review of app-08)
@@ -1009,7 +1050,7 @@
   // what "Apagar dados deste celular" takes from localStorage besides the copy: data, never the language or the view
   const DATA_KEYS = ["lpTrips", "lpMissionSnap", "lpCopEvents", "lpCopAnswers", "lpCopTally", "lpNavRecent"];  // the copilot's events of the drive, and the answers
 
-  root.LPL = { groupPending, quietEvent, mutedKinds, EV_KINDS, eventStep, pointPassed, eventsMerge, logEvents, driveStart, reviewList, answerKeep, eventMission, copilotView, eventAge, eventStage, eventClock, EV_MISSIONS, EV_REASON, EV_LIVE_S, EV_RECENT_S, EV_KEEP, versionList, versionChips, VERSION_CHIPS, copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, rideKeys, rideKeep, rideOrder, mapCount, RIDE_KEEP, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
+  root.LPL = { approvalReport, groupPending, quietEvent, mutedKinds, EV_KINDS, eventStep, pointPassed, eventsMerge, logEvents, driveStart, reviewList, answerKeep, eventMission, copilotView, eventAge, eventStage, eventClock, EV_MISSIONS, EV_REASON, EV_LIVE_S, EV_RECENT_S, EV_KEEP, versionList, versionChips, VERSION_CHIPS, copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, rideKeys, rideKeep, rideOrder, mapCount, RIDE_KEEP, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
                tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, appMode, shareFor, tallyAdd, canSilence, SILENCE_MIN, NAV_REMEMBER, navTargets, navChoice, navLink, navRecent, mapCenter, mapXY, mapLatLon, distanceM, shortPlace, maneuverKind, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

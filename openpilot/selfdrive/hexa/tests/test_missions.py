@@ -19,7 +19,23 @@ def test_the_catalog_holds_together():
     assert not m.route or M.can_take(m), m.key  # the route only holds what goes on a drive
     assert m.done < m.total or m.proof, f"{m.key}: done needs the route that proved it"
     assert not m.when or m.when in M.WHEN, m.key
-  assert all(any(m.trail == k for m in M.CATALOG) for k in trails)
+  assert all(any(m.trail == k for m in M.CATALOG + M.APPROVAL) for k in trails)
+
+
+def test_the_approval_of_a_new_car_holds_together_and_stays_out_of_the_haval():  # MISS-01 B
+  trails = {k for k, _ in M.TRAILS}
+  keys = [m.key for m in M.APPROVAL]
+  assert len(keys) == len(set(keys)) and not set(keys) & {m.key for m in M.CATALOG}
+  for m in M.APPROVAL:
+    assert m.trail.startswith("ap-") and m.trail in trails and m.how in M.HOW and m.how != "cto", m.key  # no CTO for other cars
+    assert m.how != "auto" or m.detect, m.key
+    assert not m.detect or m.detect in M.DETECT, m.key
+    assert not m.when or m.when in M.WHEN, m.key
+    assert m.done == 0 and not m.proof and not m.route and not m.option and m.why, m.key
+    assert not any(w in " ".join((m.title, m.why, *m.steps)) for w in ("Haval", "ACC", "alavanca", "CTO")), m.key  # any car
+  assert [k for k, _ in M.TRAILS][:5] == ["ap-carro", "ap-sinais", "ap-engate", "ap-direcao", "ap-envio"]
+  # the Haval build shows its own trail, not these
+  assert not any(t["key"].startswith("ap-") for t in M.public()["trails"])
   assert [lv[0] for lv in M.LEVELS] == sorted(lv[0] for lv in M.LEVELS) and M.LEVELS[-1][0] == 1.
 
 
@@ -27,7 +43,7 @@ def test_one_route_new_tests_first_then_what_an_older_version_left_open():  # ow
   # the next drive is comma's approval (owner, 06/11): its tests, in the CTO's order
   assert M.route_keys({}) == ["falha-falsa", "perto-de-zero", "assistente-haval", "cego-coleta", "ponto-cego", "saida-subida",
                               "desengate-subida"]
-  assert M.TRAILS[0] == ("coleta", "Aprovação na comma")
+  assert M.public()["trails"][0] == {"key": "coleta", "title": "Aprovação na comma"}  # the Haval's first: its own approval
   routes = [m.route for m in M.CATALOG if m.route]
   assert len(routes) == len(set(routes)) and len(routes) <= M.MAX_PACK
   assert {m.option for m in M.CATALOG if m.version == M.CURRENT} == {"SoftHandoff", "StopCloser"}
