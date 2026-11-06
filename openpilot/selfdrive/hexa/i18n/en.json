@@ -1866,5 +1866,9 @@
  "«Rever viagem» abre sem o comma: a viagem fica no celular quando você a abre perto dele, sem nenhuma posição": "«Review drive» opens without the comma: the drive stays on the phone once you open it near the comma, with no position",
  "Missões novas: sair da parada numa subida e desengatar pelo freio parado na subida": "New missions: leaving a stop on a hill, and disengaging with the brake stopped on a hill",
  "As missões da aprovação na comma (cinto, portas, câmbio, pedais, piscas, ponto cego) se marcam sozinhas pelo log": "The comma approval missions (seatbelt, doors, gears, pedals, turn signals, blind spot) tick themselves from the log",
- "O comma passa a ler os botões + e − do ACC; nada muda ao dirigir": "The comma now reads the ACC's + and − buttons; nothing changes while driving"
+ "O comma passa a ler os botões + e − do ACC; nada muda ao dirigir": "The comma now reads the ACC's + and − buttons; nothing changes while driving",
+ "O carro não volta logo depois de parar na subida": "The car doesn't roll back right after stopping on a climb",
+ "Parado e seguro pelo comma, o freio soltava quando a câmera da Haval decidia sair: o comma passava adiante o pedido dela": "Stopped and held by the comma, the brake let go when the Haval's camera decided to leave: the comma passed its request on",
+ "Agora o pedido de sair da Haval só vai junto quando o comma também sai; parado, o freio segura (viagem de 06/11, 37 min)": "Now the Haval's request to leave only goes along when the comma leaves too; stopped, the brake holds (drive of 06/11, 37 min)",
+ "A saída não muda: com o gás do comma, o freio solta como antes": "Leaving doesn't change: with the comma's gas, the brake lets go as before"
 }

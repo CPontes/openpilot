@@ -20,7 +20,12 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "06/11", "505cb02", "O vídeo da marca começa antes, e a viagem abre sem o comma",
+  Release("", "06/11", "9fe1215", "O carro não volta logo depois de parar na subida",
+          ("Parado e seguro pelo comma, o freio soltava quando a câmera da Haval decidia sair: o comma passava adiante o pedido dela",
+           "Agora o pedido de sair da Haval só vai junto quando o comma também sai; parado, o freio segura (viagem de 06/11, 37 min)",
+           "A saída não muda: com o gás do comma, o freio solta como antes"),
+          driving=True),
+  Release("ad4491b", "06/11", "505cb02", "O vídeo da marca começa antes, e a viagem abre sem o comma",
           ("O vídeo da marca começa 30 s antes do toque, ou conforme o «Quando» que você escolheu",
            "«Rever viagem» abre sem o comma: a viagem fica no celular quando você a abre perto dele, sem nenhuma posição",
            "Missões novas: sair da parada numa subida e desengatar pelo freio parado na subida",
