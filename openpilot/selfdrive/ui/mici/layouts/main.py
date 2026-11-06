@@ -1,5 +1,8 @@
+import time
+
 import pyray as rl
 import openpilot.cereal.messaging as messaging
+from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.ui.mici.layouts.home import MiciHomeLayout
 from openpilot.selfdrive.ui.mici.layouts.settings.settings import SettingsLayout
 from openpilot.selfdrive.ui.mici.layouts.offroad_alerts import MiciOffroadAlerts
@@ -13,6 +16,7 @@ from openpilot.system.ui.lib.application import gui_app
 
 
 ONROAD_DELAY = 2.5  # seconds
+HEXA_BOOKMARK_CHECK = 0.5  # seconds between checks for a bookmark asked by the phone panel
 
 
 class MiciMainLayout(Scroller):
@@ -21,6 +25,7 @@ class MiciMainLayout(Scroller):
 
     self._pm = messaging.PubMaster(['bookmarkButton', 'userBookmark'])
 
+    self._last_hexa_check = 0.0
     self._prev_onroad = False
     self._prev_standstill = False
     self._onroad_time_delay: float | None = None
@@ -92,6 +97,21 @@ class MiciMainLayout(Scroller):
     super()._update_state()
     # TODO: Hack to run alert updates while not in view. Add a nav stack tick?
     self._alerts_layout._update_state()
+    self._check_hexa_bookmark()
+
+  def _check_hexa_bookmark(self):
+    # The phone panel (system/hexaweb) can't publish userBookmark itself: it asks here, and the bookmark
+    # goes out exactly like the one from the screen.
+    now = time.monotonic()
+    if now - self._last_hexa_check < HEXA_BOOKMARK_CHECK:
+      return
+    self._last_hexa_check = now
+    try:
+      if ui_state.params.get_bool("HexaBookmarkRequest"):
+        ui_state.params.remove("HexaBookmarkRequest")
+        self._on_bookmark_clicked()
+    except Exception:
+      cloudlog.exception("hexa bookmark request failed")
 
   def _render(self, _):
     if not self._setup:

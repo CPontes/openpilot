@@ -55,6 +55,7 @@ FCW_IDXS = T_IDXS < 5.0
 T_DIFFS = np.diff(T_IDXS, prepend=[0.])
 COMFORT_BRAKE = 2.5
 STOP_DISTANCE = 6.0
+LEAD_SAME_CAR = 1.  # m, Hexa: the two leads this close are the same car
 MIN_X_LEAD_FACTOR = 0.5
 
 def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
@@ -307,7 +308,7 @@ class LongitudinalMpc:
     lead_xv = self.extrapolate_lead(x_lead, v_lead, a_lead, a_lead_tau)
     return lead_xv
 
-  def update(self, radarstate, personality=log.LongitudinalPersonality.standard):
+  def update(self, radarstate, personality=log.LongitudinalPersonality.standard, lead_extra=0.):
     t_follow = get_T_FOLLOW(personality)
 
     lead_xv_0 = self.process_lead(radarstate.leadOne)
@@ -318,6 +319,13 @@ class LongitudinalMpc:
     # and then treat that as a stopped car/obstacle at this new distance.
     lead_0_obstacle = lead_xv_0[:,0] + get_stopped_equivalence_factor(lead_xv_0[:,1])
     lead_1_obstacle = lead_xv_1[:,0] + get_stopped_equivalence_factor(lead_xv_1[:,1])
+    # Hexa: meters closer to stop behind the car ahead, when the car's own radar agrees (stop_closer.py). The second lead is
+    # the model's same car 99% of the time near a stop (route 31): it moves too, and stays where it is when it's another one.
+    # The crash check keeps the real distance
+    if lead_extra > 0.:
+      lead_0_obstacle = lead_0_obstacle + lead_extra
+      if radarstate.leadTwo.present and abs(radarstate.leadTwo.dRel - radarstate.leadOne.dRel) < LEAD_SAME_CAR:
+        lead_1_obstacle = lead_1_obstacle + lead_extra
 
     x_obstacles = np.column_stack([lead_0_obstacle, lead_1_obstacle])
     self.source = MPC_SOURCES[np.argmin(x_obstacles[0])]

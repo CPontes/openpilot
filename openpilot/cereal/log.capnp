@@ -132,6 +132,15 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     excessiveActuation @96;
     bigModelLoading @100;
     bigModelFailed @102;
+    leadDeparted @105;
+    radarAhead @106;
+    autoResume @107;
+    bumpSlowdown @108;
+    accLost @109;
+    stopHold @110;
+    speedLimitOver @111;
+    speedLimitUp @112;
+    speedLimitDown @113;
 
     lowBatteryDEPRECATED @40;
     soundsUnavailableDEPRECATED @47;
@@ -1244,6 +1253,9 @@ struct LongitudinalPlan @0xe00b5b3eba12876c {
   allowThrottle @38: Bool;
   allowBrake @39: Bool;
   accelBoost @40 :Float32;
+  stopFinishGo @41 :Bool;
+  stopCloserExtra @42 :Float32;  # Hexa: meters closer to stop behind the car ahead
+  havalShadowAccel @43 :Float32;  # Hexa: what the Haval's distance alone would ask for, 0 when nothing; never sent to the car
 
 
   solverExecutionTime @35 :Float32;
@@ -2658,9 +2670,9 @@ struct Event {
     customReserved14 @140 :Custom.CustomReserved14;
     customReserved15 @141 :Custom.CustomReserved15;
     customReserved16 @142 :Custom.CustomReserved16;
-    customReserved17 @143 :Custom.CustomReserved17;
-    customReserved18 @144 :Custom.CustomReserved18;
-    customReserved19 @145 :Custom.CustomReserved19;
+    mapdExtendedOut @143 :Custom.MapdExtendedOut;
+    mapdIn @144 :Custom.MapdIn;
+    mapdOut @145 :Custom.MapdOut;
 
     # *********** legacy + deprecated ***********
     model @9 :Deprecated.ModelData; # TODO: rename modelV2 and mark this as deprecated

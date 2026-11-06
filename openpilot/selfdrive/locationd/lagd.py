@@ -173,12 +173,13 @@ class BlockAverage:
 class LateralLagEstimator:
   inputs = {"carControl", "carState", "controlsState", "extrinsicsCalibration", "deviceMotion"}
 
-  def __init__(self, CP: car.CarParams, dt: float,
+  def __init__(self, CP: car.CarParams, dt: float, use_learned: bool = True,
                block_count: int = BLOCK_NUM, min_valid_block_count: int = BLOCK_NUM_NEEDED, block_size: int = BLOCK_SIZE,
                window_sec: float = MOVING_WINDOW_SEC, okay_window_sec: float = MIN_OKAY_WINDOW_SEC, min_recovery_buffer_sec: float = MIN_RECOVERY_BUFFER_SEC,
                min_vego: float = MIN_VEGO, min_yr: float = MIN_ABS_YAW_RATE, min_ncc: float = MIN_NCC,
                max_lat_accel: float = MAX_LAT_ACCEL, max_lat_accel_diff: float = MAX_LAT_ACCEL_DIFF, min_confidence: float = MIN_CONFIDENCE):
     self.dt = dt
+    self.use_learned = use_learned  # False: keep measuring and reporting the estimate, but publish the initial lag (LAT-08)
     self.window_sec = window_sec
     self.okay_window_sec = okay_window_sec
     self.min_recovery_buffer_sec = min_recovery_buffer_sec
@@ -234,7 +235,7 @@ class LateralLagEstimator:
     else:
       lateralDelay.status = log.LateralDelay.Status.unestimated
 
-    if lateralDelay.status == log.LateralDelay.Status.estimated:
+    if lateralDelay.status == log.LateralDelay.Status.estimated and self.use_learned:
       lateralDelay.lateralDelay = min(MAX_LAG, max(MIN_LAG, valid_mean_lag))
     else:
       lateralDelay.lateralDelay = self.initial_lag
@@ -361,6 +362,14 @@ class LateralLagEstimator:
     return lag, corr, confidence
 
 
+def learned_lag_allowed(CP: car.CarParams, params) -> bool:
+  """Hexa (LAT-08, 05/11): on the Haval the learned lag is not used unless HexaLearnedLatDelay is on. It learns only above 80 km/h,
+  its blocks came from an old version (route 07, 31/10, ~0.27 s), and the lag measured to the car at 30-70 km/h is ~0.62 s: one
+  highway drive would otherwise change how the car steers at every speed, untested. Other brands keep stock behavior."""
+  from openpilot.selfdrive.hexa import edition
+  return CP.brand not in edition.GWM_ONLY or params.get_bool("HexaLearnedLatDelay")
+
+
 def retrieve_initial_lag(params: Params, CP: car.CarParams):
   last_lag_data = params.get("LiveDelay")
   last_carparams_data = params.get("CarParamsPrevRoute")
@@ -395,7 +404,7 @@ def main():
   params = Params()
   CP = messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams)
 
-  lag_learner = LateralLagEstimator(CP, 1. / SERVICE_LIST['deviceMotion'].frequency)
+  lag_learner = LateralLagEstimator(CP, 1. / SERVICE_LIST['deviceMotion'].frequency, use_learned=learned_lag_allowed(CP, params))
   if (initial_lag_params := retrieve_initial_lag(params, CP)) is not None:
     lag, valid_blocks = initial_lag_params
     lag_learner.reset(lag, valid_blocks)

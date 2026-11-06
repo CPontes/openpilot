@@ -61,6 +61,13 @@ def navigation(started: bool, params: Params, CP: car.CarParams) -> bool:
 def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
   return not started
 
+def hexaweb(started: bool, params: Params, CP: car.CarParams) -> bool:
+  return params.get_bool("HexaWebEnabled")
+
+def mapd(started: bool, params: Params, CP: car.CarParams) -> bool:
+  from openpilot.selfdrive.hexa import speed_limit
+  return speed_limit.should_run(started, params, CP)
+
 def livestream(started: bool, params: Params, CP: car.CarParams) -> bool:
   return params.get_bool("IsLiveStreaming")
 
@@ -117,6 +124,9 @@ procs = [
   PythonProcess("tombstoned", "openpilot.system.tombstoned", always_run, enabled=not PC),
   PythonProcess("updated", "openpilot.system.updated.updated", only_offroad, enabled=not PC),
   PythonProcess("uploader", "openpilot.system.loggerd.uploader", always_run),
+  PythonProcess("hexaweb", "openpilot.system.hexaweb.hexaweb", hexaweb),
+  # the road's speed limit (selfdrive/hexa/speed_limit.py): low priority, two cores at most, only the pinned binary
+  NativeProcess("mapd", "/data/lizpilot/mapd", ["nice", "-n", "10", "env", "GOMAXPROCS=2", "./mapd"], mapd),
 
   # debug procs
   PythonProcess("webrtcd", "openpilot.system.webrtc.webrtcd", or_(livestream, notcar)),
