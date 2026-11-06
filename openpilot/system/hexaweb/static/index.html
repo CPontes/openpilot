@@ -3221,7 +3221,7 @@ function renderMissions() {
     if (left.length) {
       out.push(el("div", "label", tf("Ainda não feitas · {n}", { n: left.length })));
       const ll = el("div", "card list"); ll.style.padding = "4px 16px"; ll.id = "mLeftList";
-      const ordered = LPL.missionOrder(left, prog), shown = mLeftAll ? ordered : ordered.slice(0, M_LEFT_FIRST);
+      const ordered = LPL.missionOrder(left, prog, missions.trails.map((tr) => tr.key)), shown = mLeftAll ? ordered : ordered.slice(0, M_LEFT_FIRST);
       for (const m of shown) ll.append(mPickRow(m, prog[m.key], () => openMission(m.key, { s: "trilhas" })));
       if (shown.length < ordered.length) {
         const more = el("button", "link", tf("Mostrar mais ({n})", { n: ordered.length - shown.length })); more.type = "button"; more.style.margin = "6px 0";

@@ -24,15 +24,16 @@ def test_the_catalog_holds_together():
 
 
 def test_one_route_new_tests_first_then_what_an_older_version_left_open():  # owner, 03/11
-  # devolver-volante, parar-perto and fila proved on route 32: out of the route
-  assert M.route_keys({}) == ["parar-de-vez", "freio-alavanca", "sinal-abrindo", "lombada-faixa", "frear-antes", "parada-longa", "ruas-casa"]
+  # the next drive is comma's approval (owner, 06/11): its tests, in the CTO's order
+  assert M.route_keys({}) == ["falha-falsa", "perto-de-zero", "assistente-haval", "cego-coleta", "ponto-cego"]
+  assert M.TRAILS[0] == ("coleta", "Aprovação na comma")
   routes = [m.route for m in M.CATALOG if m.route]
   assert len(routes) == len(set(routes)) and len(routes) <= M.MAX_PACK
   assert {m.option for m in M.CATALOG if m.version == M.CURRENT} == {"SoftHandoff", "StopCloser"}
   texts = [M.ROUTE[k] for k in ("intro", "during", "back", "after")] + list(M.ROUTE["before"]) + list(M.ROUTE["stop_if"])
   assert "0d09b50 + bf02b93" in M.ROUTE["back"] and not any("b3ac6fe" in x or "CTO" in x for x in texts)
   # proved goes out of the route; one answered parked too
-  assert "lombada-faixa" not in M.route_keys({"lombada-faixa": 1}) and "parar-de-vez" in M.route_keys({"parar-de-vez": 2})
+  assert "falha-falsa" not in M.route_keys({"falha-falsa": 1}) and "cego-coleta" in M.route_keys({"cego-coleta": 1})
 
 
 def test_take_drop_and_the_limit():

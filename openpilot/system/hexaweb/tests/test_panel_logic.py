@@ -526,6 +526,14 @@ def test_the_level_and_what_moved_after_a_drive():
   assert tr["d"] == 2 and tr["next"] == "Fila" and not tr["seal"]
 
 
+def test_the_first_trails_come_first_whatever_is_under_way():  # owner, 06/11: the approval by comma leads
+  ms = [dict(_m("dir", "marca", 3, 1), trail="direcao"), dict(_m("cinto", "parado"), trail="coleta"),
+        dict(_m("trava", "parado", lock="x"), trail="coleta"), dict(_m("x", "parado"), trail="outra")]
+  prog = run("missionProgress", {"levels": CAT["levels"], "trails": [], "missions": ms}, {}, [])
+  assert [m["key"] for m in run("missionOrder", ms, prog, ["coleta", "versao", "direcao"])] == ["cinto", "trava", "dir", "x"]
+  assert [m["key"] for m in run("missionOrder", ms, prog)] == ["dir", "cinto", "x", "trava"]  # no trails given: as before
+
+
 # ----- the phone's own copy (APP-01)
 
 def ctrip(i, km=1., hidden=False):

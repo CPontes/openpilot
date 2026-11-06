@@ -559,9 +559,12 @@
     return { n, total, i, name: levels[i][1], next: nx ? { name: nx[1], left: Math.ceil(nx[0] * total) - n } : null };
   }
   // A trail's missions, what is left first: half done, open, the CTO's, locked, done
-  function missionOrder(list, prog) {
+  // trails: the catalog's trail keys in order (missions.py TRAILS). Given, the trail comes first and the rank within it: the
+  // approval of the car by comma leads, whatever else is under way (owner, 06/11)
+  function missionOrder(list, prog, trails) {
     const rank = (m) => { const p = prog[m.key]; return p.full ? 4 : p.locked ? 3 : m.how === "cto" ? 2 : p.d || p.toCheck ? 0 : 1; };  // the CTO's open ones after the owner's
-    return list.slice().sort((a, b) => rank(a) - rank(b));
+    const at = (m) => { const i = trails ? trails.indexOf(m.trail) : -1; return i < 0 ? 99 : i; };
+    return list.slice().sort((a, b) => at(a) - at(b) || rank(a) - rank(b));
   }
   function missionTrails(cat, prog) {
     return ((cat && cat.trails) || []).map((tr) => {
