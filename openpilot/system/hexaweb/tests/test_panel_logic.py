@@ -514,6 +514,33 @@ def test_missions_seen_in_the_summaries_and_the_owners_marks_count_at_once():
   assert not run("missionProgress", CAT, st, [trip(moving=1200, hour_end=21)])["noite"]["full"]
 
 
+def test_the_approval_checks_tick_from_the_drive_summary():  # MISS-01: the log does the Marcar's job too
+  ms = [_m("cinto", "parado", detect="belt"), _m("portas", "parado", 4, detect="doors"), _m("cambio", "parado", detect="gears"),
+        _m("pedais", "parado", 2, detect="pedals"), _m("piscas", "parado", 3, detect="blinkers"), _m("cego", "marca", 2, detect="bsm"),
+        _m("ligar", "parado", 3, detect="ign3")]
+  cat = {"levels": CAT["levels"], "trails": [], "missions": ms}
+  assert all(p["d"] == 0 for p in run("missionProgress", cat, {}, [trip()]).values())
+
+  def sig(end_min=0, **sg):
+    t = trip()
+    t["mtime"] += end_min * 60
+    t["summary"].update(sg)
+    return t
+  one = sig(sg_belt=1, sg_door=3, sg_gears=15, sg_brake=2, sg_left=1, sg_hazard=1, sg_bsm_r=1)
+  p = run("missionProgress", cat, {}, [one])
+  assert p["cinto"]["full"] and p["cambio"]["full"] and p["portas"]["d"] == 3 and p["pedais"]["d"] == 1
+  assert p["piscas"]["d"] == 2 and p["cego"]["d"] == 1 and p["cinto"]["checked"]  # the log is the proof: accepted at once
+  assert not run("missionProgress", cat, {}, [sig(sg_gears=13)])["cambio"]["full"]  # no reverse
+  # the doors in one stop; three starts within 15 minutes
+  assert run("missionProgress", cat, {}, [sig(sg_door=2), sig(1, sg_door=2)])["portas"]["d"] == 2
+  starts = [sig(0), sig(5), sig(10)]
+  assert run("missionProgress", cat, {}, starts)["ligar"]["full"]
+  assert run("missionProgress", cat, {}, [sig(0), sig(20), sig(40)])["ligar"]["d"] == 0  # one start is any drive
+  assert run("missionProgress", cat, {}, [sig(0), sig(5)])["ligar"]["d"] == 2
+  hidden = dict(one, hidden=True)
+  assert not run("missionProgress", cat, {}, [hidden])["cinto"]["full"]  # a hidden drive doesn't count
+
+
 def test_the_level_and_what_moved_after_a_drive():
   before = run("missionProgress", CAT, {}, [])
   after = run("missionProgress", CAT, {"pending": [{"key": "fila"}]}, [trip(slow=650, commit="b3ac6fe")])

@@ -21,7 +21,7 @@ import json
 from collections.abc import Iterable
 from pathlib import Path
 
-from openpilot.selfdrive.hexa import sensors as hexa_sensors
+from openpilot.selfdrive.hexa import sensors as hexa_sensors, signals_seen
 from openpilot.selfdrive.hexa.copilot_events import SAMPLE_S as COP_SAMPLE_S, CopilotEvents, Lead, Reading
 from openpilot.selfdrive.hexa.shadow import KEYS as SHADOW_KEYS, ShadowCounter
 
@@ -348,6 +348,7 @@ def trip_segment(events: Iterable, cop: CopilotEvents | None = None, offset: flo
   pedal_at = {"gas": -1e9, "brake": -1e9}
   shadow = ShadowCounter()
   car = hexa_sensors.CarSensors()
+  signals = signals_seen.SignalsSeen()  # what changed, for the comma approval checks
   # the stretch with no intervention, now: openpilot engaged (stops included: the GWM drops latActive standing still) and
   # none of what the page counts as an intervention: a pedal, or the hand on the wheel for DRIVER_MIN_S
   run = [0., 0.]  # km and s
@@ -442,6 +443,7 @@ def trip_segment(events: Iterable, cop: CopilotEvents | None = None, offset: flo
         run_head = run_head if run_head is not None else list(run)
         run_best = max(run_best, run)
         run = [0., 0.]
+      signals.on_car(cs)
       ws = getattr(cs, "wheelSpeeds", None)
       car.on_car(cs.vEgo, getattr(cs, "aEgo", 0.), getattr(cs, "steeringAngleDeg", 0.), (ws.fl, ws.fr, ws.rl, ws.rr) if ws is not None else None, dt, t)
       cruise = getattr(cs, "cruiseState", None)
@@ -496,6 +498,7 @@ def trip_segment(events: Iterable, cop: CopilotEvents | None = None, offset: flo
     total[k] = _r(total[k], 3)
   total.update(shadow.result())
   total.update(car.result())
+  total.update(signals.result())
   total.update({k: _r(v, 3) for k, v in kpi.items()})
   # the longest stretch without an intervention; head and tail join with the minutes around it (trip_summary)
   total.update({"v_max": _r(v_max * 3.6, 1), "run_best": [_r(x, 3) for x in max(run_best, run)], "run_tail": [_r(x, 3) for x in run],
@@ -513,6 +516,7 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
   keys = ("s", "km", "moving_s", "on_s", "driver", "gas", "brake", "off", "marks", "alerts", "alerts_crit", *SPLIT_KEYS, *SHADOW_KEYS, *KPI_KEYS)
   total: dict = dict.fromkeys(keys, 0.)
   car: dict = {}
+  signals: dict = {}
   version: dict = {}
   auto: list[dict] = []
   path: list[list] = []
@@ -548,6 +552,7 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
     for k in keys:
       total[k] += part.get(k, 0)
     hexa_sensors.merge(car, part)
+    signals_seen.merge(signals, part)
     v_max = max(v_max, part.get("v_max", 0.))
     if "run_head" in part:  # a stretch crosses minutes only when they follow each other: an unread minute breaks it
       head, tail = part["run_head"], part["run_tail"]
@@ -561,6 +566,7 @@ def trip_summary(files: dict[int, str], stop=lambda: False) -> dict | None:
   if "se_hard_brakes" in out:
     out["se_hard_brakes"] = int(out["se_hard_brakes"])
   out.update({"v_max": round(v_max), "run_km": _r(run_best[0], 2), "run_s": round(run_best[1])})
+  out.update(signals)
   return {**out, "segments": len(files), "unread": unread, "version": version.get("version", ""), "commit": version.get("commit", ""),
           "auto_marks": auto[:AUTO_MARKS_MAX], "path": path, "cop": cop.events, "end_s": _r(end_s), "end_seg": end_seg,
           "off_at": [x for x in off_at if x < end_s - PIN_END_S][:OFF_AT_MAX]}

@@ -32,7 +32,9 @@ MAX_PACK = 12
 # the owner's mission marks, kept for the history: a mark checked in the log stays, as "conferida" (owner, 03/11)
 MAX_PENDING = 300
 HOW = ("auto", "marca", "parado", "cto", "decisao")
-DETECT = ("slow10", "night30", "highway", "km200", "marks10", "installed")
+# the comma approval checks (MISS-01), from the car's signals each drive summary saw change (signals_seen.py)
+APPROVAL_DETECT = ("belt", "doors", "gears", "pedals", "blinkers", "bsm", "ign3")
+DETECT = ("slow10", "night30", "highway", "km200", "marks10", "installed", *APPROVAL_DETECT)
 # the passenger's copilot (owner, 03/11): what the live data says fits now
 WHEN = ("stop_free", "stop_queue", "stop_long", "follow_mid", "slow_follow", "moving", "city")
 # what the passenger answered (owner, 03/11: D1), as the mark's label: only "done" and "ok" wait as a mission advanced,
@@ -75,7 +77,7 @@ class Mission:
   option: str = ""  # an option to turn on parked before the drive (options.py key)
   lock: str = ""  # why it can't be taken yet
   drive: bool = False  # a "parado" answer about something that happens driving: asked after the drive
-  detect: str = ""  # "auto": what the phone looks for in the summaries
+  detect: str = ""  # what the phone looks for in the summaries: an "auto" mission's only way, and the approval checks' too
   arg: str = ""  # the detector's argument (a commit)
   done: int = 0  # proved so far, by the CTO (raise it with the proof)
   proof: str = ""
@@ -233,10 +235,10 @@ CATALOG: tuple[Mission, ...] = (
   Mission("android", "celular", "Android", 1, "parado", note="se tiver um"),
   # *** Coleta para a comma (VALID-01, UP-01): the checklist's car signals, read once in a log. All of it in one stop of
   # about 15 minutes, car on and the comma recording: a mark before each one is how the CTO finds the second in the log ***
-  Mission("cinto", "coleta", "Cinto: tirar e pôr", 1, "parado", note="o comma grava o sinal",
+  Mission("cinto", "coleta", "Cinto: tirar e pôr", 1, "parado", detect="belt", note="o comma grava o sinal",
           why="A comma confere se o aparelho lê o cinto do motorista.",
           steps=("Carro ligado, em P, com o comma gravando.", "Toque em Marcar.", "Solte o cinto, espere 5 s e prenda de novo.")),
-  Mission("portas", "coleta", "Portas: abrir e fechar cada uma", 4, "parado",
+  Mission("portas", "coleta", "Portas: abrir e fechar cada uma", 4, "parado", detect="doors",
           why="A comma confere se o aparelho vê cada porta aberta.",
           steps=("Carro ligado, em P. Toque em Marcar.", "Abra a porta do motorista, espere 3 s e feche.",
                  "Depois a do passageiro, a traseira esquerda e a traseira direita, uma de cada vez.", "Por último, o porta-malas.")),
@@ -244,24 +246,24 @@ CATALOG: tuple[Mission, ...] = (
           why="Com o freio de mão ou o auto hold segurando, o openpilot não pode tentar andar.",
           steps=("Em P, toque em Marcar. Puxe o freio de mão, espere 5 s e solte.",
                  "Ligue o auto hold. Num sinal, pare até a luz do auto hold acender, marque e saia normalmente.")),
-  Mission("cambio", "coleta", "Câmbio: P, R, N, D", 1, "parado", note="pé no freio",
+  Mission("cambio", "coleta", "Câmbio: P, R, N, D", 1, "parado", detect="gears", note="pé no freio",
           why="Uma posição que o comma não conhece nunca pode virar D.",
           steps=("Pé no freio, toque em Marcar.", "Passe P, R, N e D, parando 3 s em cada.",
                  "Se o câmbio tiver outra posição (S, B ou M), passe por ela também.", "Volte a P.")),
-  Mission("pedais", "coleta", "Pedais: freio e acelerador", 2, "parado", note="em P",
+  Mission("pedais", "coleta", "Pedais: freio e acelerador", 2, "parado", detect="pedals", note="em P",
           why="A comma confere se o aparelho lê o começo e o fim de cada pedal.",
           steps=("Em P, toque em Marcar.", "Pise o freio até o fim, devagar, e solte devagar.",
                  "Pise o acelerador até a metade, devagar, e solte.")),
-  Mission("piscas", "coleta", "Piscas: esquerda, direita, alerta", 3, "parado",
+  Mission("piscas", "coleta", "Piscas: esquerda, direita, alerta", 3, "parado", detect="blinkers",
           steps=("Toque em Marcar.", "Seta para a esquerda 5 s, depois para a direita 5 s.", "Pisca-alerta 5 s.")),
-  Mission("cego-coleta", "coleta", "Ponto cego: um carro de cada lado", 2, "marca", note="andando, só observar", route=4, when="moving",
+  Mission("cego-coleta", "coleta", "Ponto cego: um carro de cada lado", 2, "marca", detect="bsm", note="andando, só observar", route=4, when="moving",
           why="A luz do retrovisor e o que o comma lê precisam bater.",
           steps=("Numa avenida, quando a luz do ponto cego acender, toque em Fiz agora.", "Uma vez de cada lado.")),
   Mission("modos-conducao", "coleta", "Modos de condução do PHEV", 1, "parado", note="EV, HEV, Sport e os outros",
           why="A comma quer saber se algum modo muda o que o aparelho lê ou o que o ACC faz.",
           steps=("Em P, toque em Marcar.", "Passe por cada modo do botão de modos, parando 3 s em cada.",
                  "Na resposta, escreva quais modos o carro tem.")),
-  Mission("ligar-desligar", "coleta", "Ligar e desligar o carro 3 vezes", 3, "parado",
+  Mission("ligar-desligar", "coleta", "Ligar e desligar o carro 3 vezes", 3, "parado", detect="ign3",
           why="A comma confere se o aparelho reconhece o carro e engata depois de cada partida, sem aviso no painel.",
           steps=("Desligue o carro e espere 1 minuto.", "Ligue e espere o comma mostrar a tela de dirigir.",
                  "Veja se o painel do carro mostra algum aviso.", "Repita 3 vezes. Na última, saia e engate o openpilot.")),

@@ -506,6 +506,9 @@
   // from the owner's answers, or from the drive summaries the comma already keeps, read here with the car off.
   // A "Fiz agora" mark is a clue for the CTO, never done by itself. The level is the system's, never the driver's.
   const SLOW_MISSION_S = 600, NIGHT_MIN_S = 1800, HIGHWAY_KMH = 90, HIGHWAY_KM = 15, MISSION_VERSION_KM = 200, MARKS_IN_A_TRIP = 10;
+  // the comma approval checks (MISS-01): the car's signals the drive summary saw change (timeline sg_*, signals_seen.py).
+  // Three starts within IGNITION_WINDOW_S are the "turn it off and on 3 times"; the four gears are P, R, N and D
+  const IGNITION_WINDOW_S = 900, GEARS_PRND = 15;
   // The week of a time (Monday 00:00 local, as a day number): 200 km in one week, whatever versions it had
   function weekOf(s) { const d = new Date(s * 1000); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return Math.round(d.getTime() / 86400000); }
   function missionAuto(m, trips) {
@@ -517,6 +520,15 @@
       case "highway": return ts.some((t) => (S(t).v_max || 0) >= HIGHWAY_KMH && (S(t).km || 0) >= HIGHWAY_KM) ? 1 : 0;
       case "marks10": return ts.some((t) => (S(t).marks || 0) >= MARKS_IN_A_TRIP) ? 1 : 0;
       case "installed": return m.arg && ts.some((t) => versionOf(t).startsWith(m.arg)) ? 1 : 0;  // m.arg: the newest version (missions.public)
+      case "belt": return ts.some((t) => (S(t).sg_belt || 0) > 0) ? 1 : 0;
+      case "doors": return Math.min(m.total, Math.max(0, ...ts.map((t) => S(t).sg_door || 0)));  // one stop: each door, then the trunk
+      case "gears": return ts.some((t) => ((S(t).sg_gears || 0) & GEARS_PRND) === GEARS_PRND) ? 1 : 0;
+      case "pedals": return ["sg_brake", "sg_gas"].filter((k) => ts.some((t) => (S(t)[k] || 0) > 0)).length;
+      case "blinkers": return ["sg_left", "sg_right", "sg_hazard"].filter((k) => ts.some((t) => (S(t)[k] || 0) > 0)).length;
+      case "bsm": return ["sg_bsm_l", "sg_bsm_r"].filter((k) => ts.some((t) => (S(t)[k] || 0) > 0)).length;
+      case "ign3": { const at = ts.map(tripStart).sort((a, b) => a - b);  // the most starts within the window
+        let best = 0; at.forEach((s, i) => { best = Math.max(best, at.slice(i).filter((x) => x - s <= IGNITION_WINDOW_S).length); });
+        return best >= 2 ? Math.min(m.total, best) : 0; }  // one start is any drive: the check is turning it off and on
       case "km200": { const km = {}; ts.forEach((t) => { const w = weekOf(tripStart(t)); km[w] = (km[w] || 0) + (S(t).km || 0); });  // a week: versions change daily
         return Object.values(km).some((x) => x >= MISSION_VERSION_KM) ? 1 : 0; }
       default: return 0;
@@ -551,7 +563,8 @@
   function missionProgress(cat, state, trips) {
     const st = state || {}, answers = st.answers || {}, out = {};
     for (const m of (cat && cat.missions) || []) {
-      const accepted = Math.min(m.total, Math.max(m.done || 0, answers[m.key] || 0, m.how === "auto" ? missionAuto(m, trips) : 0));
+      // a detector counts whatever the mission's kind: the approval checks keep their Marcar, and the log ticks them too
+      const accepted = Math.min(m.total, Math.max(m.done || 0, answers[m.key] || 0, m.detect ? missionAuto(m, trips) : 0));
       const until = checkedUntil(m);  // a mark a try already checked waits for nothing
       const mine = (st.pending || []).filter((p) => p.key === m.key && !markChecked(m, p, until)), marks = mine.filter(advanced).length;
       const byYou = Math.min(marks, m.total - accepted), d = accepted + byYou;

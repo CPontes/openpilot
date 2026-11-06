@@ -397,3 +397,14 @@ def test_the_drive_summary_knows_its_last_read_minute(tmp_path):
   (tmp_path / "cut.zst").write_bytes(b"not a log")
   s = tl.trip_summary(files)
   assert s["unread"] == 1 and s["end_seg"] == 0 and 7 <= s["end_s"] <= 8
+
+
+def test_the_drive_summary_has_the_signals_seen_changing():  # MISS-01: the comma approval checks
+  def minute(gears, door):
+    msgs = []
+    for i, g in enumerate(gears):
+      msgs.append(Msg("carState", 1 + i, vEgo=0., gearShifter=g, doorOpen=door and i % 2 == 1, gasPressed=False, brakePressed=False,
+                      steeringPressed=False))
+    return msgs
+  a = tl.trip_segment(minute(["park", "reverse"], True))["summary"]
+  assert a["sg_gears"] == 3 and a["sg_door"] == 1

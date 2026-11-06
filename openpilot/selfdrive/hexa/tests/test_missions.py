@@ -12,7 +12,7 @@ def test_the_catalog_holds_together():
   opts = {o.key for o in options.OPTIONS}
   for m in M.CATALOG:
     assert m.trail in trails and m.how in M.HOW and m.total >= 1 and 0 <= m.done <= m.total, m.key
-    assert (m.how == "auto") == bool(m.detect), m.key
+    assert m.how != "auto" or m.detect, m.key  # an "auto" one needs a detector; the approval checks have one too
     assert not m.detect or m.detect in M.DETECT, m.key
     assert not m.option or m.option in opts, m.key  # an option a mission asks for must exist in Ajustes
     assert not m.drive or m.how == "parado", m.key
