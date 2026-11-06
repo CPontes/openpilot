@@ -373,8 +373,45 @@
   }
   // the last places gone to, newest first, no repeats (same point within ~20 m), at most 5
   function navRecent(list, p, keep) {
-    const near = (a) => Math.abs(a.latitude - p.latitude) < 2e-4 && Math.abs(a.longitude - p.longitude) < 2e-4;
-    return [{ name: p.name, latitude: p.latitude, longitude: p.longitude }, ...(list || []).filter((a) => a && !near(a))].slice(0, keep || 5);
+    return [{ name: p.name, latitude: p.latitude, longitude: p.longitude }, ...(list || []).filter((a) => a && !samePoint(a, p))].slice(0, keep || 5);
+  }
+  // The same place: within ~20 m (a saved place, a recent one and the route's destination are compared like this)
+  function samePoint(a, b) {
+    return !!(a && b) && Math.abs(a.latitude - b.latitude) < 2e-4 && Math.abs(a.longitude - b.longitude) < 2e-4;
+  }
+  function savedPlace(places, p) { return (places || []).find((x) => samePoint(x, p)) || null; }
+  // "Quem mostra o caminho?" (MAP-UX-01, owner's D4 and D5, 06/11): asked every time, the last choice first and the only green
+  // one; the comma's route always listed, off (with why) when its navigation is off
+  function navOptions(last, commaOn) {
+    const all = ["waze", "google", "comma"], on = (app) => app !== "comma" || !!commaOn;
+    const first = all.includes(last) && on(last) ? last : null;
+    return (first ? [first, ...all.filter((a) => a !== first)] : all).map((app, i) => ({ app, on: on(app), last: app === first, main: i === 0 }));
+  }
+  // What the Mapa shows with no route (MAP-UX-01, step 1): the last places gone to (the saved ones are already the chips on top),
+  // the way to edit the saved ones, or, with nothing yet, what can be done
+  function mapCard(recent, places, keep) {
+    const rec = (recent || []).filter((p) => p && !savedPlace(places, p)).slice(0, keep || 3);
+    return { recent: rec, edit: (places || []).length > 0, empty: !rec.length && !(places || []).length };
+  }
+  // Where the pin's tip goes on a map of height h: the middle of what the bar on top (top) and the card below (cover) leave
+  // free, so the place is never under the card (MAP-UX-01, step 4); the pin is 52 px tall
+  function pinSpot(h, top, cover) {
+    const free = h - top - cover;
+    if (free <= 0) return Math.round(h / 2);  // nothing of the map shows: as before
+    return Math.round(Math.min(h - cover, top + Math.max(free / 2 + 26, Math.min(52, free))));  // a small phone: the tip on the card's edge
+  }
+  // The map's centre that puts (lat, lon) at the box's pixel (x, y), zoom zf
+  function centerAt(lat, lon, zf, w, h, x, y) {
+    const v = mapCenter(lat, lon, zf, w, h), c = mapLatLon(v, w - x, h - y);
+    return { lat: c[0], lon: c[1], zf: v.zf };
+  }
+  // The whole path inside what the bar on top, the card below and the buttons on the right leave free
+  function fitBand(points, w, h, band, pad) {
+    const bw = w - (band.right || 0), bh = h - (band.top || 0) - (band.bottom || 0);
+    const fit = mapFit(points, bw, bh, pad);
+    if (!fit) return null;
+    const zf = fit.z + Math.log2(fit.size / TILE), c = mapLatLon({ k: Math.pow(2, zf), ox: fit.ox, oy: fit.oy - (band.top || 0) }, w / 2, h / 2);
+    return { lat: c[0], lon: c[1], zf };
   }
   // navd's maneuver as one of the arrows the page draws
   function maneuverKind(type, modifier) {
@@ -1098,6 +1135,6 @@
   const DATA_KEYS = ["lpTrips", "lpMissionSnap", "lpCopEvents", "lpCopAnswers", "lpCopTally", "lpNavRecent"];  // the copilot's events of the drive, and the answers
 
   root.LPL = { approvalReport, groupPending, quietEvent, mutedKinds, EV_KINDS, eventStep, pointPassed, eventsMerge, logEvents, driveStart, reviewList, answerKeep, eventMission, copilotView, eventAge, eventStage, eventClock, EV_MISSIONS, EV_REASON, EV_LIVE_S, EV_RECENT_S, EV_KEEP, versionList, versionChips, VERSION_CHIPS, copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, rideKeys, rideKeep, rideOrder, mapCount, RIDE_KEEP, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
-               tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, appMode, shareFor, tallyAdd, canSilence, SILENCE_MIN, NAV_REMEMBER, navTargets, navChoice, navLink, navRecent, mapCenter, mapXY, mapLatLon, distanceM, shortPlace, maneuverKind, homeFor, navDist, navView, leadView, navZoom, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
+               tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, appMode, shareFor, tallyAdd, canSilence, SILENCE_MIN, NAV_REMEMBER, navTargets, navChoice, navLink, navRecent, samePoint, savedPlace, navOptions, mapCard, pinSpot, centerAt, fitBand, mapCenter, mapXY, mapLatLon, distanceM, shortPlace, maneuverKind, homeFor, navDist, navView, leadView, navZoom, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);
