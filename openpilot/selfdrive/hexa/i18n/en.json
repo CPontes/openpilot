@@ -1787,5 +1787,19 @@
  "Sem o comma, e nada guardado neste celular ainda.": "Without the comma, and nothing kept on this phone yet.",
  "Sem o comma, esta viagem não está no celular. Ela fica guardada quando você a abre com o comma por perto.": "Without the comma, this trip isn't on the phone. It is kept when you open it with the comma nearby.",
  "Sem o comma: guardada em {hora}. Arraste a barra para percorrer o caminho.": "Without the comma: kept on {hora}. Drag the bar to follow the route.",
- "Sem o comma: guardada em {hora}. O mapa só fica no celular com “Guardar os mapas neste celular” ligado.": "Without the comma: kept on {hora}. The map stays on the phone only with “Keep the maps on this phone” on."
+ "Sem o comma: guardada em {hora}. O mapa só fica no celular com “Guardar os mapas neste celular” ligado.": "Without the comma: kept on {hora}. The map stays on the phone only with “Keep the maps on this phone” on.",
+ "Sair da parada numa subida": "Leaving a stop on a hill",
+ "pelo acelerador e pela alavanca": "with the gas pedal and with the lever",
+ "o carro não desce antes de andar": "the car doesn't roll back before it moves",
+ "Desde a versão de 06/11, o panda confere o comando de freio do comma. A Haval ainda segura o carro parado até ele andar.": "Since the 06/11 version, the panda checks the comma's brake command. The Haval still holds the stopped car until it moves.",
+ "Só com o longitudinal do comma ligado, sem carro atrás e num lugar seguro.": "Only with the comma's longitudinal on, no car behind, and in a safe place.",
+ "Numa parada em subida, com o comma segurando o carro, saia pisando devagar no acelerador.": "At a stop on a hill, with the comma holding the car, pull away by pressing the gas slowly.",
+ "Na outra parada em subida, saia puxando a alavanca.": "At the next stop on a hill, pull away by pulling the lever.",
+ "Certo: o carro não desce para trás antes de andar. Se descer, freie e marque.": "Right: the car doesn't roll back before it moves. If it rolls back, brake and mark it.",
+ "Desengatar pelo freio parado na subida": "Disengaging with the brake, stopped on a hill",
+ "o carro fica parado enquanto o pé está no freio": "the car stays still while your foot is on the brake",
+ "Ao desengatar parado, o comando do comma deixa de frear: o seu pé precisa estar segurando o carro.": "When you disengage stopped, the comma's command stops braking: your foot has to be holding the car.",
+ "Parado numa subida, com o comma segurando o carro, pise no freio: o openpilot desengata.": "Stopped on a hill, with the comma holding the car, press the brake: openpilot disengages.",
+ "Segure 3 s com o pé no freio e saia normalmente.": "Hold 3 s with your foot on the brake, then pull away as usual.",
+ "Certo: o carro não se mexe enquanto o pé está no freio. Se mexer, marque.": "Right: the car doesn't move while your foot is on the brake. If it moves, mark it."
 }

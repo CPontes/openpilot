@@ -1787,5 +1787,19 @@
  "Sem o comma, e nada guardado neste celular ainda.": "Sin el comma, y nada guardado en este celular todavía.",
  "Sem o comma, esta viagem não está no celular. Ela fica guardada quando você a abre com o comma por perto.": "Sin el comma, este viaje no está en el celular. Se guarda cuando lo abre con el comma cerca.",
  "Sem o comma: guardada em {hora}. Arraste a barra para percorrer o caminho.": "Sin el comma: guardado el {hora}. Arrastre la barra para recorrer el camino.",
- "Sem o comma: guardada em {hora}. O mapa só fica no celular com “Guardar os mapas neste celular” ligado.": "Sin el comma: guardado el {hora}. El mapa solo queda en el celular con “Guardar los mapas en este celular” activado."
+ "Sem o comma: guardada em {hora}. O mapa só fica no celular com “Guardar os mapas neste celular” ligado.": "Sin el comma: guardado el {hora}. El mapa solo queda en el celular con “Guardar los mapas en este celular” activado.",
+ "Sair da parada numa subida": "Salir de una parada en subida",
+ "pelo acelerador e pela alavanca": "con el acelerador y con la palanca",
+ "o carro não desce antes de andar": "el auto no retrocede antes de avanzar",
+ "Desde a versão de 06/11, o panda confere o comando de freio do comma. A Haval ainda segura o carro parado até ele andar.": "Desde la versión del 06/11, el panda revisa la orden de freno del comma. El Haval todavía sostiene el auto detenido hasta que avanza.",
+ "Só com o longitudinal do comma ligado, sem carro atrás e num lugar seguro.": "Solo con el longitudinal del comma encendido, sin autos detrás y en un lugar seguro.",
+ "Numa parada em subida, com o comma segurando o carro, saia pisando devagar no acelerador.": "En una parada en subida, con el comma sosteniendo el auto, salga pisando despacio el acelerador.",
+ "Na outra parada em subida, saia puxando a alavanca.": "En la siguiente parada en subida, salga tirando de la palanca.",
+ "Certo: o carro não desce para trás antes de andar. Se descer, freie e marque.": "Correcto: el auto no retrocede antes de avanzar. Si retrocede, frene y marque.",
+ "Desengatar pelo freio parado na subida": "Desactivar con el freno, detenido en subida",
+ "o carro fica parado enquanto o pé está no freio": "el auto queda quieto mientras el pie está en el freno",
+ "Ao desengatar parado, o comando do comma deixa de frear: o seu pé precisa estar segurando o carro.": "Al desactivar detenido, la orden del comma deja de frenar: su pie tiene que estar sosteniendo el auto.",
+ "Parado numa subida, com o comma segurando o carro, pise no freio: o openpilot desengata.": "Detenido en subida, con el comma sosteniendo el auto, pise el freno: openpilot se desactiva.",
+ "Segure 3 s com o pé no freio e saia normalmente.": "Mantenga 3 s con el pie en el freno y salga normalmente.",
+ "Certo: o carro não se mexe enquanto o pé está no freio. Se mexer, marque.": "Correcto: el auto no se mueve mientras el pie está en el freno. Si se mueve, marque."
 }

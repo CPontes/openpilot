@@ -197,6 +197,22 @@ CATALOG: tuple[Mission, ...] = (
   Mission("long-sinal", "long", "Sinal vermelho visto", 1, "cto", note="as paradas sem carro à frente ainda acabam no seu pedal"),
   Mission("long-sem-freada", "long", "Uma viagem sem freada forte sua", 1, "cto"),
   Mission("long-aeb", "long", "O AEB da Haval segue ativo", 1, "cto", lock="Só no log. Nunca provoque o AEB"),
+  # SAFE-02 (the panda checks the ACC command's mode, 06/11): with the comma's longitudinal on, the two cases the CTO asked to
+  # see on the car. The camera's hold of a stopped car stays as before; this is where a roll back would show
+  Mission("saida-subida", "long", "Sair da parada numa subida", 2, "marca", when="stop_long", route=6,
+          note="pelo acelerador e pela alavanca", goal="o carro não desce antes de andar",
+          why="Desde a versão de 06/11, o panda confere o comando de freio do comma. A Haval ainda segura o carro parado até ele andar.",
+          steps=("Só com o longitudinal do comma ligado, sem carro atrás e num lugar seguro.",
+                 "Numa parada em subida, com o comma segurando o carro, saia pisando devagar no acelerador.",
+                 "Na outra parada em subida, saia puxando a alavanca.",
+                 "Certo: o carro não desce para trás antes de andar. Se descer, freie e marque.")),
+  Mission("desengate-subida", "long", "Desengatar pelo freio parado na subida", 1, "marca", when="stop_long", route=7,
+          goal="o carro fica parado enquanto o pé está no freio",
+          why="Ao desengatar parado, o comando do comma deixa de frear: o seu pé precisa estar segurando o carro.",
+          steps=("Só com o longitudinal do comma ligado, sem carro atrás e num lugar seguro.",
+                 "Parado numa subida, com o comma segurando o carro, pise no freio: o openpilot desengata.",
+                 "Segure 3 s com o pé no freio e saia normalmente.",
+                 "Certo: o carro não se mexe enquanto o pé está no freio. Se mexer, marque.")),
   # *** Avisos e atenção ***
   Mission("aviso-radar", "avisos", "Aviso de radar antes do radar", 3, "marca", option="RadarAlert"),
   Mission("aviso-saiu", "avisos", "Aviso de que o carro da frente saiu", 3, "marca", option="LeadDepartAlert"),

@@ -25,7 +25,8 @@ def test_the_catalog_holds_together():
 
 def test_one_route_new_tests_first_then_what_an_older_version_left_open():  # owner, 03/11
   # the next drive is comma's approval (owner, 06/11): its tests, in the CTO's order
-  assert M.route_keys({}) == ["falha-falsa", "perto-de-zero", "assistente-haval", "cego-coleta", "ponto-cego"]
+  assert M.route_keys({}) == ["falha-falsa", "perto-de-zero", "assistente-haval", "cego-coleta", "ponto-cego", "saida-subida",
+                              "desengate-subida"]
   assert M.TRAILS[0] == ("coleta", "Aprovação na comma")
   routes = [m.route for m in M.CATALOG if m.route]
   assert len(routes) == len(set(routes)) and len(routes) <= M.MAX_PACK
