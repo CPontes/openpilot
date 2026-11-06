@@ -140,9 +140,11 @@ OPTIONS: tuple[HexaOption, ...] = (
     title="limite da via pelo mapa",
     description="Lê o limite da rua no mapa do OpenStreetMap, sem internet, e mostra no celular.\n" +
                 "Avisar: um som quando passar do limite com a tolerância da lei (7 km/h até 100, 7% acima). Não muda a velocidade.\n" +
-                "Precisa do mapa da região baixado pelo celular. O aviso vale a partir da próxima partida.",
+                "Ajustar (só no Haval): avisa e leva a velocidade do ACC ao limite a cada limite novo, um toque de + ou − por vez, até 110 km/h. " +
+                "Qualquer pedal ou botão seu para o ajuste até o próximo limite.\n" +
+                "Precisa do mapa da região baixado pelo celular. Vale a partir da próxima partida.",
     kind="enum",
-    choices=("desligado", "mostrar", "avisar"),
+    choices=("desligado", "mostrar", "avisar", "ajustar"),
     default=0,
     driving=False,
     testing=True,

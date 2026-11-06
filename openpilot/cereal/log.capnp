@@ -139,6 +139,8 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     accLost @109;
     stopHold @110;
     speedLimitOver @111;
+    speedLimitUp @112;
+    speedLimitDown @113;
 
     lowBatteryDEPRECATED @40;
     soundsUnavailableDEPRECATED @47;

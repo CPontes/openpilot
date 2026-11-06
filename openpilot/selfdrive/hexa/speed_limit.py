@@ -10,7 +10,8 @@ speed limit (m/s, direction of travel included) and the next one ahead. This fil
   100 km/h, 7% above), only on a limit that held for SETTLE_S, once per overshoot;
 - gives the phone what to show, and the rules for installing and downloading (unmetered network, free space, car off).
 
-The option (HexaSpeedLimit): 0 desligado, 1 mostrar, 2 avisar. "Ajustar" waits for the + of the ACC (CRUISE-01).
+The option (HexaSpeedLimit): 0 desligado, 1 mostrar, 2 avisar, 3 ajustar (avisar, and the ACC set speed follows the limit:
+LimitFollow below, the + and - of the ACC through the panda, CRUISE-01).
 Not driving: it holds for every car.
 """
 import hashlib
@@ -22,7 +23,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 OPTION_PARAM = "HexaSpeedLimit"
-OFF, SHOW, WARN = 0, 1, 2
+OFF, SHOW, WARN, ADJUST = 0, 1, 2, 3  # ADJUST warns too, and takes the ACC's set speed to the limit (CRUISE-01)
 
 MAPD_DIR = Path("/data/lizpilot/mapd")
 MAPD_BIN = MAPD_DIR / "mapd"
@@ -58,7 +59,7 @@ def option(params) -> int:
     v = int(v) if v is not None else OFF
   except (TypeError, ValueError):
     return OFF
-  return v if v in (OFF, SHOW, WARN) else OFF
+  return v if v in (OFF, SHOW, WARN, ADJUST) else OFF
 
 
 # *** the binary: checked when it runs ***
@@ -280,3 +281,67 @@ class DownloadGuard:
       self.sent = True
       return True
     return False
+
+
+# *** "ajustar": the ACC's set speed follows the road's limit (CRUISE-01) ***
+
+FOLLOW_MIN_KPH = 30  # the ACC's lowest set speed
+FOLLOW_MAX_KPH = 110  # the panda's ceiling for the plus (gwm.h GWM_PLUS_MAX_KPH)
+FOLLOW_STEP_KPH = 5  # one press of + or - (18 of 20 and 6 of 6 presses measured)
+FOLLOW_MAX_RAISE_KPH = 40  # per limit: the panda's budget is 8 presses of the plus a minute
+FOLLOW_TIMEOUT_S = 15.
+FOLLOW_NO_RESPONSE_S = 2.  # pressing with the set speed not moving: the ACC isn't taking it
+
+
+class LimitFollow:
+  """Takes the ACC's set speed to a new limit, a press at a time: +1 (plus), -1 (minus) or 0, at the rate it is called.
+
+  Once per limit: a limit that held (SpeedLimitWatch) and is new starts it; the set speed at the limit (on the 5 km/h steps
+  of the ACC, between FOLLOW_MIN_KPH and FOLLOW_MAX_KPH, at most FOLLOW_MAX_RAISE_KPH up) ends it. The driver always wins:
+  the gas, the brake or the set speed moving the other way end it for this limit, and it waits for the next one. With
+  openpilot or the ACC off, or a bump slowing the car, it waits and goes on when they're back.
+  """
+
+  def __init__(self, dt: float):
+    self.dt = dt
+    self.done_for = 0.  # the last limit it finished, or that the driver took over
+    self.target: float | None = None
+    self.set_prev: float | None = None
+    self.left = 0.
+    self.stuck = 0.
+    self.direction = 0  # the way this adjustment goes: it never turns back (no + then -)
+
+  def _stop(self, limit_kph: float) -> int:
+    self.done_for, self.target, self.set_prev = limit_kph, None, None
+    return 0
+
+  def update(self, enabled: bool, acc_driving: bool, moving: bool, set_kph: float, limit_kph: float, gas_pressed: bool,
+             brake_pressed: bool, slowing_for_bump: bool) -> int:
+    if limit_kph < FOLLOW_MIN_KPH or limit_kph == self.done_for:
+      self.target, self.set_prev = None, None
+      return 0
+    if not (enabled and acc_driving and moving) or slowing_for_bump:
+      self.target, self.set_prev = None, None  # waits: goes on when they're back
+      return 0
+    if gas_pressed or brake_pressed:
+      return self._stop(limit_kph)
+    if self.target is None:
+      target = FOLLOW_STEP_KPH * round(min(max(limit_kph, FOLLOW_MIN_KPH), FOLLOW_MAX_KPH) / FOLLOW_STEP_KPH)
+      self.target = min(target, set_kph + FOLLOW_MAX_RAISE_KPH)
+      self.left, self.stuck, self.set_prev, self.direction = FOLLOW_TIMEOUT_S, 0., None, 0
+    # a whole step away, or nothing: a set speed off the 5 km/h steps (78 for 80) stays as it is
+    direction = 1 if self.target - set_kph >= FOLLOW_STEP_KPH else -1 if set_kph - self.target >= FOLLOW_STEP_KPH else 0
+    if self.direction == 0:
+      self.direction = direction
+    elif direction != self.direction:
+      direction = 0  # there, or past it: done
+    if self.set_prev is not None:
+      moved = set_kph - self.set_prev
+      if moved * direction < 0:  # the other way: the driver
+        return self._stop(limit_kph)
+      self.stuck = 0. if moved != 0 else self.stuck + self.dt
+    self.left -= self.dt
+    if direction == 0 or self.left <= 0 or self.stuck >= FOLLOW_NO_RESPONSE_S:
+      return self._stop(limit_kph)
+    self.set_prev = set_kph
+    return direction

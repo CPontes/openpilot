@@ -558,6 +558,23 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
     ET.PERMANENT: speed_limit_over_alert,
   },
 
+  # "ajustar" (CRUISE-01): the ACC's set speed going to the road's limit. Shown, never a sound: it's what was asked
+  EventName.speedLimitUp: {
+    ET.PERMANENT: Alert(
+      "Ajustando ao limite da via",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOWEST, VisualAlert.none, AudibleAlert.none, .2),
+  },
+
+  EventName.speedLimitDown: {
+    ET.PERMANENT: Alert(
+      "Ajustando ao limite da via",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOWEST, VisualAlert.none, AudibleAlert.none, .2),
+  },
+
   EventName.leadDeparted: {
     ET.PERMANENT: Alert(
       "Carro da frente saiu",

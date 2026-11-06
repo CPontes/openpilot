@@ -184,7 +184,8 @@ class Controls:
     if self.CP.brand == 'gwm':
       # the Haval ACC has no standstill signal of its own: selfdrived decides, see AutoResume
       CC.cruiseControl.resume = CC.enabled and any(e.name == 'autoResume' for e in self.sm['onroadEvents'])
-      CC.cruiseControl.decrease = CC.enabled and any(e.name == 'bumpSlowdown' for e in self.sm['onroadEvents'])
+      CC.cruiseControl.decrease = CC.enabled and any(e.name in ('bumpSlowdown', 'speedLimitDown') for e in self.sm['onroadEvents'])
+      CC.cruiseControl.increase = CC.enabled and any(e.name == 'speedLimitUp' for e in self.sm['onroadEvents'])  # CRUISE-01
 
     hudControl = CC.hudControl
     hudControl.setSpeed = float(CS.vCruiseCluster * CV.KPH_TO_MS)

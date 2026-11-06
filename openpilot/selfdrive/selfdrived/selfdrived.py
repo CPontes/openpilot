@@ -123,9 +123,13 @@ class SelfdriveD:
     self.acc_lost_alert = AccLostAlert() if self.CP.brand == 'gwm' and not self.CP.openpilotLongitudinalControl and \
                           self.params.get_bool("AccLostAlert") else None
     # the road's limit from the map: mapd's own socket, never in the SubMaster (a mapd of another schema must not reach
-    # data_sample()), read and decoded inside check_speed_limit's try. Only when the option is "avisar"
+    # data_sample()), read and decoded inside check_speed_limit's try. Only when the option is "avisar" or "ajustar"
     self.speed_limit_watch = None
-    if speed_limit.option(self.params) == speed_limit.WARN:
+    # "ajustar" (CRUISE-01): the set speed follows the limit, only if the panda lets the plus and the minus out
+    self.limit_follow = speed_limit.LimitFollow(DT_CTRL) if speed_limit.option(self.params) == speed_limit.ADJUST and \
+                        self.CP.brand == 'gwm' and len(self.CP.safetyConfigs) > 0 and \
+                        bool(self.CP.safetyConfigs[-1].safetyParam & GwmSafetyFlags.ACC_PLUS) else None
+    if speed_limit.option(self.params) in (speed_limit.WARN, speed_limit.ADJUST):
       self.speed_limit_watch = speed_limit.SpeedLimitWatch(DT_CTRL)
       self.mapd_sock = messaging.sub_sock('mapdOut', conflate=True)
       self.mapd_limit = (0., -1e9)  # (m/s, monotonic time it came)
@@ -251,6 +255,15 @@ class SelfdriveD:
 
     if self.bump_slowdown is not None and self.bump_slowdown.update(self.enabled, CS.cruiseState.speedCluster * 3.6, CS.gasPressed, CS.brakePressed):
       self.events.add(EventName.bumpSlowdown)
+
+    if self.limit_follow is not None and self.speed_limit_watch is not None:
+      bump = self.bump_slowdown is not None and self.bump_slowdown.target is not None
+      step = self.limit_follow.update(self.enabled, CS.cruiseState.driving, not CS.standstill, CS.cruiseState.speedCluster * 3.6,
+                                      self.speed_limit_watch.limit_kph, CS.gasPressed, CS.brakePressed, bump)
+      if step > 0:
+        self.events.add(EventName.speedLimitUp)
+      elif step < 0:
+        self.events.add(EventName.speedLimitDown)
 
     if self.acc_lost_alert is not None and self.acc_lost_alert.update(self.enabled, CS.cruiseState.driving, CS.vEgo, CS.gasPressed, CS.brakePressed):
       self.events.add(EventName.accLost)

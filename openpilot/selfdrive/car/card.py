@@ -21,6 +21,7 @@ from opendbc.car.interfaces import CarInterfaceBase, RadarInterfaceBase
 from opendbc.car.gwm.values import GwmFlags, GwmSafetyFlags
 from openpilot.selfdrive.pandad import can_capnp_to_list, can_list_to_can_capnp
 from openpilot.selfdrive.car.cruise import VCruiseHelper
+from openpilot.selfdrive.hexa import speed_limit
 from openpilot.selfdrive.hexa.options import is_on
 
 REPLAY = "REPLAY" in os.environ
@@ -126,8 +127,11 @@ class Car:
         # one pull of the stalk per stop, after the car ahead left
         self.CP.safetyConfigs[-1].safetyParam |= GwmSafetyFlags.AUTO_RESUME.value
       if self.params.get_bool("BumpSlowdown"):
-        # the minus button of the ACC, at a speed bump. Never the plus
+        # the minus button of the ACC, at a speed bump
         self.CP.safetyConfigs[-1].safetyParam |= GwmSafetyFlags.ACC_MINUS.value
+      if speed_limit.option(self.params) == speed_limit.ADJUST:
+        # the set speed follows the road's limit (CRUISE-01): the plus and the minus, the plus under the panda's ceiling
+        self.CP.safetyConfigs[-1].safetyParam |= GwmSafetyFlags.ACC_PLUS.value | GwmSafetyFlags.ACC_MINUS.value
       if is_on(self.params, "SoftHandoff"):
         # a light push against the wheel fades openpilot's torque out instead of cutting it; the panda doesn't change
         self.CP.flags |= GwmFlags.SOFT_HANDOFF.value

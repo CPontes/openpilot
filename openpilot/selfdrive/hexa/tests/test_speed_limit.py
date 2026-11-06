@@ -298,3 +298,113 @@ def test_coverage_tool_counts_the_km_with_a_limit():
       evs.append(m)
   c = cob.coverage([e.as_reader() for e in evs])
   assert c["km"] == pytest.approx(0.2, abs=1e-3) and c["km_limit"] == pytest.approx(0.1, abs=2e-3) and set(c["limits"]) == {60}
+
+
+# *** "ajustar": the ACC's set speed follows the limit (CRUISE-01) ***
+
+class Acc:
+  """The ACC as LimitFollow sees it: a press of + or - moves the set speed one step after a short delay."""
+  def __init__(self, set_kph, delay=20, step=5):
+    self.set_kph, self.delay, self.step, self.pending = set_kph, delay, step, []
+
+  def press(self, direction):
+    if direction and not any(d == direction for _, d in self.pending):
+      self.pending.append((self.delay, direction))
+
+  def tick(self):
+    keep = []
+    for left, d in self.pending:
+      if left <= 1:
+        self.set_kph += d * self.step
+      else:
+        keep.append((left - 1, d))
+    self.pending = keep
+
+
+def follow(lf, acc, limit, seconds, enabled=True, driving=True, moving=True, gas=False, brake=False, bump=False):
+  presses = []
+  for _ in range(int(round(seconds / DT))):
+    d = lf.update(enabled, driving, moving, acc.set_kph, limit, gas, brake, bump)
+    presses.append(d)
+    acc.press(d)
+    acc.tick()
+  return presses
+
+
+def test_a_new_limit_takes_the_set_speed_there_and_stops():
+  lf, acc = sl.LimitFollow(DT), Acc(60)
+  p = follow(lf, acc, 80, 6)
+  assert acc.set_kph == 80 and set(p) == {0, 1} and p[-1] == 0
+  assert follow(lf, acc, 80, 5) == [0] * 500  # the same limit: nothing more
+  follow(lf, acc, 50, 8)
+  assert acc.set_kph == 50  # a lower limit: down with the minus
+
+
+def test_steps_ceiling_floor_and_most_raise():
+  for limit, start, end in ((63, 60, 65), (120, 100, 110), (20, 40, 40), (100, 50, 90), (25, 50, 50)):
+    lf, acc = sl.LimitFollow(DT), Acc(start)
+    follow(lf, acc, limit, 15)
+    assert acc.set_kph == end, (limit, start, acc.set_kph)
+
+
+def test_off_the_steps_by_less_than_one_is_left_alone():
+  lf, acc = sl.LimitFollow(DT), Acc(78)
+  assert set(follow(lf, acc, 80, 3)) == {0} and acc.set_kph == 78
+
+
+def test_the_driver_wins_until_the_next_limit():
+  for kw in ({"gas": True}, {"brake": True}):
+    lf, acc = sl.LimitFollow(DT), Acc(60)
+    follow(lf, acc, 80, .5)
+    assert set(follow(lf, acc, 80, .1, **kw)) == {0}
+    assert set(follow(lf, acc, 80, 5)) == {0} and acc.set_kph < 80  # same limit: it doesn't come back
+    follow(lf, acc, 90, 8)
+    assert acc.set_kph == 90  # a new limit: it does
+
+
+def test_the_driver_moving_the_set_speed_the_other_way_ends_it():
+  lf, acc = sl.LimitFollow(DT), Acc(60, delay=10)
+  follow(lf, acc, 80, .3)
+  acc.set_kph -= 10  # the driver holds the minus while we press the plus
+  assert set(follow(lf, acc, 80, 5)) == {0}
+
+
+def test_it_waits_with_openpilot_or_the_acc_off_stopped_or_a_bump_and_goes_on_after():
+  for kw in ({"enabled": False}, {"driving": False}, {"moving": False}, {"bump": True}):
+    lf, acc = sl.LimitFollow(DT), Acc(60)
+    assert set(follow(lf, acc, 80, 2, **kw)) == {0}, kw
+    follow(lf, acc, 80, 6)
+    assert acc.set_kph == 80, kw
+
+
+def test_an_acc_that_doesnt_answer_is_left_alone():
+  lf, acc = sl.LimitFollow(DT), Acc(60, delay=10 ** 6)
+  p = follow(lf, acc, 80, 5)
+  assert p.count(1) == int(round(sl.FOLLOW_NO_RESPONSE_S / DT)) and p[-1] == 0
+
+
+def test_never_back_and_forth():
+  lf, acc = sl.LimitFollow(DT), Acc(60, step=15)  # an ACC that jumps past the target
+  p = follow(lf, acc, 70, 6)
+  assert -1 not in p and acc.set_kph == 75
+
+
+def test_no_limit_nothing():
+  lf, acc = sl.LimitFollow(DT), Acc(60)
+  assert set(follow(lf, acc, 0, 3)) == {0}
+
+
+def test_ajustar_is_an_option_and_card_asks_for_the_plus_and_the_minus():
+  assert sl.option(Store(HexaSpeedLimit=3)) == sl.ADJUST
+  from openpilot.selfdrive.hexa.options import get_option
+  assert get_option("HexaSpeedLimit").choices[sl.ADJUST] == "ajustar"
+  card = (REPO / "openpilot/selfdrive/car/card.py").read_text()
+  assert "if speed_limit.option(self.params) == speed_limit.ADJUST:" in card
+  assert "GwmSafetyFlags.ACC_PLUS.value | GwmSafetyFlags.ACC_MINUS.value" in card
+  ctl = (REPO / "openpilot/selfdrive/controls/controlsd.py").read_text()
+  assert "CC.cruiseControl.increase = CC.enabled and any(e.name == 'speedLimitUp'" in ctl
+  assert "('bumpSlowdown', 'speedLimitDown')" in ctl
+  sd = (REPO / "openpilot/selfdrive/selfdrived/selfdrived.py").read_text()
+  assert "GwmSafetyFlags.ACC_PLUS) else None" in sd and "speed_limit.option(self.params) in (speed_limit.WARN, speed_limit.ADJUST)" in sd
+  from openpilot.cereal import log
+  assert log.OnroadEvent.EventName.speedLimitUp == 112 and log.OnroadEvent.EventName.speedLimitDown == 113
