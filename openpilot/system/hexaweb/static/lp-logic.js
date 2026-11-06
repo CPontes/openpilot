@@ -472,6 +472,15 @@
 
   // A wall clock time as the path counts it, from minute 0 of the route: the deleter may have taken the first minutes of the list
   function pathSecond(t, at) { return at - tripStart(t) + ((t.segments && t.segments[0]) || 0) * 60; }
+  // ...and back: the wall clock (seconds) of a path second, for Rever viagem's bar and list (MAP-UX-01, D6)
+  function rideClock(t, s) { return tripStart(t) + s - ((t.segments && t.segments[0]) || 0) * 60; }
+  // Rever viagem draws who drove as Início does: openpilot, openpilot with your hand or foot, you (MAP-UX-01, D6)
+  function rideWho(p) {
+    const w = p && p.who;
+    if (w === "wheel" || w === "gas" || w === "brake" || w === "pedal") return "help";
+    if (w === "op" || (!w && p && p.on)) return "op";
+    return "you";
+  }
   // The path point closest in time to s seconds from the start of the drive
   function nearestAt(points, s) {
     let best = -1, gap = Infinity;
@@ -1134,7 +1143,7 @@
   // what "Apagar dados deste celular" takes from localStorage besides the copy: data, never the language or the view
   const DATA_KEYS = ["lpTrips", "lpMissionSnap", "lpCopEvents", "lpCopAnswers", "lpCopTally", "lpNavRecent"];  // the copilot's events of the drive, and the answers
 
-  root.LPL = { approvalReport, groupPending, quietEvent, mutedKinds, EV_KINDS, eventStep, pointPassed, eventsMerge, logEvents, driveStart, reviewList, answerKeep, eventMission, copilotView, eventAge, eventStage, eventClock, EV_MISSIONS, EV_REASON, EV_LIVE_S, EV_RECENT_S, EV_KEEP, versionList, versionChips, VERSION_CHIPS, copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, rideKeys, rideKeep, rideOrder, mapCount, RIDE_KEEP, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
+  root.LPL = { approvalReport, groupPending, quietEvent, mutedKinds, EV_KINDS, eventStep, pointPassed, eventsMerge, logEvents, driveStart, reviewList, answerKeep, eventMission, copilotView, eventAge, eventStage, eventClock, EV_MISSIONS, EV_REASON, EV_LIVE_S, EV_RECENT_S, EV_KEEP, versionList, versionChips, VERSION_CHIPS, copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, rideClock, rideWho, applyTrips, applyWhole, since, keepPath, rideKeys, rideKeep, rideOrder, mapCount, RIDE_KEEP, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
                tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, appMode, shareFor, tallyAdd, canSilence, SILENCE_MIN, NAV_REMEMBER, navTargets, navChoice, navLink, navRecent, samePoint, savedPlace, navOptions, mapCard, pinSpot, centerAt, fitBand, mapCenter, mapXY, mapLatLon, distanceM, shortPlace, maneuverKind, homeFor, navDist, navView, leadView, navZoom, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

@@ -705,8 +705,9 @@
           <details class="hidden" id="tripMore"><summary class="row" style="gap:10px"><span class="grow" data-t>Mais números da viagem</span><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
             <div class="stack" style="gap:10px;padding-bottom:4px"><div class="vsavg hidden" id="tripVs"></div><div class="grid2 hidden" id="tripFigures"></div></div>
           </details>
-          <div class="row" style="justify-content:space-between;flex-wrap:wrap">
-            <a class="link" id="tripOpen" href="/viagens"><span data-t>Rever viagem</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
+          <!-- MAP-UX-01 (D6): Rever viagem is a button; the drive opens in the same language as this card -->
+          <a class="btn dark" id="tripOpen" href="/viagens"><span data-t>Rever viagem</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
+          <div class="row" style="justify-content:center;flex-wrap:wrap">
             <button class="link" id="tripHide" type="button" style="color:var(--muted)" data-t>Ocultar viagem</button>
           </div>
         </section>

@@ -376,13 +376,33 @@ def test_the_pages_finish_what_hiding_a_drive_starts():
   static = Path(__file__).parents[1] / "static"
   html, trip = (static / "index.html").read_text(), (static / "viagens.html").read_text()
   assert 'trip_hidden: "ocultou uma viagem"' in html and 'trip_shown: "mostrou uma viagem de novo"' in html
-  assert "Todas as viagens estão ocultas." in trip and "sel.options.length" in trip  # with all of them hidden it stayed on loading
+  assert "Todas as viagens estão ocultas." in trip and "if (!order.length)" in trip  # with all of them hidden it stayed on loading
   assert "Desde sempre" not in html  # the sums only reach the drives whose logs are still on the comma
 
 
 def test_a_hard_brake_shows_on_its_trip_page():
   trip = (Path(__file__).parents[1] / "static" / "viagens.html").read_text()
   assert 'const SHOWN = ["mark", "off", "hardbrake"];' in trip and 'e.kind !== "mark" && e.kind !== "off"' not in trip
+
+
+def test_mapux_rever_viagem_reads_like_the_inicio_card():
+  # owner's D6 (MAP-UX-01, 06/11): one language for a drive. Who drove in Início's three colours; the bar and the list in clock time
+  assert [run("rideWho", p) for p in ({"who": "op"}, {"who": "wheel"}, {"who": "gas"}, {"who": "brake"}, {"who": "pedal"}, {"who": "you"},
+                                      {"on": True}, {"on": False}, None)] == ["op", "help", "help", "help", "help", "you", "op", "you", "you"]
+  trip = {"mtime": 10_000, "minutes": 10, "segments": [2, 3]}  # the deleter took minutes 0 and 1: the list starts at minute 2
+  assert run("rideClock", trip, 120) == 10_000 - 600 and run("rideClock", trip, 150) == 10_000 - 600 + 30
+  assert run("rideClock", trip, run("pathSecond", trip, 9_700)) == 9_700  # pathSecond's inverse
+  page = (Path(__file__).parents[1] / "static" / "viagens.html").read_text()
+  assert "toFixed(" not in page and "<select" not in page  # numbers in the phone's language; ‹ i de N › as on Início, no list box
+  assert "LPL.listed(all)" in page  # the same drives as Início's ‹ 1 de N ›: not hidden, not idle
+  assert '<i class="sw help"></i><span data-t>com a sua ajuda</span>' in page and "LPL.rideWho(points[i])" in page
+  assert 'localStorage.getItem("lpStreets") === "1"' in page and 'localStorage.setItem("lpStreets"' in page  # Ruas: one switch for both pages
+  assert "LPL.mapFit(ll, w, h, 26)" in page and 'im.referrerPolicy = "strict-origin"' in page
+  # hiding is a change: it asks in the page first
+  assert '$("hideTrip").addEventListener("click", () => {' in page and '$("hideOk").addEventListener("click", async () => {' in page
+  assert page.index('$("hideTrip").addEventListener') < page.index('fetch("/api/trip/hide"') and "hideAsk" in page
+  html = (Path(__file__).parents[1] / "static" / "index.html").read_text()
+  assert '<a class="btn dark" id="tripOpen" href="/viagens">' in html  # Rever viagem is a button on Início's card
 
 
 def test_unpairing_leaves_no_list_of_drives_on_the_phone():

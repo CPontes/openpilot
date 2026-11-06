@@ -10,77 +10,87 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/icon-180.png">
 <link rel="icon" type="image/png" href="/favicon.png">
-<title>Viagens</title>
+<title>Rever viagem</title>
 <style>
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text);
-         font: 16px/1.45 var(--font); }
-  main { max-width: 640px; margin: 0 auto; padding: 16px 16px 48px; }
-  h1 { font-size: 32px; margin: 4px 0 2px; }
+  /* Rever viagem in Início's language (MAP-UX-01, owner's D6): the trip card, its map with Ruas, the same legend, numbers in the phone's language */
+  main { max-width: 560px; margin: 0 auto; padding: calc(12px + env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom)); }
   a { color: inherit; }
   .sub { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px 16px; margin-bottom: 12px; }
-  select { width: 100%; font: inherit; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
-           background: var(--bg); color: var(--text); }
-  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .stat b { display: block; font-family: var(--font-display); font-size: 24px; font-variant-numeric: tabular-nums; }
-  .stat span { color: var(--muted); font-size: 13px; }
-  canvas { display: block; width: 100%; height: 340px; border-radius: 10px; background: var(--bg); touch-action: none; }
-  input[type=range] { width: 100%; margin: 12px 0 4px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px; margin-bottom: 10px; }
+  .stack { display: flex; flex-direction: column; gap: 10px; }
+  .row { display: flex; align-items: center; gap: 12px; } .row > .grow { flex: 1; min-width: 0; }
+  .label { font-family: var(--font-display); font-weight: 700; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin: 0; }
+  .title { font-weight: 700; font-size: 17px; } .desc { color: var(--muted); font-size: 15px; } .small { color: var(--dim); font-size: 13px; }
+  .navbtn { flex: none; width: 48px; height: 48px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+  .navbtn:disabled { opacity: .3; }
+  .map { position: relative; height: 300px; margin: 0 -16px; overflow: hidden; background: var(--card-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); touch-action: none; }
+  .map .tiles { position: absolute; inset: 0; }
+  .map .tiles img { position: absolute; max-width: none; user-select: none; -webkit-user-drag: none; pointer-events: none;
+                    filter: invert(1) hue-rotate(180deg) brightness(.8) contrast(.9) saturate(.5); }  /* the street map, dark like the panel */
+  .map canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .map .mapchip { position: absolute; top: 8px; right: 8px; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line-2); background: rgba(11, 14, 17, .82); color: var(--muted); font-weight: 700; font-size: 14px; }
+  .map .mapchip[aria-pressed="true"] { color: var(--text); }
+  .map .attrib { position: absolute; right: 0; bottom: 0; font-size: 11px; line-height: 1; padding: 4px 6px; background: rgba(11, 14, 17, .8); color: var(--muted); text-decoration: none; border-top-left-radius: 8px; }
+  .maplegend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+  .maplegend > span { display: inline-flex; align-items: center; gap: 6px; }
+  .maplegend .sw { display: inline-block; width: 16px; height: 6px; border-radius: 3px; }
+  .sw.op { background: var(--accent); } .sw.help { background: repeating-linear-gradient(135deg, var(--accent) 0 5px, var(--you) 5px 10px); } .sw.you { background: var(--you); }
+  .maplegend .pin { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--warn); } .maplegend .pin.off { background: var(--danger); }
+  input[type=range] { width: 100%; margin: 4px 0 0; accent-color: var(--accent); }
   .where { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; color: var(--muted); }
-  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--muted); margin-top: 8px; }
-  .legend i { display: inline-block; width: 18px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
-  .legend i.ponto { width: 10px; height: 10px; border-radius: 50%; }
   .warn { color: var(--warn); font-size: 14px; }
   ul { list-style: none; padding: 0; margin: 0; }
-  li { padding: 12px 0; min-height: 44px; border-top: 1px solid var(--line); font-size: 15px; cursor: pointer; display: flex; gap: 12px; }
-  li:first-child { border-top: 0; }
-  li .time { color: var(--muted); min-width: 52px; font-variant-numeric: tabular-nums; }
-  button { font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 12px 16px; cursor: pointer;
-           background: var(--accent); color: var(--on-accent); width: 100%; margin-top: 10px; min-height: 52px; font-family: var(--font-display); font-size: 19px; }
-  .hidden { display: none; }
-  .hidebox { text-align: center; }
-  button.ghost { background: none; color: var(--warn); border: 1px solid var(--warn-line); font-family: var(--font); font-size: 17px; margin-top: 0; }
-  .hidebox .sub { margin: 8px 0 0; }
+  li { display: flex; gap: 12px; align-items: center; padding: 10px 0; min-height: 52px; border-top: 1px solid var(--line); cursor: pointer; }
+  li:first-child { border-top: 0; } li.none { cursor: default; color: var(--muted); }
+  li .ico { width: 36px; height: 36px; border-radius: 10px; background: #222B33; display: flex; align-items: center; justify-content: center; flex: none; }
+  li .t { font-weight: 600; font-size: 16px; } li .s { color: var(--muted); font-size: 14px; }
+  .btn { display: flex; align-items: center; justify-content: center; min-height: 54px; width: 100%; border: 0; border-radius: 16px; background: var(--card-2);
+         color: var(--text); border: 1px solid var(--line-2); font-size: 17px; font-weight: 600; margin: 0 0 10px; }
+  .btn.warn { background: var(--warn); color: var(--on-warn); border: 0; }
+  .link { background: none; border: 0; color: var(--accent); font-weight: 600; min-height: 44px; padding: 0 2px; }
+  .hidebox { text-align: center; } .hidebox .link { color: var(--muted); }
+  .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; } .duo .btn { margin: 0; }
 </style>
 </head>
 <body>
 <main>
-  <p class="sub" style="margin:0 0 8px"><a href="/" class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>LizPilot</a></p>
-  <h1 data-t>Viagens</h1>
+  <p class="sub" style="margin:0 0 8px"><a href="/" class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span data-t>Início</span></a></p>
   <p class="sub" id="msg" data-t>Carregando…</p>
   <div id="view" class="hidden">
-    <div class="card"><select id="trip" data-t-aria="Viagem" aria-label="Viagem"></select></div>
-    <div class="card stats">
-      <div class="stat"><b id="sKm">—</b><span data-t>km</span></div>
-      <div class="stat"><b id="sMin">—</b><span data-t>minutos</span></div>
-      <div class="stat"><b id="sOn">—</b><span data-t>openpilot dirigindo, com o carro andando</span></div>
-      <div class="stat"><b id="sDriver">—</b><span data-t>você no volante</span></div>
-      <div class="stat"><b id="sGas">—</b><span data-t>você no acelerador</span></div>
-      <div class="stat"><b id="sBrake">—</b><span data-t>você no freio</span></div>
-      <div class="stat"><b id="sOff">—</b><span data-t>desengates</span></div>
-      <div class="stat"><b id="sMarks">—</b><span data-t>marcas</span></div>
-    </div>
-    <div class="card" id="mapCard">
-      <canvas id="map" role="img" data-t-aria="Caminho da viagem" aria-label="Caminho da viagem"></canvas>
-      <input id="pos" type="range" min="0" max="0" value="0" data-t-aria="Percorrer o caminho" aria-label="Percorrer o caminho">
-      <div class="where"><span id="whereT">—</span><span id="whereV"></span></div>
-      <div class="warn hidden" id="noGps" data-t>Sem GPS nesta viagem: caminho aproximado, feito pelas rodas e pelo volante.</div>
-      <div class="legend">
-        <span><i style="background:var(--accent)"></i><b data-t style="font-weight:400">openpilot</b></span>
-        <span><i style="background:var(--off)"></i><b data-t style="font-weight:400">você</b></span>
-        <span><i style="background:var(--wheel)"></i><b data-t style="font-weight:400">volante</b></span>
-        <span><i style="background:var(--gas)"></i><b data-t style="font-weight:400">acelerador</b></span>
-        <span><i style="background:var(--danger)"></i><b data-t style="font-weight:400">freio</b></span>
-        <span><i class="ponto" style="background:var(--mark)"></i><b data-t style="font-weight:400">marca</b></span>
-        <span><i class="ponto" style="background:var(--danger)"></i><b data-t style="font-weight:400">desengate</b></span>
+    <section class="card stack" style="gap:10px">
+      <div class="row" style="gap:8px">
+        <span class="label grow" data-t>Rever viagem</span>
+        <button class="navbtn" id="older" type="button" data-t-aria="Viagem anterior" aria-label="Viagem anterior"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <span class="small num" id="tripPos" style="min-width:52px;text-align:center"></span>
+        <button class="navbtn" id="newer" type="button" data-t-aria="Viagem seguinte" aria-label="Viagem seguinte"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
       </div>
-      <button id="openReplay" data-t>Ver este momento no replay</button>
-    </div>
-    <div class="card"><ul id="events"></ul></div>
-    <div class="card hidebox" id="hideCard">
-      <button id="hideTrip" class="ghost" data-t>Ocultar esta viagem</button>
-      <p class="sub" id="hideNote" data-t>Sai das listas do celular. O log continua no comma: dá para mostrar de novo no Início.</p>
+      <div class="stack" style="gap:0"><span class="title num" id="tWhen"></span><span class="small num" id="tMeta"></span></div>
+      <div class="map" id="mapCard">
+        <div class="tiles" id="tiles"></div>
+        <canvas id="map" role="img" data-t-aria="Caminho da viagem" aria-label="Caminho da viagem"></canvas>
+        <button class="mapchip" id="streetsBtn" type="button" aria-pressed="false" data-t>Ruas</button>
+        <a class="attrib hidden" id="attrib" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a>
+      </div>
+      <div class="maplegend">
+        <span><i class="sw op"></i><span data-t>openpilot</span></span>
+        <span><i class="sw help"></i><span data-t>com a sua ajuda</span></span>
+        <span><i class="sw you"></i><span data-t>você</span></span>
+        <span><i class="pin"></i><span data-t>marca</span></span>
+        <span><i class="pin off"></i><span data-t>desengate</span></span>
+      </div>
+      <div class="small hidden" id="streetsNote"></div>
+      <input id="pos" type="range" min="0" max="0" value="0" data-t-aria="Percorrer o caminho" aria-label="Percorrer o caminho">
+      <div class="where"><span class="num" id="whereT">—</span><span id="whereV"></span></div>
+      <div class="warn hidden" id="noGps" data-t>Sem GPS nesta viagem: caminho aproximado, feito pelas rodas e pelo volante.</div>
+      <div class="desc" id="tSplit"></div>
+      <div class="small" id="tNums"></div>
+    </section>
+    <section class="card"><div class="label" style="margin:0 0 4px" data-t>Marcas e desengates</div><ul id="events"></ul></section>
+    <button class="btn" id="openReplay" type="button" data-t>Ver este momento no replay</button>
+    <div class="hidebox" id="hideCard">
+      <button class="link" id="hideTrip" type="button"></button>
+      <div class="hidden" id="hideAsk"><div class="desc" id="hideWhat"></div>
+        <div class="duo"><button class="btn warn" id="hideOk" type="button"></button><button class="btn" id="hideNo" type="button" data-t>Cancelar</button></div></div>
     </div>
   </div>
 </main>
@@ -89,9 +99,10 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const T = (x) => LP.t(x), TF = (x, v) => LP.tf(x, v);
-let token = null, keepMap = false;
-try { token = localStorage.getItem("hexaToken"); keepMap = localStorage.getItem("lpKeepMap") === "1"; } catch (e) {}
+let token = null, keepMap = false, streets = false;
+try { token = localStorage.getItem("hexaToken"); keepMap = localStorage.getItem("lpKeepMap") === "1"; streets = localStorage.getItem("lpStreets") === "1"; } catch (e) {}
 let points = [], events = [], drawn = [], loading = 0, offline = false;
+let order = [], current = null;  // the drives shown, newest first (as Início), and the one open
 const meta = {};  // route → the drive from the list, with the summary the comma already made
 const CODE_WHO = ["op", "wheel", "pedal", "you"];  // the path kept for the map (hexaweb.trip_path): who drove, as a number
 
@@ -138,14 +149,25 @@ async function get(path, ms) {
     clearTimeout(timer);
   }
 }
-function when(ms) { return new Date(ms).toLocaleString(LP.locale, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); }
-
-function fmt(s) { return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`; }
+// the phone's language, as Início writes them
+const L = () => LP.locale;
+const hhmm = (s) => new Date(s * 1000).toLocaleTimeString(L(), { hour: "2-digit", minute: "2-digit" });
+const hhmmss = (s) => new Date(s * 1000).toLocaleTimeString(L(), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const num = (v, d) => Number(v).toLocaleString(L(), { maximumFractionDigits: d });
+function when(ms) { return new Date(ms).toLocaleString(L(), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); }
+function day(s) {  // "hoje, 16:21" or "05/11, 16:21", as the trip card on Início
+  const d = new Date(s * 1000);
+  return d.toDateString() === new Date().toDateString() ? TF("hoje, {hora}", { hora: hhmm(s) }) : when(s * 1000);
+}
 function color(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
-const WHO = { op: ["--accent", "openpilot dirigindo"], you: ["--off", "você dirigindo"], wheel: ["--wheel", "você no volante"],
-              gas: ["--gas", "você no acelerador"], brake: ["--danger", "você no freio"], pedal: ["--gas", T("você nos pedais")] };  // T(): so the catalogs find it
-function who(p) { return WHO[p.who] || WHO[p.on ? "op" : "you"]; }
+const WHO = { op: "openpilot dirigindo", you: "você dirigindo", wheel: "você no volante", gas: "você no acelerador", brake: "você no freio", pedal: T("você nos pedais") };  // T(): so the catalogs find it
+function whoText(p) { return WHO[p.who] || WHO[p.on ? "op" : "you"]; }
 const SHOWN = ["mark", "off", "hardbrake"];
+const EV_ICON = {
+  mark: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>',
+  off: '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6" fill="var(--danger)"/></svg>',
+  hardbrake: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v5M12 16v.5"/></svg>',
+};
 
 async function loadTrips() {
   const r = await get("/api/trips", 8000);
@@ -160,41 +182,69 @@ async function loadTrips() {
   if (!list.length) { $("msg").textContent = T("Nenhuma viagem gravada."); return; }
   $("openReplay").classList.toggle("hidden", offline);  // the replay and hiding need the comma
   $("hideCard").classList.toggle("hidden", offline);
-  const sel = $("trip"); sel.replaceChildren();
   const wanted = new URLSearchParams(location.search).get("trip");  // opened from a trip card on the panel
-  for (const t of list) {
-    if (t.hidden && t.id !== wanted) continue;  // hidden on the phone: only when asked for by name
-    meta[t.id] = t;
-    const o = document.createElement("option"); o.value = t.id; o.dataset.hidden = t.hidden ? "1" : "";
-    o.dataset.segments = JSON.stringify(t.segments || []);  // an old copy without them still opens
-    o.textContent = `${new Date(t.mtime * 1000).toLocaleString(LP.locale, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${t.minutes} min`;
-    sel.append(o);
+  // newest first and the same drives as Início's ‹ 1 de N › (LPL.listed: not hidden, not a turn on and off in the garage);
+  // hidden or idle only when asked for by name; with only idle ones, those
+  const all = [...list].sort((a, b) => b.mtime - a.mtime), shown = LPL.listed(all).length ? LPL.listed(all) : all.filter((t) => !t.hidden);
+  order = [];
+  for (const t of all) {
+    if (!shown.includes(t) && t.id !== wanted) continue;
+    meta[t.id] = t; order.push(t.id);
   }
-  if (!sel.options.length) { $("msg").textContent = T("Todas as viagens estão ocultas. Elas aparecem no Início, em “mostrar”."); return; }
-  if (wanted && [...sel.options].some((o) => o.value === wanted)) sel.value = wanted;
+  if (!order.length) { $("msg").textContent = T("Todas as viagens estão ocultas. Elas aparecem no Início, em “mostrar”."); return; }
+  current = wanted && order.includes(wanted) ? wanted : order[0];
   $("view").classList.remove("hidden");
-  hideLabel();
-  loadTrip();
+  openTrip(current);
 }
 
-function hideLabel() {
-  const hidden = !!$("trip").selectedOptions[0].dataset.hidden;
-  $("hideTrip").textContent = T(hidden ? "Mostrar de novo nas listas" : "Ocultar esta viagem");
-  $("hideNote").textContent = T(hidden ? "Esta viagem está oculta no celular." : "Sai das listas do celular. O log continua no comma: dá para mostrar de novo no Início.");
+function openTrip(route) {
+  current = route; listed = -1; $("pos").value = 0; closeHide();
+  try { history.replaceState(null, "", "/viagens?trip=" + encodeURIComponent(route)); } catch (e) {}  // a reload opens the same drive
+  head(); hideLabel(); loadTrip();
 }
-$("hideTrip").addEventListener("click", async () => {
-  const o = $("trip").selectedOptions[0], hidden = !o.dataset.hidden;
+function head() {  // the trip card's top, as on Início: ‹ i de N ›, when, minutes, km and version
+  const t = meta[current], i = order.indexOf(current), sm = t.summary;
+  $("tripPos").textContent = TF("{i} de {n}", { i: i + 1, n: order.length });
+  $("older").disabled = i >= order.length - 1; $("newer").disabled = i <= 0;
+  $("tWhen").textContent = `${day(LPL.tripStart(t))} → ${hhmm(t.mtime)}`;
+  const m = [`${t.minutes} min`];
+  if (sm && sm.km != null) m.push(`${num(sm.km, 1)} km`);
+  if (LPL.versionOf(t)) m.push(TF("versão {v}", { v: LPL.versionOf(t) }));
+  if (t.hidden) m.push(T("oculta"));
+  $("tMeta").textContent = m.join(" · ");
+  const split = LPL.tripSplit(sm);  // who had the wheel, in one line
+  $("tSplit").textContent = split ? [...split.parts.map((x) => `${TF("{m} min", { m: x.min })} ${T(x.label)}`),
+                                      ...(split.stopMin ? [TF("{m} min parado", { m: split.stopMin })] : [])].join(" · ") : "";
+}
+$("older").addEventListener("click", () => { const i = order.indexOf(current); if (i < order.length - 1) openTrip(order[i + 1]); });
+$("newer").addEventListener("click", () => { const i = order.indexOf(current); if (i > 0) openTrip(order[i - 1]); });
+
+// Hiding is a change: it asks first, in the page (owner: "tudo que fizer tem que pedir confirmação")
+function hideLabel() {
+  const hidden = !!meta[current].hidden;
+  $("hideTrip").textContent = T(hidden ? "Mostrar de novo nas listas" : "Ocultar viagem");
+}
+function closeHide() { $("hideAsk").classList.add("hidden"); $("hideTrip").classList.remove("hidden"); }
+$("hideTrip").addEventListener("click", () => {
+  const hidden = !!meta[current].hidden;
+  $("hideWhat").textContent = T(hidden ? "Mostrar esta viagem de novo nas listas do celular?" : "Ocultar esta viagem? Sai das listas do celular. O log continua no comma: dá para mostrar de novo no Início.");
+  $("hideOk").textContent = T(hidden ? "Mostrar" : "Ocultar");
+  $("hideTrip").classList.add("hidden"); $("hideAsk").classList.remove("hidden");
+});
+$("hideNo").addEventListener("click", closeHide);
+$("hideOk").addEventListener("click", async () => {
+  const t = meta[current], hidden = !t.hidden;
   const r = await fetch("/api/trip/hide", { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
-                                            body: JSON.stringify({ route: o.value, hidden }) }).catch(() => null);
+                                            body: JSON.stringify({ route: current, hidden }) }).catch(() => null);
+  closeHide();
   if (!r || r.status !== 200) { $("msg").textContent = T("Não deu para ocultar a viagem."); return; }
   if (hidden) { location.href = "/"; return; }  // back to the list, without it
-  o.dataset.hidden = ""; hideLabel();
+  t.hidden = false; hideLabel(); head();
 });
 
 async function loadTrip() {
   const load = ++loading;
-  const sel = $("trip"), route = sel.value;
-  const segments = JSON.parse(sel.selectedOptions[0].dataset.segments);
+  const route = current, segments = meta[route].segments || [];  // an old copy without them still opens
   points = []; events = []; render();
   let sum = { km: 0, s: 0, moving_s: 0, on_s: 0, driver: 0, gas: 0, brake: 0, off: 0, marks: 0 };
   // At once: the numbers and the path the comma kept when the drive ended. The minutes, read one by one, replace them at the end.
@@ -225,6 +275,7 @@ async function loadTrip() {
     if (!preview) { points = got; events = evs; summary(sum); render(); }  // nothing kept yet: draw as it reads
   }
   if (got.length > 1) { points = got; events = evs; listed = -1; summary(sum); render(); }
+  if (!got.length && !preview) { listed = -1; summary(sum); render(); }
   $("msg").textContent = T("Arraste a barra para percorrer o caminho.");
   keep(route, sum, evs, got);
 }
@@ -261,37 +312,31 @@ async function openKept(route, load) {
                             { hora: when(ride.at) });
 }
 
-function summary(s) {
-  $("sKm").textContent = s.km.toFixed(1);
-  $("sMin").textContent = Math.round(s.s / 60);
-  $("sOn").textContent = s.moving_s ? Math.round(100 * s.on_s / s.moving_s) + "%" : "—";
-  $("sDriver").textContent = s.driver;
-  $("sGas").textContent = s.gas;
-  $("sBrake").textContent = s.brake;
-  $("sOff").textContent = s.off;
-  $("sMarks").textContent = s.marks;
+function summary(s) {  // the counts of the minutes read, in one line under who drove
+  const plural = (n, one, many) => `${n} ${T(n === 1 ? one : many)}`;
+  $("tNums").textContent = [plural(s.marks, "marca", "marcas"), plural(s.off, "desengate", "desengates"),
+                            TF("você no volante {v}×, no acelerador {a}×, no freio {f}×", { v: s.driver, a: s.gas, f: s.brake })].join(" · ");
 }
 
-function layout() {
-  // GPS when most of the trip has it; otherwise the path from the wheels and the steering
-  const fixes = points.filter(p => p.lat !== null);
+// GPS when most of the trip has it: the map's projection, with the streets behind if turned on (the same as Início, lpStreets).
+// Otherwise the path from the wheels and the steering, with no streets.
+function layout(w, h) {
+  const fixes = points.filter((p) => p.lat !== null && p.lat !== undefined);
   const useGps = fixes.length > 0.6 * points.length;
   $("noGps").classList.toggle("hidden", useGps || !points.length);
-  let xy;
   if (useGps) {
-    const k = Math.cos(fixes[0].lat * Math.PI / 180);
     let last = fixes[0];
-    xy = points.map(p => { if (p.lat !== null) last = p; return [last.lon * k * 111320, last.lat * 111320]; });
-  } else {
-    let x = 0, y = 0, psi = Math.PI / 2;
-    xy = points.map(p => { psi += p.dpsi; x += p.step * Math.cos(psi); y += p.step * Math.sin(psi); return [x, y]; });
+    const ll = points.map((p) => { if (p.lat !== null && p.lat !== undefined) last = p; return [last.lat, last.lon]; });
+    const fit = LPL.mapFit(ll, w, h, 26);
+    if (fit) return { xy: fit.xy, fit };
   }
-  const c = $("map"), w = c.clientWidth, h = c.clientHeight, pad = 18;
-  const xs = xy.map(p => p[0]), ys = xy.map(p => p[1]);
+  let x = 0, y = 0, psi = Math.PI / 2;
+  const xy = points.map((p) => { psi += p.dpsi || 0; x += (p.step || 0) * Math.cos(psi); y += (p.step || 0) * Math.sin(psi); return [x, y]; });
+  const pad = 26, xs = xy.map((p) => p[0]), ys = xy.map((p) => p[1]);
   const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
   const scale = Math.min((w - 2 * pad) / Math.max(x1 - x0, 1), (h - 2 * pad) / Math.max(y1 - y0, 1));
   const ox = (w - (x1 - x0) * scale) / 2, oy = (h - (y1 - y0) * scale) / 2;
-  return xy.map(([x, y]) => [ox + (x - x0) * scale, h - oy - (y - y0) * scale]);
+  return { xy: xy.map(([a, b]) => [ox + (a - x0) * scale, h - oy - (b - y0) * scale]), fit: null };
 }
 
 function nearest(t) {
@@ -300,49 +345,79 @@ function nearest(t) {
   return best;
 }
 
+let tileSig = "";
+function tiles(fit, w, h) {  // the street map behind the path: only with "Ruas" on, as on Início
+  const on = streets && fit, sig = on ? [fit.z, Math.round(fit.ox), Math.round(fit.oy), w, h].join() : "";
+  $("attrib").classList.toggle("hidden", !on);
+  $("streetsBtn").classList.toggle("hidden", !fit);
+  $("streetsBtn").setAttribute("aria-pressed", streets ? "true" : "false");
+  $("streetsNote").classList.toggle("hidden", !fit);
+  $("streetsNote").textContent = streets  // what the tiles tell OpenStreetMap, in both states (the same words as Início)
+    ? T("Ruas ligadas: o OpenStreetMap recebe o IP deste celular, o nome do painel e a área de cada viagem aberta. O caminho em si fica no comma.")
+    : T("Ruas desligadas. Ligadas, vêm do OpenStreetMap pela internet, que recebe o IP deste celular, o nome do painel e a área de cada viagem aberta.");
+  if (sig === tileSig) return;
+  tileSig = sig;
+  $("tiles").replaceChildren(...(on ? LPL.mapTiles(fit, w, h) : []).map((tl) => {
+    const im = new Image(); im.alt = ""; im.decoding = "async"; im.draggable = false;
+    im.referrerPolicy = "strict-origin";  // the page sends no Referer; the tile servers ask for one: only the panel's name, never a path
+    im.style.cssText = `left:${tl.left}px;top:${tl.top}px;width:${tl.size + .5}px;height:${tl.size + .5}px`;
+    im.onerror = () => im.remove();
+    im.src = `https://tile.openstreetmap.org/${tl.z}/${tl.x}/${tl.y}.png`;
+    return im;
+  }));
+}
+
 function render() {
-  const c = $("map"), ratio = window.devicePixelRatio || 1;
-  c.width = c.clientWidth * ratio; c.height = c.clientHeight * ratio;
+  const c = $("map"), ratio = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+  c.width = Math.round(w * ratio); c.height = Math.round(h * ratio);
   const g = c.getContext("2d");
-  g.scale(ratio, ratio);
-  g.clearRect(0, 0, c.clientWidth, c.clientHeight);
+  g.setTransform(ratio, 0, 0, ratio, 0, 0);
+  g.clearRect(0, 0, w, h);
   $("pos").max = Math.max(points.length - 1, 0);
-  if (points.length < 2) return;
-  drawn = layout();
-  g.lineWidth = 4; g.lineCap = "round";
-  for (let i = 1; i < drawn.length; i++) {
-    g.strokeStyle = color(who(points[i])[0]);
-    g.beginPath(); g.moveTo(...drawn[i - 1]); g.lineTo(...drawn[i]); g.stroke();
+  if (points.length < 2 || !w) { tiles(null, w, h); $("whereT").textContent = "—"; $("whereV").textContent = ""; list(); return; }
+  const lay = layout(w, h);
+  drawn = lay.xy; tiles(lay.fit, w, h);
+  const op = color("--accent"), you = color("--you");
+  g.lineCap = "round"; g.lineJoin = "round";
+  g.strokeStyle = "rgba(5, 7, 9, .8)"; g.lineWidth = 9;  // a dark edge, so the path reads over the streets
+  g.beginPath(); drawn.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
+  for (let i = 1; i < drawn.length; i++) {  // green openpilot, striped with your hand or foot, blue you: Início's legend
+    const k = LPL.rideWho(points[i]);
+    const seg = (col, dash) => { g.setLineDash(dash); g.strokeStyle = col; g.lineWidth = 5; g.beginPath(); g.moveTo(...drawn[i - 1]); g.lineTo(...drawn[i]); g.stroke(); };
+    seg(k === "you" ? you : op, []);
+    if (k === "help") seg(you, [6, 6]);
   }
+  g.setLineDash([]);
+  const dot = ([x, y], r, fill, ring) => { g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = fill; g.fill(); if (ring) { g.lineWidth = 3; g.strokeStyle = ring; g.stroke(); } };
+  dot(drawn[0], 7, color("--bg"), color("--text"));  // start: a ring
+  dot(drawn[drawn.length - 1], 7, color("--text"), color("--bg"));  // end: filled
   for (const e of events) {
     if (!SHOWN.includes(e.kind)) continue;
-    const [x, y] = drawn[nearest(e.t)];
-    g.fillStyle = e.kind === "mark" ? color("--mark") : color("--danger");
-    g.beginPath(); g.arc(x, y, 5, 0, 7); g.fill();
+    dot(drawn[nearest(e.t)], 7, e.kind === "mark" ? color("--warn") : color("--danger"), color("--bg"));
   }
   const i = Math.min($("pos").value * 1, points.length - 1), p = points[i];
-  g.fillStyle = color("--text");
-  g.beginPath(); g.arc(...drawn[i], 7, 0, 7); g.fill();
-  $("whereT").textContent = fmt(p.t);
-  $("whereV").textContent = `${p.v == null ? "—" : Math.round(p.v)} km/h · ${T(who(p)[1])}`;
+  dot(drawn[i], 9, color("--text"), color("--bg"));
+  $("whereT").textContent = hhmmss(LPL.rideClock(meta[current], p.t));
+  $("whereV").textContent = `${p.v == null ? "—" : Math.round(p.v)} km/h · ${T(whoText(p))}`;
   list();
 }
 
 let listed = -1;
-function list() {
+function list() {  // the marks and disengagements, at the hour they happened; a tap goes there on the map
   if (listed === events.length) return;
   listed = events.length;
   const ul = $("events"); ul.replaceChildren();
   for (const e of [...events].sort((a, b) => a.t - b.t)) {
     if (!SHOWN.includes(e.kind)) continue;
-    const li = document.createElement("li");
-    const tm = document.createElement("span"); tm.className = "time"; tm.textContent = fmt(e.t);
-    const tx = document.createElement("span"); tx.textContent = T(e.text);
-    li.append(tm, tx);
-    li.addEventListener("click", () => { $("pos").value = nearest(e.t); render(); window.scrollTo({ top: 0, behavior: "smooth" }); });
+    const li = document.createElement("li"), ic = document.createElement("span"), tx = document.createElement("span"), tt = document.createElement("span");
+    ic.className = "ico"; ic.innerHTML = EV_ICON[e.kind];
+    tt.className = "t"; tt.textContent = `${hhmm(LPL.rideClock(meta[current], e.t))} · ${T(e.text)}`;
+    tx.style.minWidth = "0"; tx.append(tt);
+    li.append(ic, tx);
+    li.addEventListener("click", () => { $("pos").value = nearest(e.t); render(); $("mapCard").scrollIntoView({ behavior: "smooth", block: "center" }); });
     ul.append(li);
   }
-  if (!ul.children.length) { const li = document.createElement("li"); li.textContent = T("Sem marcas nem desengates."); ul.append(li); }
+  if (!ul.children.length) { const li = document.createElement("li"); li.className = "none"; li.textContent = T("Sem marcas nem desengates."); ul.append(li); }
 }
 
 $("pos").addEventListener("input", render);
@@ -353,10 +428,14 @@ $("map").addEventListener("pointerdown", (ev) => {
   drawn.forEach(([a, b], i) => { const d = (a - x) ** 2 + (b - y) ** 2; if (d < dist) { dist = d; best = i; } });
   $("pos").value = best; render();
 });
-$("trip").addEventListener("change", () => { listed = -1; $("pos").value = 0; hideLabel(); loadTrip(); });
+$("streetsBtn").addEventListener("click", () => {  // the same switch as Início's Ruas: one choice for both
+  streets = !streets;
+  try { localStorage.setItem("lpStreets", streets ? "1" : "0"); } catch (e) {}
+  render();
+});
 $("openReplay").addEventListener("click", () => {
   const p = points[$("pos").value * 1];
-  if (p) location.href = `/replay?id=${encodeURIComponent($("trip").value + "--" + p.n)}&t=${Math.max(0, p.t - p.n * 60 - 2)}`;
+  if (p) location.href = `/replay?id=${encodeURIComponent(current + "--" + p.n)}&t=${Math.max(0, p.t - p.n * 60 - 2)}`;
 });
 window.addEventListener("resize", render);
 LP.ready.then(() => { LP.apply(); loadTrips(); });
