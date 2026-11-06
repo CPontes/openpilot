@@ -61,7 +61,7 @@
       <div class="stat"><b id="sOff">—</b><span data-t>desengates</span></div>
       <div class="stat"><b id="sMarks">—</b><span data-t>marcas</span></div>
     </div>
-    <div class="card">
+    <div class="card" id="mapCard">
       <canvas id="map" role="img" data-t-aria="Caminho da viagem" aria-label="Caminho da viagem"></canvas>
       <input id="pos" type="range" min="0" max="0" value="0" data-t-aria="Percorrer o caminho" aria-label="Percorrer o caminho">
       <div class="where"><span id="whereT">—</span><span id="whereV"></span></div>
@@ -78,28 +78,67 @@
       <button id="openReplay" data-t>Ver este momento no replay</button>
     </div>
     <div class="card"><ul id="events"></ul></div>
-    <div class="card hidebox">
+    <div class="card hidebox" id="hideCard">
       <button id="hideTrip" class="ghost" data-t>Ocultar esta viagem</button>
       <p class="sub" id="hideNote" data-t>Sai das listas do celular. O log continua no comma: dá para mostrar de novo no Início.</p>
     </div>
   </div>
 </main>
 <script src="/i18n.js"></script>
+<script src="/lp-logic.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const T = (x) => LP.t(x), TF = (x, v) => LP.tf(x, v);
-let token = null;
-try { token = localStorage.getItem("hexaToken"); } catch (e) {}
-let points = [], events = [], drawn = [], loading = 0;
+let token = null, keepMap = false;
+try { token = localStorage.getItem("hexaToken"); keepMap = localStorage.getItem("lpKeepMap") === "1"; } catch (e) {}
+let points = [], events = [], drawn = [], loading = 0, offline = false;
 const meta = {};  // route → the drive from the list, with the summary the comma already made
 const CODE_WHO = ["op", "wheel", "pedal", "you"];  // the path kept for the map (hexaweb.trip_path): who drove, as a number
 
-async function get(path) {
-  const r = await fetch(path, { headers: token ? { Authorization: "Bearer " + token } : {} });
-  let body = {};
-  try { body = await r.json(); } catch (e) {}
-  return { status: r.status, body };
+// The phone's copy: the IndexedDB "lizpilot" of index.html (APP-01), on this address only. A drive read to the end with the
+// comma near stays here (APP-02, LPL.rideKeep), so it opens again without the comma. Unpaired, nothing is written; any error:
+// nothing kept, as before.
+const DB = (() => {
+  const ready = new Promise((ok) => {
+    try {
+      const r = indexedDB.open("lizpilot", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("kv");
+      r.onsuccess = () => ok(r.result);
+      r.onerror = r.onblocked = () => ok(null);
+    } catch (e) { ok(null); }
+  });
+  function run(mode, fn) {
+    return ready.then((db) => new Promise((ok) => {
+      if (!db) { ok(undefined); return; }
+      try {
+        const tx = db.transaction("kv", mode), req = fn(tx.objectStore("kv"));
+        tx.oncomplete = () => ok(mode === "readwrite" ? true : req.result);
+        tx.onerror = tx.onabort = () => ok(undefined);
+      } catch (e) { ok(undefined); }
+    }));
+  }
+  return {
+    get: (k) => run("readonly", (st) => st.get(k)),
+    put: (k, v) => token ? run("readwrite", (st) => st.put(v, k)).then((x) => x === true) : Promise.resolve(false),
+    del: (k) => run("readwrite", (st) => st.delete(k)),
+  };
+})();
+
+// status 0: no answer, so no comma near (the LizPilot app closes the connection; a browser gives up after ms)
+async function get(path, ms) {
+  const ctl = ms ? new AbortController() : null, timer = ctl && setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(path, { headers: token ? { Authorization: "Bearer " + token } : {}, signal: ctl ? ctl.signal : undefined });
+    let body = {};
+    try { body = await r.json(); } catch (e) {}
+    return { status: r.status, body };
+  } catch (e) {
+    return { status: 0, body: {} };
+  } finally {
+    clearTimeout(timer);
+  }
 }
+function when(ms) { return new Date(ms).toLocaleString(LP.locale, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); }
 
 function fmt(s) { return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`; }
 function color(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
@@ -109,17 +148,25 @@ function who(p) { return WHO[p.who] || WHO[p.on ? "op" : "you"]; }
 const SHOWN = ["mark", "off", "hardbrake"];
 
 async function loadTrips() {
-  const r = await get("/api/trips");
-  if (r.status === 401) { $("msg").textContent = T("Pareie este celular no painel primeiro."); return; }
-  if (r.status !== 200) { $("msg").textContent = T(r.body.error || "Não foi possível listar as viagens."); return; }
-  if (!r.body.trips.length) { $("msg").textContent = T("Nenhuma viagem gravada."); return; }
+  const r = await get("/api/trips", 8000);
+  if (r.status === 401 || (r.status === 0 && !token)) { $("msg").textContent = T("Pareie este celular no painel primeiro."); return; }
+  let list = r.body.trips;
+  if (r.status === 0) {  // no comma near: the list Início keeps on the phone (APP-01), read only
+    const base = await DB.get("trips");
+    list = base && Array.isArray(base.trips) ? base.trips : [];
+    if (!list.length) { $("msg").textContent = T("Sem o comma, e nada guardado neste celular ainda."); return; }
+    offline = true;
+  } else if (r.status !== 200) { $("msg").textContent = T(r.body.error || "Não foi possível listar as viagens."); return; }
+  if (!list.length) { $("msg").textContent = T("Nenhuma viagem gravada."); return; }
+  $("openReplay").classList.toggle("hidden", offline);  // the replay and hiding need the comma
+  $("hideCard").classList.toggle("hidden", offline);
   const sel = $("trip"); sel.replaceChildren();
   const wanted = new URLSearchParams(location.search).get("trip");  // opened from a trip card on the panel
-  for (const t of r.body.trips) {
+  for (const t of list) {
     if (t.hidden && t.id !== wanted) continue;  // hidden on the phone: only when asked for by name
     meta[t.id] = t;
     const o = document.createElement("option"); o.value = t.id; o.dataset.hidden = t.hidden ? "1" : "";
-    o.dataset.segments = JSON.stringify(t.segments);
+    o.dataset.segments = JSON.stringify(t.segments || []);  // an old copy without them still opens
     o.textContent = `${new Date(t.mtime * 1000).toLocaleString(LP.locale, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${t.minutes} min`;
     sel.append(o);
   }
@@ -153,9 +200,12 @@ async function loadTrip() {
   // At once: the numbers and the path the comma kept when the drive ended. The minutes, read one by one, replace them at the end.
   const known = meta[route] && meta[route].summary;
   if (known) summary(Object.fromEntries(Object.keys(sum).map((k) => [k, known[k] || 0])));
+  $("mapCard").classList.remove("hidden");
+  if (offline) return openKept(route, load);
   let preview = false;
   const pr = await get(`/api/trip/path?route=${encodeURIComponent(route)}`);
   if (load !== loading) return;
+  if (pr.status === 0) return openKept(route, load);  // the comma went away after the list
   if (pr.status === 200 && pr.body.points.length > 1) {
     points = pr.body.points.map(([lat, lon, w, s]) => ({ lat, lon, who: CODE_WHO[w], on: w < 3, v: null, t: s,  // s from minute 0
                                                          n: Math.floor(s / 60), step: 0, dpsi: 0 }));
@@ -166,6 +216,7 @@ async function loadTrip() {
     $("msg").textContent = TF("Lendo minuto {i} de {n}…", { i: i + 1, n: segments.length });
     const r = await get(`/api/trip/segment?route=${encodeURIComponent(route)}&n=${n}`);
     if (load !== loading) return;  // another trip was picked
+    if (r.status === 0) return openKept(route, load);  // the comma went away midway: what the phone kept, if anything
     if (r.status !== 200) { $("msg").textContent = T(r.body.error || "Não foi possível ler a viagem."); return; }
     const d = r.body, offset = n * 60;
     for (const p of d.points) got.push({ ...p, t: p.t + offset, n });
@@ -175,6 +226,39 @@ async function loadTrip() {
   }
   if (got.length > 1) { points = got; events = evs; listed = -1; summary(sum); render(); }
   $("msg").textContent = T("Arraste a barra para percorrer o caminho.");
+  keep(route, sum, evs, got);
+}
+
+// Read to the end with the comma near: the phone keeps it for "Rever viagem" without the comma (LPL.rideKeep: the map only
+// with "Guardar os mapas neste celular" on). Past LPL.RIDE_KEEP drives, the one opened longest ago leaves.
+async function keep(route, sum, evs, got) {
+  const k = LPL.rideKeys(route), kept = LPL.rideKeep(meta[route], sum, evs, got, keepMap, Date.now());
+  if (!await DB.put(k.ride, kept.ride)) return;  // unpaired, or the phone didn't let it: nothing kept
+  if (kept.map) await DB.put(k.map, kept.map); else await DB.del(k.map);
+  const o = LPL.rideOrder(await DB.get("rides"), route);
+  await DB.put("rides", o.order);
+  for (const id of o.drop) { const d = LPL.rideKeys(id); await DB.del(d.ride); await DB.del(d.map); }
+}
+
+// Without the comma: the drive as the phone kept it, read only. No map unless it was kept with the option on.
+async function openKept(route, load) {
+  offline = true;
+  $("openReplay").classList.add("hidden"); $("hideCard").classList.add("hidden");
+  const k = LPL.rideKeys(route), [ride, map] = await Promise.all([DB.get(k.ride), keepMap ? DB.get(k.map) : null]);
+  if (load !== loading) return;
+  points = map && Array.isArray(map.points) ? map.points : []; events = []; listed = -1;
+  if (!ride) {
+    $("mapCard").classList.add("hidden"); list();
+    $("msg").textContent = T("Sem o comma, esta viagem não está no celular. Ela fica guardada quando você a abre com o comma por perto.");
+    return;
+  }
+  events = Array.isArray(ride.events) ? ride.events : [];
+  if (ride.summary) summary(Object.assign({ km: 0, s: 0, moving_s: 0, on_s: 0, driver: 0, gas: 0, brake: 0, off: 0, marks: 0 }, ride.summary));
+  $("mapCard").classList.toggle("hidden", points.length < 2);
+  render(); list();
+  $("msg").textContent = TF(points.length > 1 ? "Sem o comma: guardada em {hora}. Arraste a barra para percorrer o caminho."
+                                              : "Sem o comma: guardada em {hora}. O mapa só fica no celular com “Guardar os mapas neste celular” ligado.",
+                            { hora: when(ride.at) });
 }
 
 function summary(s) {

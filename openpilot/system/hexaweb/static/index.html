@@ -1198,7 +1198,7 @@ async function wipeBase() {  // the epoch moves first: an answer still on its wa
 }
 async function renderBase() {
   const keys = await DB.keys() || [];
-  const n = (trips || []).length, p = keys.filter((k) => String(k).startsWith("path:")).length;
+  const n = (trips || []).length, p = LPL.mapCount(keys);  // Início and Rever viagem may keep a map of the same drive: counted once
   $("baseWhat").textContent = n ? tf("{n} viagens e {p} mapas guardados · dados de {hora}", { n, p, hora: baseWhen(TRIPS) }) : t("Nada guardado ainda.");
   $("baseAddr").classList.toggle("hidden", location.hostname.toLowerCase() === LPL.FIXED_HOST);
   $("baseMem").classList.toggle("hidden", !await DB.memOnly());

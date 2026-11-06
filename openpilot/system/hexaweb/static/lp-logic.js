@@ -971,12 +971,32 @@
   function since(v) { return v ? "since=" + encodeURIComponent(v) : ""; }
   // what the copy keeps of a drive's path: nothing unless "Guardar os mapas neste celular" is on (off by default, owner 03/11: D2)
   function keepPath(got, keepMap) { return keepMap && got && Array.isArray(got.points) && got.points.length ? { points: got.points, v: got.v || "" } : null; }
+  // "Rever viagem" without the comma (APP-02): viagens.html keeps the drive it read to the end with the comma near.
+  //   ride:<id>      the numbers, the marks and the disengagements: never a position
+  //   path:<id>#min  the minutes for the map, only with "Guardar os mapas neste celular" on (D2). The "path:" prefix makes
+  //                  index.html drop them with the other maps when the option goes off; "Apagar dados" and unpairing clear all.
+  const RIDE_KEEP = 30;  // drives kept for "Rever viagem": the one opened longest ago leaves first
+  const RIDE_SHOWN = ["mark", "off", "hardbrake"];  // what viagens.html lists and draws (SHOWN there)
+  function rideKeys(id) { return { ride: "ride:" + id, map: "path:" + id + "#min" }; }
+  function rideKeep(trip, sum, events, points, keepMap, now) {
+    const v = trip && Array.isArray(trip.segments) ? trip.segments.join(",") : "";
+    const ride = { v, at: now, summary: Object.assign({}, sum),
+                   events: (events || []).filter((e) => e && RIDE_SHOWN.includes(e.kind)).map((e) => ({ t: e.t, kind: e.kind, text: e.text })) };
+    return { ride, map: keepMap && Array.isArray(points) && points.length > 1 ? { v, points } : null };
+  }
+  // the drives kept, the newest opened first; past max, the oldest leave (drop: their ride and map are erased)
+  function rideOrder(order, id, max) {
+    const all = [id].concat((Array.isArray(order) ? order : []).filter((x) => x !== id)), n = max || RIDE_KEEP;
+    return { order: all.slice(0, n), drop: all.slice(n) };
+  }
+  // the maps on the phone, one per drive, whichever page kept it ("path:<id>" from Início, "path:<id>#min" from Rever viagem)
+  function mapCount(keys) { return new Set((keys || []).map(String).filter((k) => k.startsWith("path:")).map((k) => k.slice(5).split("#")[0])).size; }
   // Read only: without the comma, or before the first answer of a page opened from the copy. Commands wait for the comma.
   function readOnly(online, fromCopy) { return !online || !!fromCopy; }
   // what "Apagar dados deste celular" takes from localStorage besides the copy: data, never the language or the view
   const DATA_KEYS = ["lpTrips", "lpMissionSnap", "lpCopEvents", "lpCopAnswers", "lpCopTally", "lpNavRecent"];  // the copilot's events of the drive, and the answers
 
-  root.LPL = { groupPending, quietEvent, mutedKinds, EV_KINDS, eventStep, pointPassed, eventsMerge, logEvents, driveStart, reviewList, answerKeep, eventMission, copilotView, eventAge, eventStage, eventClock, EV_MISSIONS, EV_REASON, EV_LIVE_S, EV_RECENT_S, EV_KEEP, versionList, versionChips, VERSION_CHIPS, copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
+  root.LPL = { groupPending, quietEvent, mutedKinds, EV_KINDS, eventStep, pointPassed, eventsMerge, logEvents, driveStart, reviewList, answerKeep, eventMission, copilotView, eventAge, eventStage, eventClock, EV_MISSIONS, EV_REASON, EV_LIVE_S, EV_RECENT_S, EV_KEEP, versionList, versionChips, VERSION_CHIPS, copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, rideKeys, rideKeep, rideOrder, mapCount, RIDE_KEEP, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
                tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, appMode, shareFor, tallyAdd, canSilence, SILENCE_MIN, NAV_REMEMBER, navTargets, navChoice, navLink, navRecent, mapCenter, mapXY, mapLatLon, distanceM, shortPlace, maneuverKind, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

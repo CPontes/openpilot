@@ -1783,5 +1783,9 @@
  "O carro não solta parado na subida": "The car doesn't let go when stopped on a climb",
  "Parado atrás de um carro que anda devagar, o comma às vezes hesita entre sair e parar; agora ele volta a segurar com a mesma força": "Stopped behind a car creeping on, the comma sometimes hesitates between going and stopping; now it holds again just as firmly",
  "Antes, nesse vaivém, o freio caía quase a zero e o carro podia voltar um pouco numa subida (viagem de 06/11)": "Before, in that back and forth, the brake fell almost to zero and the car could roll back a little on a climb (drive of 06/11)",
- "A saída normal não muda: quando o comma decide sair, vai direto ao acelerador": "A normal start doesn't change: when the comma decides to go, it goes straight to the gas"
+ "A saída normal não muda: quando o comma decide sair, vai direto ao acelerador": "A normal start doesn't change: when the comma decides to go, it goes straight to the gas",
+ "Sem o comma, e nada guardado neste celular ainda.": "Without the comma, and nothing kept on this phone yet.",
+ "Sem o comma, esta viagem não está no celular. Ela fica guardada quando você a abre com o comma por perto.": "Without the comma, this trip isn't on the phone. It is kept when you open it with the comma nearby.",
+ "Sem o comma: guardada em {hora}. Arraste a barra para percorrer o caminho.": "Without the comma: kept on {hora}. Drag the bar to follow the route.",
+ "Sem o comma: guardada em {hora}. O mapa só fica no celular com “Guardar os mapas neste celular” ligado.": "Without the comma: kept on {hora}. The map stays on the phone only with “Keep the maps on this phone” on."
 }
