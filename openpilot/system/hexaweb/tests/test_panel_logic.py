@@ -1242,3 +1242,13 @@ def test_the_copilot_is_a_panel_and_the_avisos_count_the_answers():
   keys = json.loads(subprocess.run([NODE, "-e", f"process.stdout.write(JSON.stringify(require({json.dumps(str(LOGIC))}).DATA_KEYS))"],
                                    capture_output=True, text=True, timeout=30, check=True).stdout)
   assert "lpCopTally" in keys  # "Apagar dados deste celular" takes the counts too
+
+
+def test_pular_is_in_the_card_and_the_list_is_one_line_while_driving():
+  # owner, 05/11: "tem que ter um pular" in the card; "a lista embaixo de eventos antigos [...] está muito grande"
+  html = (LOGIC.parent / "index.html").read_text()
+  card = html[html.index("function evCard("):html.index("function waitCard(")]
+  assert 'skip = el("button", "evthird", t("Pular"))' in card and "evSkip(ev)" in card and "EV_TAP_GUARD_MS" in card
+  assert 'id="copSkip"' not in html  # one Pular, in the card, next to the third answer
+  cop = html[html.index("function renderCop()"):]
+  assert "if (v.pending.length && !copReview && !evListOpen)" in cop and "evListOpen, L()]" in cop

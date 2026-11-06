@@ -1743,5 +1743,7 @@
  "sem resposta ainda": "no answer yet",
  "sua mão no volante": "your hand on the wheel",
  "sua mão: nenhuma": "your hand: none",
- "{n} respostas · {ok} deu certo": "{n} answers · {ok} worked"
+ "{n} respostas · {ok} deu certo": "{n} answers · {ok} worked",
+ "fechar a lista": "close the list",
+ "último {hora} · ver": "last {hora} · see"
 }

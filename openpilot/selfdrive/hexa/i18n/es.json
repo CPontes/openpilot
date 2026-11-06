@@ -1743,5 +1743,7 @@
  "sem resposta ainda": "sin respuesta aún",
  "sua mão no volante": "tu mano en el volante",
  "sua mão: nenhuma": "tu mano: ninguna",
- "{n} respostas · {ok} deu certo": "{n} respuestas · {ok} salió bien"
+ "{n} respostas · {ok} deu certo": "{n} respuestas · {ok} salió bien",
+ "fechar a lista": "cerrar la lista",
+ "último {hora} · ver": "último {hora} · ver"
 }

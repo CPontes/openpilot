@@ -377,6 +377,7 @@
   .evcard.recent .evbar i { background: var(--warn); } .evcard.past .evbar i { width: 0 !important; }
   .evcard .evbtns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .evcard .evbtns .btn, .evcard .evthird { min-height: 0; height: 100%; margin: 0; font-size: 17px; }
+  .evcard .ev3 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .evcard .evthird { width: 100%; border-radius: 14px; background: none; border: 1px solid var(--line-2); color: var(--muted); font-weight: 600; }
   .evcard .evwait { color: var(--muted); font-size: 15px; line-height: 1.5; overflow: hidden; }
   /* A point of the list (owner, 05/11: "Passou por um ponto da lista" didn't say it was a camera): what it is, drawn and
@@ -829,7 +830,7 @@
   <div class="small" id="copNow" style="min-height:2.9em"></div>
   <section class="coplive hidden" id="copLive" aria-live="off"></section>
   <div id="copMain"></div>
-  <div class="evacts" id="copActs"><button class="link" id="copSkip" type="button" data-t>Pular</button><button class="link" id="copMute" type="button" data-t>Não mostrar mais este tipo</button></div>
+  <div class="evacts" id="copActs"><span></span><button class="link" id="copMute" type="button" data-t>Não mostrar mais este tipo</button></div>
   <div class="evundo hidden" id="copUndo"><span id="copUndoText"></span><button class="link" id="copUndoBtn" type="button" data-t>Desfazer</button></div>
   <div id="copRadar"></div>
   <div id="copBody" class="stack" style="gap:12px"></div>
@@ -2638,7 +2639,7 @@ let copReview = false, evShowAll = false;  // the review, parked or with the car
 // kinds the owner turned off (owner, 04/11): still detected and kept, never in the big card; a preference, not data (not wiped)
 const EV_MUTED_STORE = "lpCopMuted";
 let evMuted = [], evShowQuiet = false, undoTimer = null, muteAsk = null;
-let evShowRest = false;  // "A conferir": the older ones opened by a tap on "···"
+let evShowRest = false, evListOpen = false;  // in the copilot, "A conferir" is one line until tapped (owner, 05/11: "está muito grande")  // "A conferir": the older ones opened by a tap on "···"
 function mutedLoad() { try { evMuted = LPL.mutedKinds(JSON.parse(load(EV_MUTED_STORE) || "[]")); } catch (e) { evMuted = []; } }
 function mutedSave() { store(EV_MUTED_STORE, evMuted.length ? JSON.stringify(evMuted) : null); }
 function kindTitle(kind) { return t((EVENT_UI[kind] || {}).title || kind); }  // a kind (evTitle is an event)
@@ -2865,7 +2866,7 @@ async function saveRc() {
 
 function openCop() {
   if (!carOn) return;
-  copReview = false; $("copTitle").textContent = t("Copiloto");
+  copReview = false; evListOpen = false; $("copTitle").textContent = t("Copiloto");
   copOpen = true; evShown = null; $("copBody").dataset.sig = ""; $("copMain").dataset.sig = ""; $("copSheet").classList.remove("hidden");
   clearInterval(evTick); evTick = setInterval(renderCop, 1000);  // the clocks run: the page only, nothing more for the comma
   renderCop();
@@ -2884,7 +2885,11 @@ function evCard(ev, stage, now) {
   const bar = el("div", "evbar"); bar.append(el("i"));
   const [okL, badL, thirdL] = evButtons(ev, stage), btns = el("div", "evbtns");
   [[okL, "btn", 0], [badL, "btn warn", 1]].forEach(([label, cls, i]) => { const b = el("button", cls, t(label)); b.type = "button"; b.addEventListener("click", () => evTap(ev, i, b)); btns.append(b); });
-  const third = el("button", "evthird", t(thirdL)); third.type = "button"; third.addEventListener("click", () => evTap(ev, 2, third));
+  // the third answer and Pular side by side, inside the card (owner, 05/11: "tem que ter um pular [...] tirar da tela")
+  const third = el("div", "ev3"), b3 = el("button", "evthird", t(thirdL)), skip = el("button", "evthird", t("Pular"));
+  b3.type = skip.type = "button"; b3.addEventListener("click", () => evTap(ev, 2, b3));
+  skip.addEventListener("click", () => { if (Date.now() - evCardAt >= EV_TAP_GUARD_MS) evSkip(ev); });
+  third.append(b3, skip);
   let title = el("div", "evtitle", evTitle(ev));
   if (isPoint(ev)) {
     const d = ev.data || {}, row = el("div", "evpt");
@@ -2993,9 +2998,8 @@ function renderCop() {
   if (copReview && !pend.some((e) => e.id === evPick)) { evPick = pend.length ? pend[pend.length - 1].id : null; evPickAt = now; }  // the newest first
   const v = LPL.copilotView(copReview ? pend : evList, now, evPick, evPickAt, evMuted);
   // the row under the card: the same place on every card; nothing to skip or turn off on the waiting card
-  $("copSkip").disabled = !v.main; $("copMute").disabled = !v.main || evMuted.includes(v.main.kind);
+  $("copMute").disabled = !v.main || evMuted.includes(v.main.kind);
   $("copActs").classList.toggle("none", !v.main);  // nothing to skip: the row takes no room under the short card
-  $("copSkip").onclick = () => { if (v.main && Date.now() - evCardAt >= EV_TAP_GUARD_MS) evSkip(v.main); };
   $("copMute").onclick = () => { if (v.main && Date.now() - evCardAt >= EV_TAP_GUARD_MS) openMute(v.main.kind, true); };
   copRadarStrip();
   renderCopLive(v.main);
@@ -3013,14 +3017,19 @@ function renderCop() {
   const pk = missions.route && act.some((m) => m.route && m.option) ? missions.route : null;
   const hidden = copReview && !evShowAll ? reviewAll().filter((e) => !e.answer && Date.now() - e.t >= LPL.EV_RECENT_S * 1000 && (!evRelevant(e) || LPL.quietEvent(e, evMuted))).length : 0;
   $("copSheet").querySelector(".copbar").classList.toggle("hidden", copReview);  // marks belong to the drive, not to the review
-  const sig = JSON.stringify([v.pending.map((e) => [e.id, e.stage]), v.quiet.map((e) => e.id), evMuted, evShowQuiet, evShowRest, v.answered, act.map((m) => m.key), !!pk, hidden, copReview, L()]);
+  const sig = JSON.stringify([v.pending.map((e) => [e.id, e.stage]), v.quiet.map((e) => e.id), evMuted, evShowQuiet, evShowRest, v.answered, act.map((m) => m.key), !!pk, hidden, copReview, evListOpen, L()]);
   if (body.dataset.sig === sig) {  // only the clocks move, each on its own row
     body.querySelectorAll(".evrow[data-id]").forEach((r) => { const e = v.pending.find((x) => x.id === r.dataset.id) || v.quiet.find((x) => x.id === r.dataset.id); if (e) r.lastChild.textContent = clockText(e, now); });
     return;
   }
   body.dataset.sig = sig;
   const out = [];
-  if (v.pending.length) {
+  if (v.pending.length && !copReview && !evListOpen) {  // driving: one line; the list is for the review, parked
+    const b = el("button", "evrow past"), last = v.pending.reduce((a, e) => (e.t > a.t ? e : a)); b.type = "button";
+    b.append(el("span", "x", tf("A conferir · {n}", { n: v.pending.length })), el("span", "w", tf("último {hora} · ver", { hora: hhmm(last.t / 1000) })));
+    b.addEventListener("click", () => { evListOpen = true; body.dataset.sig = ""; renderCop(); });
+    out.push(b);
+  } else if (v.pending.length) {
     out.push(el("div", "label", tf("A conferir · {n}", { n: v.pending.length })));
     const row = (e) => {
       const b = el("button", "evrow " + e.stage); b.type = "button"; b.dataset.id = e.id;
@@ -3037,6 +3046,11 @@ function renderCop() {
       b.addEventListener("click", () => { evShowRest = !evShowRest; body.dataset.sig = ""; renderCop(); });
       if (evShowRest) gp.rest.forEach((e) => out.push(row(e)));
       out.push(b);
+    }
+    if (!copReview) {
+      const c = el("button", "evmore", t("fechar a lista")); c.type = "button";
+      c.addEventListener("click", () => { evListOpen = false; evShowRest = false; body.dataset.sig = ""; renderCop(); });
+      out.push(c);
     }
   }
   // what was detected but stays out of the big card: the kinds turned off and the points already confirmed (owner, 04/11)
