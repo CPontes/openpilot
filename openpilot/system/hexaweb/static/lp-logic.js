@@ -360,6 +360,22 @@
     if (keep.length <= 3) return { title: keep[0] || "", sub: keep.slice(1).join(", ") };
     return { title: keep[0], sub: [keep[1], keep[keep.length - 1]].join(", ") };
   }
+  // "Ir para cá" (owner, 05/11): Waze or Google Maps navigate (voice, traffic, CarPlay, free, no key); the comma's own route
+  // only when its navigation is on. It always asks: NAV_REMEMBER is the switch for a day the choice is remembered.
+  const NAV_REMEMBER = false;
+  function navTargets(commaOn) { return ["waze", "google"].concat(commaOn ? ["comma"] : []); }
+  function navChoice(stored, commaOn) { return NAV_REMEMBER && navTargets(commaOn).includes(stored) ? stored : null; }
+  function navLink(app, lat, lon) {
+    const ll = `${Number(lat).toFixed(6)},${Number(lon).toFixed(6)}`;
+    if (app === "waze") return `https://waze.com/ul?ll=${encodeURIComponent(ll)}&navigate=yes`;
+    if (app === "google") return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(ll)}&travelmode=driving`;
+    return null;
+  }
+  // the last places gone to, newest first, no repeats (same point within ~20 m), at most 5
+  function navRecent(list, p, keep) {
+    const near = (a) => Math.abs(a.latitude - p.latitude) < 2e-4 && Math.abs(a.longitude - p.longitude) < 2e-4;
+    return [{ name: p.name, latitude: p.latitude, longitude: p.longitude }, ...(list || []).filter((a) => a && !near(a))].slice(0, keep || 5);
+  }
   // navd's maneuver as one of the arrows the page draws
   function maneuverKind(type, modifier) {
     const t = String(type || ""), m = String(modifier || "");
@@ -958,9 +974,9 @@
   // Read only: without the comma, or before the first answer of a page opened from the copy. Commands wait for the comma.
   function readOnly(online, fromCopy) { return !online || !!fromCopy; }
   // what "Apagar dados deste celular" takes from localStorage besides the copy: data, never the language or the view
-  const DATA_KEYS = ["lpTrips", "lpMissionSnap", "lpCopEvents", "lpCopAnswers", "lpCopTally"];  // the copilot's events of the drive, and the answers
+  const DATA_KEYS = ["lpTrips", "lpMissionSnap", "lpCopEvents", "lpCopAnswers", "lpCopTally", "lpNavRecent"];  // the copilot's events of the drive, and the answers
 
   root.LPL = { groupPending, quietEvent, mutedKinds, EV_KINDS, eventStep, pointPassed, eventsMerge, logEvents, driveStart, reviewList, answerKeep, eventMission, copilotView, eventAge, eventStage, eventClock, EV_MISSIONS, EV_REASON, EV_LIVE_S, EV_RECENT_S, EV_KEEP, versionList, versionChips, VERSION_CHIPS, copilotMoment, copilotOrder, copilotNow, copilotGate, stopClock, tripAnswers, canTake, isRoute, routeKeys, missionHistory, missionsChecked, checkedUntil, queueAdd, applyQueue, queuedKeys, QUEUE_ACTIONS, ADVANCED, COP_LONG_S, COP_STOP_KMH, missionAuto, missionProgress, missionLevel, missionOrder, missionTrails, missionDiff, kpiOf, kpiDelta, kpis, tripVsAverage, versionCompare, kpiWeeks, KPI_BETTER, VERSION_MIN_KM, KPI_MIN_KM, WOBBLE_MIN_S, FIXED_HOST, addressPlan, tripSplit, listed, currentTrip, pathSettled, pathSecond, mergeMarks, applyTrips, applyWhole, since, keepPath, readOnly, DATA_KEYS, weekTotal, totals, monthStart, versionOf, versions, idle, fold, tripStart, tripMarks, daysAgo, dayKey,
-               tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, appMode, shareFor, tallyAdd, canSilence, SILENCE_MIN, mapCenter, mapXY, mapLatLon, distanceM, shortPlace, maneuverKind, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
+               tripWords, HISTORY_FILTERS, history, byDay, tripNumbers, weekly, TILE, mercator, mapFit, mapTiles, appMode, shareFor, tallyAdd, canSilence, SILENCE_MIN, NAV_REMEMBER, navTargets, navChoice, navLink, navRecent, mapCenter, mapXY, mapLatLon, distanceM, shortPlace, maneuverKind, nearestAt, weekShadow, weekCar, PERSONALITIES, gapMeters, duration, STALE_MS, LAT_MS, BUMP_MIN, BUMP_MAX, ACC_MIN, band, commaChecks, laneText, applies, speedChoices, keptSpeed, bumpMessage, passenger };
   if (typeof module === "object" && module.exports) module.exports = root.LPL;
 })(typeof window === "object" ? window : globalThis);

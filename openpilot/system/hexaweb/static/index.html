@@ -405,7 +405,7 @@
             background: var(--text); color: var(--bg); font-weight: 600; }
   .evundo .link { color: var(--bg); text-decoration: underline; min-height: 44px; }
   .evrow .q { font-size: 12px; color: var(--muted); border: 1px solid var(--line-2); border-radius: 8px; padding: 1px 6px; margin-left: 6px; }
-  #markScrim, #pointScrim, #evScrim, #rcScrim, #muteScrim, #avisosScrim, #navScrim, #placesScrim { z-index: 13; } #markSheet, #pointSheet, #evSheet, #rcSheet, #muteSheet, #avisosSheet, #navSheet, #placesSheet { z-index: 14; }  /* over the copilot */
+  #markScrim, #pointScrim, #evScrim, #rcScrim, #muteScrim, #avisosScrim, #navScrim, #placesScrim, #goScrim { z-index: 13; } #markSheet, #pointSheet, #evSheet, #rcSheet, #muteSheet, #avisosSheet, #navSheet, #placesSheet, #goSheet { z-index: 14; }  /* over the copilot */
   .toast { position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 20; max-width: calc(100% - 32px);
            background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 15px; font-weight: 600; opacity: 0; transition: opacity .2s; pointer-events: none; }
   .toast.show { opacity: .96; }
@@ -862,6 +862,15 @@
 
 <!-- The route's confirmations (owner, 04/11: "tudo que fizer tem que pedir confirmação"); andando, the passenger first -->
 <div class="scrim hidden" id="navScrim"></div>
+<!-- "Ir para cá": which app navigates. Asked every time (owner, 05/11: "toda vez que botar, ele pergunta") -->
+<div class="scrim hidden" id="goScrim"></div>
+<section class="sheet hidden" id="goSheet" role="dialog" aria-modal="true" aria-labelledby="goTitle">
+  <span class="grab"></span>
+  <h2 id="goTitle"></h2>
+  <p class="desc" id="goWhat" data-t>Escolha quem navega. O LizPilot continua dirigindo na faixa e na velocidade; virar é com o motorista.</p>
+  <div class="stack" id="goList" style="gap:8px;margin-top:12px"></div>
+  <button class="btn ghost" id="goCancel" type="button" style="margin-top:8px" data-t>Cancelar</button>
+</section>
 <section class="sheet hidden" id="navSheet" role="dialog" aria-modal="true" aria-labelledby="navAskTitle">
   <span class="grab"></span>
   <h2 id="navAskTitle"></h2>
@@ -2235,10 +2244,55 @@ async function navGo(p) {
   if (r.status === 200) closePick();
   refreshNav(true);
 }
-$("pickGo").addEventListener("click", () => {
-  const p = { ...navPickP }, dest = navState && navState.destination, to = LPL.shortPlace(p.name).title;
-  if (dest) navConfirm(t("Trocar o destino?"), tf("De {de} para {para}. O comma refaz a rota.", { de: LPL.shortPlace(dest.place_name).title, para: to }), t("Trocar"), () => navGo(p));
-  else navConfirm(tf("Ir para {lugar}?", { lugar: to }), t("O comma calcula a rota; virar nas esquinas continua com o motorista."), t("Ir"), () => navGo(p));
+// "Ir para cá": Waze, Google Maps or the comma's route; asked every time (LPL.NAV_REMEMBER, off for now)
+const GO_TEXT = { waze: "Waze", google: "Google Maps", comma: "Rota no comma" };
+const GO_SUB = { waze: "voz, trânsito e radares; abre o app", google: "voz e trânsito; abre o app", comma: "a seta na tela do comma; pesa no processador" };
+let goPlace = null;
+function recentLoad() { try { const x = JSON.parse(load("lpNavRecent") || "[]"); return Array.isArray(x) ? x : []; } catch (e) { return []; } }
+function openGo(p) {
+  if (askPassenger(() => openGo(p))) return;
+  const commaOn = !!(navState && navState.enabled), pre = LPL.navChoice(load("lpNavApp"), commaOn);
+  if (pre) { goWith(pre, p); return; }  // a day it remembers: straight on
+  goPlace = p;
+  $("goTitle").textContent = tf("Ir para {lugar} com:", { lugar: LPL.shortPlace(p.name).title });
+  $("goList").replaceChildren(...LPL.navTargets(commaOn).map((app) => {
+    const b = el("button", app === "comma" ? "btn dark" : "btn", ""); b.type = "button"; b.style.cssText = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:10px 16px;height:auto;min-height:64px";
+    const sub = el("span", "", t(GO_SUB[app])); sub.style.cssText = "font:500 14px var(--font);color:inherit;opacity:.75";
+    b.append(el("span", "", t(GO_TEXT[app])), sub);
+    b.addEventListener("click", () => { const q = goPlace; closeGo(); goWith(app, q); });
+    return b;
+  }));
+  $("goScrim").classList.remove("hidden"); $("goSheet").classList.remove("hidden");
+}
+function closeGo() { goPlace = null; $("goScrim").classList.add("hidden"); $("goSheet").classList.add("hidden"); }
+function goWith(app, p) {
+  store("lpNavRecent", JSON.stringify(LPL.navRecent(recentLoad(), p)));
+  if (app === "comma") {
+    const dest = navState && navState.destination;
+    if (dest) navConfirm(t("Trocar o destino?"), tf("De {de} para {para}. O comma refaz a rota.", { de: LPL.shortPlace(dest.place_name).title, para: LPL.shortPlace(p.name).title }), t("Trocar"), () => navGo(p));
+    else navGo(p);
+    return;
+  }
+  const a = document.createElement("a"); a.href = LPL.navLink(app, p.latitude, p.longitude); a.target = "_blank"; a.rel = "noopener";
+  document.body.append(a); a.click(); a.remove();  // the app opens with the route; this page stays as it was
+  closePick();
+}
+$("goCancel").addEventListener("click", closeGo);
+$("goScrim").addEventListener("click", closeGo);
+$("pickGo").addEventListener("click", () => { if (navPickP) openGo({ ...navPickP }); });
+// Recentes: the search box, empty and focused, lists the last places gone to
+$("navQuery").addEventListener("focus", () => {
+  if ($("navQuery").value.trim() || navPickP) return;
+  const rec = recentLoad(); if (!rec.length) return;
+  const near = navNear(), head = el("div", "small", t("RECENTES")); head.style.margin = "8px 2px 2px";
+  $("navResults").replaceChildren(head, ...rec.map((x) => {
+    const b = el("button", ""), sp = LPL.shortPlace(x.name), d = LPL.distanceM(near, [x.latitude, x.longitude]); b.type = "button";
+    const txt = el("div", ""); txt.style.minWidth = "0"; txt.append(el("div", "t", "🕘 " + sp.title), el("div", "s", sp.sub));
+    b.append(txt, el("span", "d", d != null ? navDistance(d) : ""));
+    b.addEventListener("click", () => openPick(x));
+    return b;
+  }));
+  $("navResults").classList.remove("hidden"); $("navClear").classList.remove("hidden"); renderNav();
 });
 $("pickBack").addEventListener("click", closePick);
 $("pickSave").addEventListener("click", () => { $("pickActs").classList.add("hidden"); $("pickGo").classList.add("hidden"); $("pickSaveBox").classList.remove("hidden"); $("pickName").value = ""; $("pickName").focus(); renderNav(); });

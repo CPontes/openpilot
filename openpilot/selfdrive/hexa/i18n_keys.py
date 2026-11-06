@@ -22,7 +22,7 @@ PAGES = [ROOT / "system/hexaweb/static" / n for n in ("index.html", "viagens.htm
 # objects in the pages whose values are passed through t() by name
 PAGE_TABLES = ("UPDATE_ACTIONS", "EVENTS", "RADAR_ACTIONS", "RESUME", "SIDES", "SIDE_CHIPS", "POINT", "KINDS",
                "COMMA_ACTIONS", "LEVEL_TEXT", "SAFETY_TEXT", "SAFETY_NAMES", "MARK_POINTS", "HOW_TEXT", "HOW_LONG", "MOMENT_TEXT", "MARK_RESULT",
-               "EVENT_UI", "STAGE_TEXT", "EV_BUTTONS", "EV_BY", "MARK_WIN", "TILE_TEXT", "SHARE_TEXT", "KNOWN_TEXT")
+               "EVENT_UI", "STAGE_TEXT", "EV_BUTTONS", "EV_BY", "MARK_WIN", "TILE_TEXT", "SHARE_TEXT", "KNOWN_TEXT", "GO_TEXT", "GO_SUB")
 FIELD = re.compile(r"\{[^{}]*\}")
 PT = re.compile(r"[a-zà-ú]", re.I)
 

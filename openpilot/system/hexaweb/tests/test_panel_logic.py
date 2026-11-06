@@ -394,7 +394,8 @@ def test_unpairing_leaves_no_list_of_drives_on_the_phone():
   assert "LPL.DATA_KEYS" in wipe and "trips = null" in wipe and "paths.clear()" in wipe
   keys = subprocess.run([NODE, "-e", f"process.stdout.write(JSON.stringify(require({json.dumps(str(LOGIC))}).DATA_KEYS))"],
                         capture_output=True, text=True, timeout=30, check=True).stdout
-  assert set(json.loads(keys)) == {"lpTrips", "lpMissionSnap", "lpCopEvents", "lpCopAnswers", "lpCopTally"}  # data only: the language and the view stay
+  want = {"lpTrips", "lpMissionSnap", "lpCopEvents", "lpCopAnswers", "lpCopTally", "lpNavRecent"}
+  assert set(json.loads(keys)) == want  # data only: the language and the view stay
 
 
 def test_no_path_yet_is_not_no_gps():
@@ -1212,7 +1213,7 @@ def test_the_route_lives_on_the_mapa_and_every_change_asks():
   assert 'id="navCard"' not in html and 'id="homeSeg"' in html and 'data-home="mapa"' in html
   assert "contextmenu" not in html and "prompt(" not in html[html.index("// ----- the route"):html.index("// ----- the road's limit")]
   js = html[html.index("// ----- the route"):html.index("// ----- the road's limit")]
-  assert js.count("navConfirm(") >= 4  # go, change, end; andando the passenger first (askPassenger inside navConfirm)
+  assert js.count("navConfirm(") >= 3 and "openGo(" in js  # change, end; "Ir para cá" asks which app; andando the passenger first
   assert "if (passengerFirst && askPassenger(() => askSheet(title, what, ok, run, passengerFirst))) return;" in js
   assert "askSheet(title, what, ok, run, true)" in js
   assert 'b.addEventListener("click", () => openPick(p));' in js  # a saved place opens "É aqui?", it never goes straight
@@ -1260,3 +1261,21 @@ def test_pular_is_in_the_card_and_the_list_is_one_line_while_driving():
   assert 'id="copSkip"' not in html  # one Pular, in the card, next to the third answer
   cop = html[html.index("function renderCop()"):]
   assert "if (v.pending.length && !copReview && !evListOpen)" in cop and "evListOpen, L()]" in cop
+
+
+def test_ir_para_ca_asks_which_app_every_time():
+  # owner, 05/11: Waze or Google Maps navigate (free, no key); the comma's route only with its navigation on; "toda vez [...] pergunta"
+  assert run("navTargets", False) == ["waze", "google"] and run("navTargets", True) == ["waze", "google", "comma"]
+  assert run("navChoice", "waze", True) is None  # NAV_REMEMBER is off: never straight on
+  assert run("navLink", "waze", -22.9035, -43.1091) == "https://waze.com/ul?ll=-22.903500%2C-43.109100&navigate=yes"
+  assert run("navLink", "google", -22.9035, -43.1091) == \
+    "https://www.google.com/maps/dir/?api=1&destination=-22.903500%2C-43.109100&travelmode=driving"
+  rec = run("navRecent", [{"name": "A", "latitude": -22.9, "longitude": -43.1}, {"name": "B", "latitude": -22.8, "longitude": -43.0}],
+            {"name": "A de novo", "latitude": -22.90001, "longitude": -43.10001})
+  assert [r["name"] for r in rec] == ["A de novo", "B"]  # the same place once, the newest first
+  keys = json.loads(subprocess.run([NODE, "-e", f"process.stdout.write(JSON.stringify(require({json.dumps(str(LOGIC))}).DATA_KEYS))"],
+                                   capture_output=True, text=True, timeout=30, check=True).stdout)
+  assert "lpNavRecent" in keys  # where you went: "Apagar dados" takes it
+  html = (LOGIC.parent / "index.html").read_text()
+  assert '$("pickGo").addEventListener("click", () => { if (navPickP) openGo({ ...navPickP }); });' in html
+  assert "if (askPassenger(() => openGo(p))) return;" in html
