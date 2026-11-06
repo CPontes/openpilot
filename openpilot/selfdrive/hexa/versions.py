@@ -20,7 +20,11 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "05/11", "8066720", "Mapa no Início, Usar | Melhorar e o Copiloto como painel",
+  Release("", "06/11", "8066720", "Missões da aprovação na comma",
+          ("A trilha «Aprovação na comma» vem primeiro, e o roteiro da próxima viagem são os testes que a comma pede",
+           "Nada de celular andando: o passageiro marca, ou você marca parado; os botões do ACC o CTO confere no log"),
+          driving=False),
+  Release("61e6645", "05/11", "8066720", "Mapa no Início, Usar | Melhorar e o Copiloto como painel",
           ("Início com Painel | Mapa: buscar o endereço, conferir no mapa («É aqui?»), a rota e os lugares salvos; toda troca pede confirmação",
            "Usar | Melhorar: Usar mostra só o essencial; Melhorar mostra tudo e liga o envio aos desenvolvedores, com confirmação",
            "Copiloto sem evento mostra o painel ao vivo; «Avisos» liga e desliga cada tipo; Pular dentro do cartão; «A conferir» numa linha"),

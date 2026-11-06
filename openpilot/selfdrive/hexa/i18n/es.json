@@ -1757,5 +1757,8 @@
  "Mapa no Início, Usar | Melhorar e o Copiloto como painel": "Mapa en Inicio, Usar | Mejorar y el Copiloto como panel",
  "Início com Painel | Mapa: buscar o endereço, conferir no mapa («É aqui?»), a rota e os lugares salvos; toda troca pede confirmação": "Inicio con Panel | Mapa: buscar la dirección, revisarla en el mapa («¿Es aquí?»), la ruta y los lugares guardados; todo cambio pide confirmación",
  "Usar | Melhorar: Usar mostra só o essencial; Melhorar mostra tudo e liga o envio aos desenvolvedores, com confirmação": "Usar | Mejorar: Usar muestra solo lo esencial; Mejorar muestra todo y enciende el envío a los desarrolladores, con confirmación",
- "Copiloto sem evento mostra o painel ao vivo; «Avisos» liga e desliga cada tipo; Pular dentro do cartão; «A conferir» numa linha": "Copiloto sin evento muestra el panel en vivo; «Avisos» enciende y apaga cada tipo; Saltar dentro de la tarjeta; «Por revisar» en una línea"
+ "Copiloto sem evento mostra o painel ao vivo; «Avisos» liga e desliga cada tipo; Pular dentro do cartão; «A conferir» numa linha": "Copiloto sin evento muestra el panel en vivo; «Avisos» enciende y apaga cada tipo; Saltar dentro de la tarjeta; «Por revisar» en una línea",
+ "Missões da aprovação na comma": "Misiones de la aprobación en comma",
+ "A trilha «Aprovação na comma» vem primeiro, e o roteiro da próxima viagem são os testes que a comma pede": "La ruta «Aprobación en comma» va primero, y el plan del próximo viaje son las pruebas que pide comma",
+ "Nada de celular andando: o passageiro marca, ou você marca parado; os botões do ACC o CTO confere no log": "Nada de celular manejando: el pasajero marca, o tú marcas detenido; los botones del ACC los revisa el CTO en el log"
 }

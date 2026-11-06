@@ -1757,5 +1757,8 @@
  "Mapa no Início, Usar | Melhorar e o Copiloto como painel": "Map on Home, Use | Improve and the Copilot as a panel",
  "Início com Painel | Mapa: buscar o endereço, conferir no mapa («É aqui?»), a rota e os lugares salvos; toda troca pede confirmação": "Home with Panel | Map: search the address, check it on the map («Is it here?»), the route and saved places; every change asks first",
  "Usar | Melhorar: Usar mostra só o essencial; Melhorar mostra tudo e liga o envio aos desenvolvedores, com confirmação": "Use | Improve: Use shows only the essentials; Improve shows everything and turns on sending to the developers, after asking",
- "Copiloto sem evento mostra o painel ao vivo; «Avisos» liga e desliga cada tipo; Pular dentro do cartão; «A conferir» numa linha": "Copilot without an event shows the live panel; «Alerts» turns each type on and off; Skip inside the card; «To check» in one line"
+ "Copiloto sem evento mostra o painel ao vivo; «Avisos» liga e desliga cada tipo; Pular dentro do cartão; «A conferir» numa linha": "Copilot without an event shows the live panel; «Alerts» turns each type on and off; Skip inside the card; «To check» in one line",
+ "Missões da aprovação na comma": "Missions for comma's approval",
+ "A trilha «Aprovação na comma» vem primeiro, e o roteiro da próxima viagem são os testes que a comma pede": "The «Approval at comma» trail comes first, and the next drive's plan is the tests comma asks for",
+ "Nada de celular andando: o passageiro marca, ou você marca parado; os botões do ACC o CTO confere no log": "No phone while driving: the passenger marks, or you mark when stopped; the CTO checks the ACC buttons in the log"
 }
