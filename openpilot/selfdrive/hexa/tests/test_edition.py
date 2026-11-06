@@ -47,7 +47,7 @@ GENERIC_CHECKS = textwrap.dedent('''
   assert auto_lane_change_delay(store(None, AutoLaneChange=True, AutoLaneChangeDelay=1), "gwm") == 2.
 
   # missions: only what any car can test, from zero, without the owner's drives
-  ap = {k for k, _ in missions.TRAILS if k.startswith("ap-")}
+  ap = {k for k, _ in missions.TRAILS if k.startswith("ap-")} | {"calibragem"}  # the approval and the calibration (MISS-01)
   assert missions.CATALOG and {m.trail for m in missions.CATALOG} <= set(missions.GENERIC_TRAILS) | ap
   assert all(m.done == 0 and not m.proof and not m.route for m in missions.CATALOG)
   pub = missions.public()
@@ -55,6 +55,7 @@ GENERIC_CHECKS = textwrap.dedent('''
   # the approval of a new car (MISS-01 B) comes first, all of it; the Haval's own "coleta" isn't there
   assert [t["key"] for t in pub["trails"]][:5] == ["ap-carro", "ap-sinais", "ap-engate", "ap-direcao", "ap-envio"]
   assert {m.key for m in missions.APPROVAL} <= {m["key"] for m in pub["missions"]} and "coleta" not in {t["key"] for t in pub["trails"]}
+  assert {m.key for m in missions.CALIBRATION} <= {m["key"] for m in pub["missions"]}
 
   assert updates.OFFERED_BRANCHES == ("lizpilot",)
   alpha = comma_ctl.get_item("AlphaLongitudinalEnabled")

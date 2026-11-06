@@ -604,6 +604,9 @@
   const IGNITION_WINDOW_S = 900, GEARS_PRND = 15;
   // a new car's approval (MISS-01 B): a minute engaged, and half an hour of openpilot steering in one drive with no fault
   const ENGAGED_MIN_S = 60, LAT_NO_FAULT_S = 1800;
+  // the calibration trail (MISS-01 C): what the comma learned (timeline cb_*). The steer ratio counts after 20 km with it
+  // valid; the wheels match the GPS within 3% over a minute above 8 m/s (10 readings a second)
+  const RATIO_KM = 20, WHEELS_GPS_N = 600, WHEELS_GPS_TOL = .03;
   // The week of a time (Monday 00:00 local, as a day number): 200 km in one week, whatever versions it had
   function weekOf(s) { const d = new Date(s * 1000); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return Math.round(d.getTime() / 86400000); }
   function missionAuto(m, trips) {
@@ -628,6 +631,11 @@
       case "brake_off": return ts.some((t) => (S(t).brake || 0) > 0) ? 1 : 0;  // the driver's brake with openpilot engaged
       // a summary from before the faults were counted (SUMMARY_VERSION 7) knows nothing of them: it proves nothing
       case "lat30": return ts.some((t) => (S(t).on_s || 0) >= LAT_NO_FAULT_S && S(t).sg_steer_fault === 0) ? 1 : 0;
+      case "calibrated": return ts.some((t) => (S(t).cb_calibrated || 0) >= 1) ? 1 : 0;
+      case "ratio": return ts.some((t) => (S(t).cb_sr_km || 0) >= RATIO_KM && (S(t).cb_sr || 0) > 0) ? 1 : 0;
+      case "torque": return ts.some((t) => (S(t).cb_tq_perc || 0) >= 100) ? 1 : 0;
+      case "wheels_gps": return ts.some((t) => { const n = S(t).cb_v_n || 0, g = S(t).cb_v_gps || 0;
+        return n >= WHEELS_GPS_N && g > 0 && Math.abs((S(t).cb_v_wheel || 0) / g - 1) <= WHEELS_GPS_TOL; }) ? 1 : 0;
       case "km200": { const km = {}; ts.forEach((t) => { const w = weekOf(tripStart(t)); km[w] = (km[w] || 0) + (S(t).km || 0); });  // a week: versions change daily
         return Object.values(km).some((x) => x >= MISSION_VERSION_KM) ? 1 : 0; }
       default: return 0;

@@ -22,6 +22,16 @@ def test_the_catalog_holds_together():
   assert all(any(m.trail == k for m in M.CATALOG + M.APPROVAL) for k in trails)
 
 
+def test_the_calibration_trail_is_for_any_car():  # MISS-01 C
+  keys = [m.key for m in M.CALIBRATION]
+  assert len(keys) == 10 and set(keys) <= {m.key for m in M.CATALOG}  # in the Haval build too
+  assert sum(1 for m in M.CALIBRATION if m.detect) == 6
+  for m in M.CALIBRATION:
+    assert m.trail == "calibragem" and m.how in ("auto", "marca") and m.why and m.steps, m.key
+    assert not any(w in " ".join((m.title, m.why, *m.steps)) for w in ("Haval", "ACC", "alavanca", "CTO")), m.key
+  assert {"key": "calibragem", "title": "Calibragem do veículo"} in M.public()["trails"]
+
+
 def test_the_approval_of_a_new_car_holds_together_and_stays_out_of_the_haval():  # MISS-01 B
   trails = {k for k, _ in M.TRAILS}
   keys = [m.key for m in M.APPROVAL]

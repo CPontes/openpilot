@@ -34,7 +34,9 @@ MAX_PENDING = 300
 HOW = ("auto", "marca", "parado", "cto", "decisao")
 # the comma approval checks (MISS-01), from the car's signals each drive summary saw change (signals_seen.py)
 APPROVAL_DETECT = ("belt", "doors", "gears", "pedals", "blinkers", "bsm", "ign3", "engaged", "brake_off", "lat30")
-DETECT = ("slow10", "night30", "highway", "km200", "marks10", "installed", *APPROVAL_DETECT)
+# the calibration trail (MISS-01, step C): what the comma learned of the car, from each drive summary (signals_seen.py)
+CALIBRATION_DETECT = ("calibrated", "ratio", "torque", "wheels_gps")
+DETECT = ("slow10", "night30", "highway", "km200", "marks10", "installed", *APPROVAL_DETECT, *CALIBRATION_DETECT)
 # the passenger's copilot (owner, 03/11): what the live data says fits now
 WHEN = ("stop_free", "stop_queue", "stop_long", "follow_mid", "slow_follow", "moving", "city")
 # what the passenger answered (owner, 03/11: D1), as the mark's label: only "done" and "ok" wait as a mission advanced,
@@ -58,6 +60,7 @@ TRAILS: tuple[tuple[str, str], ...] = (
   ("ap-envio", "Aprovação: o pedido à comma"),
   ("coleta", "Aprovação na comma"),
   ("versao", "Versão e envio à comma"),
+  ("calibragem", "Calibragem do veículo"),  # both editions (MISS-01, step C): any car
   ("direcao", "Direção"),
   ("acc", "Velocidade e ACC"),
   ("long", "Longitudinal do comma"),
@@ -371,11 +374,50 @@ APPROVAL: tuple[Mission, ...] = (
           steps=("Abra «Relatório para a comma», no fim desta trilha.", "Copie o texto e cole no pedido (pull request) à comma.")),
 )
 
+# *** Calibragem do veículo (MISS-01, step C): what the comma has to learn of a car, and what a person feels driving it.
+# For any car, in both editions; the log ticks what the comma learned (signals_seen.CalibrationSeen) ***
+CALIBRATION: tuple[Mission, ...] = (
+  Mission("cal-camera", "calibragem", "Câmera calibrada", 1, "auto", detect="calibrated",
+          why="Sem a câmera calibrada, o openpilot não sabe para onde o carro aponta. A calibração termina sozinha andando reto.",
+          steps=("Dirija uns 10 minutos em ruas retas, acima de 30 km/h.",)),
+  Mission("cal-relacao", "calibragem", "Relação da direção aprendida", 1, "auto", detect="ratio",
+          why="Quanto o carro vira para cada grau do volante. O comma aprende sozinho dirigindo; um valor errado faz o carro errar a curva.",
+          steps=("Dirija uns 20 km com o comma, em curvas e retas.",)),
+  Mission("cal-torque", "calibragem", "Torque da direção aprendido", 1, "auto", detect="torque",
+          why="Quanta força o motor da direção precisa para cada curva. O comma aprende sozinho, curva a curva, até 100%.",
+          steps=("Dirija com o openpilot no volante, em curvas de todo tipo.", "Pode levar algumas viagens.")),
+  Mission("cal-rodas", "calibragem", "Velocidade das rodas igual à do GPS", 1, "auto", detect="wheels_gps",
+          why="Se a velocidade que o carro informa não bate com a do GPS, o openpilot erra distâncias e curvas.",
+          steps=("Dirija 1 minuto acima de 30 km/h, com GPS.",)),
+  Mission("cal-estrada", "calibragem", "Estrada: 15 km acima de 90 km/h", 1, "auto", detect="highway",
+          why="Na estrada o comma aprende com curvas longas e velocidade constante.",
+          steps=("Uma viagem com 15 km acima de 90 km/h.",)),
+  Mission("cal-lento", "calibragem", "Trânsito lento com o openpilot no volante", 1, "auto", detect="slow10",
+          why="Abaixo de 30 km/h a direção é mais difícil: o comma precisa de 10 minutos assim.",
+          steps=("Dirija 10 minutos abaixo de 30 km/h com o openpilot no volante.",)),
+  Mission("cal-primeiro", "calibragem", "Primeiro engate: o volante vira para o lado certo", 1, "marca", when="city",
+          why="Antes de tudo: se o comma virar o volante para o lado errado, nada mais vale.",
+          steps=("Num lugar seguro e devagar, engate o openpilot numa curva suave.",
+                 "Certo: o volante acompanha a curva. Se puxar para o lado contrário, desengate na hora e marque.")),
+  Mission("cal-fechada", "calibragem", "Curva fechada sem soltar", 1, "marca", when="city",
+          why="Mostra se a força máxima do comma chega para as curvas da sua cidade.",
+          steps=("Com o openpilot no volante, faça uma curva fechada.", "Toque em Fiz agora. Se o volante soltar ou avisar, marque.")),
+  Mission("cal-baixa", "calibragem", "Baixa velocidade sem tremer", 1, "marca", when="slow_follow",
+          why="Devagar, o volante pode tremer de um lado para o outro.",
+          steps=("No trânsito lento, com o openpilot no volante, preste atenção no volante.", "Toque em Fiz agora. Se tremer, marque.")),
+  Mission("cal-parada", "calibragem", "Parada e saída com o longitudinal do comma", 1, "marca", when="stop_queue",
+          note="só com o longitudinal do comma ligado",
+          why="Com o comma no acelerador e no freio, parar atrás de um carro e sair junto é o teste mais comum.",
+          steps=("Com o longitudinal do comma ligado, pare atrás de um carro.",
+                 "Certo: para sem tranco e sai junto quando ele sai. Se não, freie e marque.")),
+)
+
 # The generic edition (edition.py) offers only what any car can test, from zero: the rest is the Haval's own test plan,
 # and its proofs and tries are the owner's drives. It gets the approval of a new car instead (MISS-01)
 GENERIC_TRAILS = ("avisos", "celular")
+CATALOG = CATALOG + CALIBRATION
 if edition.EDITION == "generic":
-  CATALOG = APPROVAL + tuple(replace(m, done=0, proof="", note="") for m in CATALOG if m.trail in GENERIC_TRAILS and not m.route)
+  CATALOG = APPROVAL + CALIBRATION + tuple(replace(m, done=0, proof="", note="") for m in CATALOG if m.trail in GENERIC_TRAILS and not m.route)
 
 BY_KEY = {m.key: m for m in CATALOG}
 

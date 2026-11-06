@@ -408,3 +408,14 @@ def test_the_drive_summary_has_the_signals_seen_changing():  # MISS-01: the comm
     return msgs
   a = tl.trip_segment(minute(["park", "reverse"], True))["summary"]
   assert a["sg_gears"] == 3 and a["sg_door"] == 1
+
+
+def test_the_drive_summary_has_what_the_comma_learned():  # MISS-01 C
+  msgs = [Msg("extrinsicsCalibration", 1., calStatus="calibrated", calPerc=100),
+          Msg("vehicleParameters", 1., valid=True, steerRatio=18.4),
+          Msg("lateralTorqueParameters", 1., calPerc=57, useParams=True, latAccelFactorFiltered=1.09)]
+  for i in range(30):
+    msgs.append(Msg("gpsLocationExternal", 1 + i / 10, hasFix=True, speed=20., latitude=0., longitude=0.))
+    msgs.append(Msg("carState", 1 + i / 10 + .001, vEgo=20., gasPressed=False, brakePressed=False, steeringPressed=False))
+  s = tl.trip_segment(msgs)["summary"]
+  assert s["cb_calibrated"] == 1 and s["cb_sr"] == 18.4 and s["cb_tq_perc"] == 57 and s["cb_v_n"] == 30 and s["cb_sr_km"] > 0

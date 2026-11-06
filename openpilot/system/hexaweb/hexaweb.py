@@ -80,16 +80,17 @@ PATH_PRUNE_S = 600.  # paths of drives the comma already deleted go too, looked 
 HIDDEN_PARAM = "HexaTripsHidden"  # drives the owner hid from the phone's lists: the logs stay on the comma
 HIDDEN_KEEP = 600
 PRESERVE_ATTR = "user.preserve"  # system/loggerd/deleter.py: what keeps a flagged minute from being deleted
-SUMMARY_VERSION = 7  # 2: version, alerts. 3: the path. 4: the KPIs (wobble, lane seen, where it let go).
+SUMMARY_VERSION = 8  # 2: version, alerts. 3: the path. 4: the KPIs (wobble, lane seen, where it let go).
 # 5: time in slow traffic (the missions). 6: the copilot's events (cop), for "A conferir", and the drive's clock (t0).
-# 7: the car's signals seen changing (sg_*), for the comma approval checks (MISS-01).
+# 7: the car's signals seen changing (sg_*), for the comma approval checks (MISS-01). 8: what the comma learned of the car
+# (cb_*: camera calibration, steer ratio, torque, wheels against the GPS), for the calibration trail.
 # An older summary is read again, the newest SUMMARY_NEWEST only
 # ...unless what came after it only matters to the newest drives: version -> how many newest drives still need the read.
 # 6 only added the copilot's events, kept in the newest COP_KEEP (CTO review of app-12: reading 300 drives again meant hours
 # with no numbers on the phone, and the param rewritten 300 times). Take an entry out when a version adds more than that
-# 7 only added the signals, which matter to the drives of the approval checks: the newest SIGNALS_KEEP are read again
+# 7 and 8 only added the signals and the learned values, which matter to the newest drives: those SIGNALS_KEEP are read again
 SIGNALS_KEEP = 10
-SUMMARY_STILL_GOOD = {5: COP_KEEP, 6: SIGNALS_KEEP}
+SUMMARY_STILL_GOOD = {5: COP_KEEP, 6: SIGNALS_KEEP, 7: SIGNALS_KEEP}
 ERRORS_EVERY_S = 30.
 # The clip of a mark starts before it: the owner marks after it happened (owner, 06/11: "quando acontece um evento, normalmente
 # marca-se o que aconteceu"). The mark's own window says how far back; with none ("Agora", the comma's flag, the copilot),

@@ -590,6 +590,24 @@ def test_a_new_cars_approval_and_its_report():  # MISS-01 B, the generic edition
   assert run("approvalReport", {"missions": [_m("x", "parado")]}, {}, []) == ""  # the Haval build: no approval trails
 
 
+def test_the_calibration_trail_from_what_the_comma_learned():  # MISS-01 C
+  ms = [_m("cam", "auto", detect="calibrated"), _m("rel", "auto", detect="ratio"), _m("tq", "auto", detect="torque"),
+        _m("rodas", "auto", detect="wheels_gps")]
+  cat = {"levels": CAT["levels"], "trails": [], "missions": ms}
+
+  def drive(**cb):
+    t = trip()
+    t["summary"].update(cb)
+    return t
+  p = run("missionProgress", cat, {}, [drive(cb_calibrated=1, cb_sr=18.4, cb_sr_km=25, cb_tq_perc=100, cb_v_n=900, cb_v_wheel=18000,
+                                             cb_v_gps=17800)])
+  assert all(p[k]["full"] for k in ("cam", "rel", "tq", "rodas"))
+  p = run("missionProgress", cat, {}, [drive(cb_calibrated=0, cb_sr=18.4, cb_sr_km=10, cb_tq_perc=96, cb_v_n=900, cb_v_wheel=18000,
+                                             cb_v_gps=17000)])
+  assert not any(p[k]["full"] for k in ("cam", "rel", "tq", "rodas"))  # not yet; 10 km; 96%; the wheels 5.9% over the GPS
+  assert not run("missionProgress", cat, {}, [drive(cb_v_n=100, cb_v_wheel=2000, cb_v_gps=2000)])["rodas"]["full"]  # 10 s only
+
+
 def test_the_level_and_what_moved_after_a_drive():
   before = run("missionProgress", CAT, {}, [])
   after = run("missionProgress", CAT, {"pending": [{"key": "fila"}]}, [trip(slow=650, commit="b3ac6fe")])

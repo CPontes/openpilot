@@ -55,3 +55,61 @@ def merge(total: dict, part: dict) -> None:
     total[k] = int(total.get(k, 0)) + int(part.get(k, 0))
   for k in MASK_KEYS:
     total[k] = int(total.get(k, 0)) | int(part.get(k, 0))
+
+
+# *** What the comma learned of this car in a drive: the "Calibragem do veículo" trail (MISS-01, step C) ***
+# extrinsicsCalibration, vehicleParameters and lateralTorqueParameters are all in the qlog (cereal/services.py). Only
+# numbers: percentages, the learned steer ratio and the wheels against the GPS, never a place
+CB_SUM_KEYS = ("cb_sr_km", "cb_v_n", "cb_v_wheel", "cb_v_gps")
+CB_MAX_KEYS = ("cb_calibrated", "cb_cal_perc", "cb_tq_perc")
+CB_LAST_KEYS = ("cb_sr", "cb_tq_laf")
+CB_KEYS = CB_SUM_KEYS + CB_MAX_KEYS + CB_LAST_KEYS
+WHEELS_GPS_MIN_SPEED = 8.  # m/s: slower, the GPS speed is too noisy to compare with
+GPS_MAX_AGE = 1.  # s
+
+
+class CalibrationSeen:
+  def __init__(self):
+    self.t: dict = dict.fromkeys(CB_SUM_KEYS + CB_MAX_KEYS, 0.)
+    self.sr_valid = False
+    self.gps: tuple[float, float] | None = None  # (t, speed m/s) of the last fix
+
+  def on_calibration(self, ec) -> None:
+    self.t["cb_calibrated"] = max(self.t["cb_calibrated"], 1. if str(ec.calStatus) == "calibrated" else 0.)
+    self.t["cb_cal_perc"] = max(self.t["cb_cal_perc"], float(ec.calPerc))
+
+  def on_parameters(self, vp) -> None:
+    self.sr_valid = bool(vp.valid)
+    if self.sr_valid:
+      self.t["cb_sr"] = round(float(vp.steerRatio), 2)
+
+  def on_torque(self, lt) -> None:
+    self.t["cb_tq_perc"] = max(self.t["cb_tq_perc"], float(lt.calPerc))
+    if lt.useParams:
+      self.t["cb_tq_laf"] = round(float(lt.latAccelFactorFiltered), 2)
+
+  def on_gps(self, t: float, g) -> None:
+    if g.hasFix:
+      self.gps = (t, float(g.speed))
+
+  def on_car(self, t: float, v: float, dt: float) -> None:
+    if self.sr_valid:
+      self.t["cb_sr_km"] += v * dt / 1e3
+    if self.gps is not None and t - self.gps[0] <= GPS_MAX_AGE and v > WHEELS_GPS_MIN_SPEED and self.gps[1] > WHEELS_GPS_MIN_SPEED:
+      self.t["cb_v_n"] += 1
+      self.t["cb_v_wheel"] += v
+      self.t["cb_v_gps"] += self.gps[1]
+
+  def result(self) -> dict:
+    return dict(self.t)
+
+
+def merge_calibration(total: dict, part: dict) -> None:
+  """Sums add up, percentages and "calibrated" take the most, the learned values the latest minute that had them."""
+  for k in CB_SUM_KEYS:
+    total[k] = total.get(k, 0.) + part.get(k, 0.)
+  for k in CB_MAX_KEYS:
+    total[k] = max(total.get(k, 0.), part.get(k, 0.))
+  for k in CB_LAST_KEYS:
+    if k in part:
+      total[k] = part[k]

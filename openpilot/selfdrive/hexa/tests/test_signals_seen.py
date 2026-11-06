@@ -70,3 +70,38 @@ def test_minutes_add_up_and_gears_join():
   sg.merge(total, {"sg_door": 2, "sg_gears": 1})
   sg.merge(total, {"sg_door": 3, "sg_gears": 8})
   assert total["sg_door"] == 5 and total["sg_gears"] == 9 and total["sg_belt"] == 0
+
+
+def test_what_the_comma_learned_in_a_drive():  # MISS-01 C
+  c = sg.CalibrationSeen()
+  c.on_calibration(SimpleNamespace(calStatus="uncalibrated", calPerc=40))
+  c.on_calibration(SimpleNamespace(calStatus="calibrated", calPerc=100))
+  c.on_parameters(SimpleNamespace(valid=True, steerRatio=18.413))
+  c.on_torque(SimpleNamespace(calPerc=57, useParams=True, latAccelFactorFiltered=1.093))
+  c.on_torque(SimpleNamespace(calPerc=20, useParams=False, latAccelFactorFiltered=0.))  # a lower one later: the most stays
+  for i in range(100):
+    t = i / 10
+    c.on_gps(t, SimpleNamespace(hasFix=True, speed=20.))
+    c.on_car(t, 20.4, .1)
+  r = c.result()
+  assert r["cb_calibrated"] == 1 and r["cb_cal_perc"] == 100 and r["cb_sr"] == 18.41 and r["cb_tq_perc"] == 57 and r["cb_tq_laf"] == 1.09
+  assert abs(r["cb_sr_km"] - .204) < .001 and r["cb_v_n"] == 100 and abs(r["cb_v_wheel"] / r["cb_v_gps"] - 1.02) < 1e-6
+
+
+def test_the_wheels_against_the_gps_only_with_a_fresh_fix_and_speed():
+  c = sg.CalibrationSeen()
+  c.on_gps(0., SimpleNamespace(hasFix=True, speed=20.))
+  c.on_car(5., 20., .1)  # the fix is 5 s old
+  c.on_gps(5., SimpleNamespace(hasFix=False, speed=20.))
+  c.on_car(5.1, 20., .1)
+  c.on_gps(6., SimpleNamespace(hasFix=True, speed=5.))
+  c.on_car(6.1, 5., .1)  # too slow to compare
+  c.on_parameters(SimpleNamespace(valid=False, steerRatio=17.))
+  assert c.result()["cb_v_n"] == 0 and "cb_sr" not in c.result()
+
+
+def test_learned_minutes_join():
+  total = {}
+  sg.merge_calibration(total, {"cb_sr_km": 1., "cb_tq_perc": 57., "cb_sr": 18.1, "cb_v_n": 10})
+  sg.merge_calibration(total, {"cb_sr_km": 2., "cb_tq_perc": 20., "cb_v_n": 5})
+  assert total["cb_sr_km"] == 3. and total["cb_tq_perc"] == 57. and total["cb_sr"] == 18.1 and total["cb_v_n"] == 15
