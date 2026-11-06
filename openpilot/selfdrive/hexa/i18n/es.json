@@ -1776,5 +1776,9 @@
  "Sem o openpilot no controle, o panda só deixa sair o comando do ACC que não acelera nem freia": "Sin openpilot al mando, el panda solo deja salir el comando del ACC que no acelera ni frena",
  "O panda confere o código de checagem do acelerador, do freio e do volante; nos seus logs, 100% passam": "El panda revisa el código de verificación del acelerador, del freno y del volante; en sus registros, pasa el 100%",
  "Se o ACC da Haval cair por 0,5 s com o openpilot engatado, o openpilot desengata; na direção sempre ativa, não": "Si el ACC del Haval se cae por 0,5 s con openpilot activado, openpilot se desactiva; con la dirección siempre activa, no",
- "Parado, o segurar da Haval continua como hoje, também ao sair pelo acelerador": "Detenido, la retención del Haval sigue como hoy, también al salir con el acelerador"
+ "Parado, o segurar da Haval continua como hoje, também ao sair pelo acelerador": "Detenido, la retención del Haval sigue como hoy, también al salir con el acelerador",
+ "O carro não solta parado na subida": "El auto no se suelta detenido en una subida",
+ "Parado atrás de um carro que anda devagar, o comma às vezes hesita entre sair e parar; agora ele volta a segurar com a mesma força": "Detenido detrás de un auto que avanza despacio, el comma a veces duda entre salir y parar; ahora vuelve a sostener con la misma fuerza",
+ "Antes, nesse vaivém, o freio caía quase a zero e o carro podia voltar um pouco numa subida (viagem de 06/11)": "Antes, en ese vaivén, el freno caía casi a cero y el auto podía retroceder un poco en una subida (viaje del 06/11)",
+ "A saída normal não muda: quando o comma decide sair, vai direto ao acelerador": "La salida normal no cambia: cuando el comma decide salir, va directo al acelerador"
 }

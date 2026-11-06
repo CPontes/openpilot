@@ -20,7 +20,12 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
-  Release("", "06/11", "6c1c3d3", "O panda confere o comando do ACC",
+  Release("", "06/11", "5d00685", "O carro não solta parado na subida",
+          ("Parado atrás de um carro que anda devagar, o comma às vezes hesita entre sair e parar; agora ele volta a segurar com a mesma força",
+           "Antes, nesse vaivém, o freio caía quase a zero e o carro podia voltar um pouco numa subida (viagem de 06/11)",
+           "A saída normal não muda: quando o comma decide sair, vai direto ao acelerador"),
+          driving=True),
+  Release("3293050", "06/11", "6c1c3d3", "O panda confere o comando do ACC",
           ("Sem o openpilot no controle, o panda só deixa sair o comando do ACC que não acelera nem freia",
            "O panda confere o código de checagem do acelerador, do freio e do volante; nos seus logs, 100% passam",
            "Se o ACC da Haval cair por 0,5 s com o openpilot engatado, o openpilot desengata; na direção sempre ativa, não",

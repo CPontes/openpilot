@@ -1776,5 +1776,9 @@
  "Sem o openpilot no controle, o panda só deixa sair o comando do ACC que não acelera nem freia": "Without openpilot in control, the panda only lets out the ACC commands that neither accelerate nor brake",
  "O panda confere o código de checagem do acelerador, do freio e do volante; nos seus logs, 100% passam": "The panda checks the checksum of the gas, the brake and the steering; in your logs, 100% pass",
  "Se o ACC da Haval cair por 0,5 s com o openpilot engatado, o openpilot desengata; na direção sempre ativa, não": "If the Haval's ACC drops for 0.5 s with openpilot engaged, openpilot disengages; not with always-on steering",
- "Parado, o segurar da Haval continua como hoje, também ao sair pelo acelerador": "Stopped, the Haval's hold stays as it is today, also when you leave on the gas"
+ "Parado, o segurar da Haval continua como hoje, também ao sair pelo acelerador": "Stopped, the Haval's hold stays as it is today, also when you leave on the gas",
+ "O carro não solta parado na subida": "The car doesn't let go when stopped on a climb",
+ "Parado atrás de um carro que anda devagar, o comma às vezes hesita entre sair e parar; agora ele volta a segurar com a mesma força": "Stopped behind a car creeping on, the comma sometimes hesitates between going and stopping; now it holds again just as firmly",
+ "Antes, nesse vaivém, o freio caía quase a zero e o carro podia voltar um pouco numa subida (viagem de 06/11)": "Before, in that back and forth, the brake fell almost to zero and the car could roll back a little on a climb (drive of 06/11)",
+ "A saída normal não muda: quando o comma decide sair, vai direto ao acelerador": "A normal start doesn't change: when the comma decides to go, it goes straight to the gas"
 }
