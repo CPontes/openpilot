@@ -418,6 +418,39 @@ def test_unpairing_leaves_no_list_of_drives_on_the_phone():
   assert set(json.loads(keys)) == want  # data only: the language and the view stay
 
 
+def test_a_401_erases_nothing_without_asking():
+  # CTO review, 06/11 (patch 0002): another comma at the same address answers 401 to this phone's token. That alone must not
+  # erase the history and the pairing: read only, and the person chooses between trying again and erasing to pair again
+  for path in ("/api/state", "/api/trips", "/api/missions", "/api/marks"):
+    assert run("strangerAnswer", 401, path) is True
+  assert run("strangerAnswer", 401, "/api/pair") is False and run("strangerAnswer", 401, "/api/logout") is False  # their own answers
+  assert not any(run("strangerAnswer", s, "/api/state") for s in (0, 200, 403, 404, 429, 500, 503))
+  html = (LOGIC.parent / "index.html").read_text()
+  api = html[html.index("async function api(path, body, waitMs)"):]
+  api = api[:api.index("\n}\n")]
+  assert "saveToken(" not in api and "wipeBase(" not in api and 'show("pair")' not in api
+  assert "if (LPL.strangerAnswer(r.status, path)) unknownHere();" in api
+  # once refused, this phone's token goes nowhere until the person chooses: the guard comes before the request
+  assert api.index('if (stranger && path !== "/api/pair") return') < api.index("fetch(path, opts)")
+  assert "if (document.hidden || !token || stranger) return;" in html  # and no polling either
+  # an answer to a request sent before the 401 came back doesn't make the comma "online" again
+  assert api.index("fetch(path, opts)") < api.index("if (stranger) return", api.index("fetch(path, opts)")) < api.index("setOnline(true)")
+  assert '$("offlineCard").classList.toggle("hidden", on || stranger);' in html  # one card at a time: this one says read only
+  here = html[html.index("function unknownHere() {"):]
+  here = here[:here.index("\n}\n")]
+  assert "setOnline(false)" in here and "setStranger(true)" in here and "saveToken" not in here and "wipeBase" not in here
+  # the only ways that erase: the two buttons, each after a yes
+  erase = [i for i in range(len(html)) if html.startswith("saveToken(null)", i)]
+  assert len(erase) == 2
+  for i in erase:
+    handler = html[html.rindex("addEventListener(\"click\"", 0, i):i]
+    assert "if (!confirm(t(" in handler
+  assert html.index('$("strangerPair").addEventListener') < erase[0] < html.index('$("logoutBtn").addEventListener') < erase[1]
+  assert html.count("wipeBase()") == 3  # its definition, saveToken(null) and "Apagar dados", which asks first too
+  card = html[html.index('id="strangerCard"'):html.index('id="strangerPair"')]
+  assert 'role="alert"' in card and 'id="strangerRetry"' in card and "Nada foi apagado" in card
+
+
 def test_no_path_yet_is_not_no_gps():
   # right after an update the phone has summaries from its cache and the comma is still reading the drives
   drive_read = {"summary": {"km": 5.}}
