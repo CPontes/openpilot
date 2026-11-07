@@ -241,7 +241,7 @@ def test_the_download_menu_has_every_area_offered_and_valid_rows():
       assert lat % 2 == 0 and lon0 % 2 == 0 and lon1 % 2 == 0 and lon0 < lon1
       assert box["min_lat"] - 2 <= lat <= box["max_lat"] and box["min_lon"] - 2 <= lon0 and lon1 <= box["max_lon"] + 2
   rj = menu["br_state"]["RJ"]["bounding_box"]
-  for lat, lon in ((-22.9068, -43.1729), (-22.8832, -43.1036)):  # Rio and Niterói
+  for lat, lon in ((-22.9519, -43.2105), (-23.1394, -44.1689)):  # Rio (Cristo Redentor) and Ilha Grande
     assert rj["min_lat"] < lat < rj["max_lat"] and rj["min_lon"] < lon < rj["max_lon"]
 
 
