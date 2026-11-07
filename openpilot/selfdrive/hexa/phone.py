@@ -166,6 +166,56 @@ def ident_answer(tokens: list[dict] | None, phone_id, nonce) -> dict | None:
   return {"v": 1, "mac": None}
 
 
+# *** the route on the car's screen (Android Auto, NAV-03 step 2) ***
+# The app's car part reads the route without the token: it answers a challenge the comma handed out with
+# HMAC(hash, CAR_PREFIX + challenge), hash being hash_token() of its pairing, which the app keeps (APP-02). A challenge is
+# good once and for CHALLENGE_TTL_S. Its own prefix, never IDENT_PREFIX: /api/ident answers HMAC(hash, IDENT_PREFIX + any
+# nonce) to anyone, so with one prefix for both anyone could get a valid answer by asking /api/ident with the challenge.
+CAR_PREFIX = "lizpilot-car|v1|"
+CAR_MAC = re.compile(r"[0-9a-f]{64}")
+CHALLENGE_TTL_S = 30.
+CHALLENGE_KEEP = 32  # open challenges at most: someone asking in a loop only pushes the oldest out
+
+
+def car_mac(token_hash: str, challenge: str) -> str:
+  return hmac.new(token_hash.encode(), (CAR_PREFIX + challenge).encode(), hashlib.sha256).hexdigest()
+
+
+class Challenges:
+  """The challenges the comma handed out, each redeemed once within CHALLENGE_TTL_S. Not thread safe: the caller locks."""
+
+  def __init__(self, mono=time.monotonic):
+    self.mono = mono
+    self._open: dict[str, float] = {}
+
+  def issue(self) -> str:
+    now = self.mono()
+    self._open = {c: t for c, t in self._open.items() if now - t < CHALLENGE_TTL_S}
+    while len(self._open) >= CHALLENGE_KEEP:
+      self._open.pop(next(iter(self._open)))
+    c = secrets.token_urlsafe(16)  # 22 characters of [A-Za-z0-9_-]
+    self._open[c] = now
+    return c
+
+  def redeem(self, challenge) -> bool:
+    if not isinstance(challenge, str):
+      return False
+    at = self._open.pop(challenge, None)
+    return at is not None and self.mono() - at < CHALLENGE_TTL_S
+
+
+def car_reader(tokens: list[dict] | None, phone_id, challenge, mac) -> dict | None:
+  """The pairing whose hash answered the challenge, or None. The caller redeems the challenge first, right or wrong."""
+  if not (isinstance(phone_id, str) and IDENT_PHONE.fullmatch(phone_id) and isinstance(challenge, str) and IDENT_NONCE.fullmatch(challenge)
+          and isinstance(mac, str) and CAR_MAC.fullmatch(mac)):
+    return None
+  for entry in tokens or []:
+    h = str(entry.get("hash", ""))
+    if h and hmac.compare_digest(ident_phone(h), phone_id) and hmac.compare_digest(car_mac(h, challenge), mac):
+      return entry
+  return None
+
+
 def revoke_token(tokens: list[dict] | None, token_id: str) -> list[dict]:
   return [t for t in tokens or [] if t.get("id") != token_id]
 

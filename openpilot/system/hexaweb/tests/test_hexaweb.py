@@ -1844,6 +1844,59 @@ def _nav_panel(panel, results=None):
   return urls
 
 
+def _car_panel(panel):  # an invented route at sea, near 0°, 0°
+  from openpilot.selfdrive.hexa import nav
+  panel.backend.navigator = nav.Navigator(panel.store, position=lambda: (0.012345, -0.045678))
+  panel.backend._route_state = lambda: {"active": True, "next": "Rua Inventada", "in_m": 150, "left_m": 8400, "left_s": 760,
+                                        "path": [[0.0123, -0.0456], [0.0133, -0.0456]]}
+  panel.store.put("NavigationEnabled", True)
+  panel.store.put("NavDestination", {"latitude": 0.0213, "longitude": -0.0456, "place_name": "Praça Inventada"})
+
+
+def _car_ask(token, challenge, prefix="lizpilot-car|v1|"):  # the protocol written out, as the app's car part asks
+  key = hashlib.sha256(token.encode()).hexdigest()
+  me = hashlib.sha256(key.encode()).hexdigest()[:16]
+  return f"/api/car/route?p={me}&n={challenge}&m={hmac.new(key.encode(), (prefix + challenge).encode(), hashlib.sha256).hexdigest()}"
+
+
+def test_the_car_screen_reads_the_route_without_the_token(panel):  # NAV-03 step 2, Android Auto
+  _car_panel(panel)
+  token = panel.pair()
+  status, first = panel.json("/api/car/route")  # no Authorization header, nothing proved: only a challenge
+  assert status == 401 and set(first) == {"v", "n"}
+  status, body = panel.json(_car_ask(token, first["n"]))
+  assert status == 200 and body["route"]["next"] == "Rua Inventada" and body["car"] == [0.0123, -0.0457]
+  assert body["destination"] == {"name": "Praça Inventada", "latitude": 0.0213, "longitude": -0.0456}
+  assert set(body) == {"v", "n", "route", "car", "destination"}  # what /api/nav shows of the route: no places, no key
+  assert body["n"] != first["n"] and panel.json(_car_ask(token, body["n"]))[0] == 200  # each answer carries the next challenge
+  assert panel.json(_car_ask(token, first["n"]))[0] == 401  # a challenge once
+
+
+def test_the_car_screen_refuses_what_didnt_answer_its_challenge(panel):
+  _car_panel(panel)
+  token = panel.pair()
+  assert panel.json(_car_ask(token, "x" * 22))[0] == 401  # a challenge this comma never gave
+  c = panel.json("/api/car/route")[1]["n"]
+  key = hashlib.sha256(token.encode()).hexdigest()
+  me = hashlib.sha256(key.encode()).hexdigest()[:16]
+  ident = panel.json(f"/api/ident?p={me}&n={c}")[1]["mac"]  # /api/ident answers anyone: its answer opens nothing here
+  assert ident and panel.json(f"/api/car/route?p={me}&n={c}&m={ident}")[0] == 401
+  c = panel.json("/api/car/route")[1]["n"]
+  assert panel.json(f"/api/car/route?p={me}&n={c}&m={'0' * 64}")[0] == 401
+  assert panel.json(_car_ask(token, c))[0] == 401  # a wrong answer used the challenge up
+  c = panel.json("/api/car/route")[1]["n"]
+  panel.now += phone.CHALLENGE_TTL_S
+  assert panel.json(_car_ask(token, c))[0] == 401  # too late
+  c = panel.json("/api/car/route")[1]["n"]
+  panel.store.put(phone.TOKENS_PARAM, [])  # the phone taken off the comma
+  assert panel.json(_car_ask(token, c))[0] == 401
+
+
+def test_the_car_screen_is_local_only(panel, monkeypatch):
+  monkeypatch.setattr(hexaweb.phone, "is_local_address", lambda ip: False)
+  assert panel.json("/api/car/route")[0] == 403
+
+
 def test_nav_needs_a_paired_phone(panel):
   _nav_panel(panel)
   assert panel.json("/api/nav")[0] == 401

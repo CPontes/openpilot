@@ -227,6 +227,7 @@ class PanelBackend:
     self._vs_lock = threading.Lock()  # requests run in threads; SubMaster is not thread safe
     self.pin_failures = 0
     self._last_mark: dict[str, float] = {}  # token id -> monotonic time of the last phone mark
+    self._car_challenges = phone.Challenges(lambda: self.mono())  # the car's screen (Android Auto): read the route without the token
     self.log_root = log_root
     self._replay_cache: OrderedDict[str, dict] = OrderedDict()
     self._replay_lock = threading.Lock()
@@ -338,6 +339,20 @@ class PanelBackend:
     with self.lock:
       out = phone.ident_answer(self._tokens(), phone_id, nonce)
     return (400, {"error": "Valor inválido."}) if out is None else (200, out)
+
+  def car_route(self, phone_id: str, challenge: str, mac: str) -> tuple[int, dict]:
+    """The car's screen (Android Auto, NAV-03): the route, read without the token by the app that answers the comma's
+    challenge with its pairing's hash (phone.car_reader). Only reading: what /api/nav shows, no places, no key. Every
+    answer, yes or no, carries the next challenge, so the app polls with one request."""
+    with self.lock:
+      ok = self._car_challenges.redeem(challenge) and phone.car_reader(self._tokens(), phone_id, challenge, mac) is not None
+      nxt = self._car_challenges.issue()
+    if not ok:
+      return 401, {"v": 1, "n": nxt}
+    s = self.nav_state()
+    d = s.get("destination")
+    return 200, {"v": 1, "n": nxt, "route": s.get("route") or {"active": False}, "car": s.get("near"),
+                 "destination": {"name": d["place_name"], "latitude": d["latitude"], "longitude": d["longitude"]} if d else None}
 
   def pair(self, pin: str, name: str) -> tuple[int, dict]:
     with self.lock:
@@ -1697,6 +1712,9 @@ def make_handler(backend: PanelBackend):
       elif path == "/api/ident":  # the LizPilot app: is this the comma that paired me? No token, opens nothing
         q = parse_qs(query)
         self._json(*backend.ident((q.get("p") or [""])[0], (q.get("n") or [""])[0]))
+      elif path == "/api/car/route":  # the LizPilot app's car screen (Android Auto): no token, the pairing's hash answers a challenge
+        q = parse_qs(query)
+        self._json(*backend.car_route((q.get("p") or [""])[0], (q.get("n") or [""])[0], (q.get("m") or [""])[0]))
       elif path == "/api/fixed/nonce":  # before pairing: carries no secret and opens nothing
         self._json(200, backend.fixed_nonce(self.client_address[0]))
       elif path == "/api/fixed/check":  # asked by a page served by address: it may read only this yes or no
