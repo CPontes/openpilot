@@ -174,7 +174,8 @@ def ident_answer(tokens: list[dict] | None, phone_id, nonce) -> dict | None:
 CAR_PREFIX = "lizpilot-car|v1|"
 CAR_MAC = re.compile(r"[0-9a-f]{64}")
 CHALLENGE_TTL_S = 30.
-CHALLENGE_KEEP = 32  # open challenges at most: someone asking in a loop only pushes the oldest out
+CHALLENGE_PER_ADDRESS = 4  # open challenges per asking address: one asking in a loop pushes out only its own
+CHALLENGE_KEEP = 256  # open challenges in all: 64 addresses asking in a loop, before anyone else's leaves
 
 
 def car_mac(token_hash: str, challenge: str) -> str:
@@ -182,26 +183,34 @@ def car_mac(token_hash: str, challenge: str) -> str:
 
 
 class Challenges:
-  """The challenges the comma handed out, each redeemed once within CHALLENGE_TTL_S. Not thread safe: the caller locks."""
+  """The challenges the comma handed out, each tied to the address that asked and redeemed once, by that address, within
+  CHALLENGE_TTL_S. Another device of the network can neither push the app's out nor use it up (CTO review of navcel-02,
+  item 3). Not thread safe: the caller locks."""
 
   def __init__(self, mono=time.monotonic):
     self.mono = mono
-    self._open: dict[str, float] = {}
+    self._open: dict[str, tuple[str, float]] = {}  # challenge -> (address that asked, when)
 
-  def issue(self) -> str:
+  def issue(self, who: str) -> str:
     now = self.mono()
-    self._open = {c: t for c, t in self._open.items() if now - t < CHALLENGE_TTL_S}
+    self._open = {c: (w, t) for c, (w, t) in self._open.items() if now - t < CHALLENGE_TTL_S}
+    mine = [c for c, (w, _) in self._open.items() if w == who]
+    for c in mine[:max(0, len(mine) - CHALLENGE_PER_ADDRESS + 1)]:
+      self._open.pop(c)
     while len(self._open) >= CHALLENGE_KEEP:
       self._open.pop(next(iter(self._open)))
     c = secrets.token_urlsafe(16)  # 22 characters of [A-Za-z0-9_-]
-    self._open[c] = now
+    self._open[c] = (str(who), now)
     return c
 
-  def redeem(self, challenge) -> bool:
+  def redeem(self, challenge, who) -> bool:
     if not isinstance(challenge, str):
       return False
-    at = self._open.pop(challenge, None)
-    return at is not None and self.mono() - at < CHALLENGE_TTL_S
+    got = self._open.get(challenge)
+    if got is None or got[0] != who:  # never handed out, or handed to another address: that one keeps it
+      return False
+    self._open.pop(challenge)
+    return self.mono() - got[1] < CHALLENGE_TTL_S
 
 
 def car_reader(tokens: list[dict] | None, phone_id, challenge, mac) -> dict | None:

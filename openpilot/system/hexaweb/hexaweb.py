@@ -66,6 +66,7 @@ STATIC_FILES = {
   "/i18n/en.json": (i18n.CATALOG_DIR / "en.json", "application/json; charset=utf-8"),
   "/i18n/es.json": (i18n.CATALOG_DIR / "es.json", "application/json; charset=utf-8"),
 }
+CAR_ROUTE_KEYS = ("active", "next", "type", "modifier", "in_m", "left_m", "left_s", "path")  # what the car's screen draws (NAV-03)
 ICON_CACHE = {"Cache-Control": "public, max-age=604800"}  # the home screen keeps the icon: "no-store" may leave it out
 REPLAY_CACHE = 3
 TRIP_CACHE = 120  # minutes of trips kept in memory
@@ -340,19 +341,24 @@ class PanelBackend:
       out = phone.ident_answer(self._tokens(), phone_id, nonce)
     return (400, {"error": "Valor inválido."}) if out is None else (200, out)
 
-  def car_route(self, phone_id: str, challenge: str, mac: str) -> tuple[int, dict]:
+  def car_route(self, phone_id: str, challenge: str, mac: str, who: str) -> tuple[int, dict]:
     """The car's screen (Android Auto, NAV-03): the route, read without the token by the app that answers the comma's
-    challenge with its pairing's hash (phone.car_reader). Only reading: what /api/nav shows, no places, no key. Every
-    answer, yes or no, carries the next challenge, so the app polls with one request."""
+    challenge with its pairing's hash (phone.car_reader). Each challenge goes to the address that asked (who), and only
+    that address can use it. Only reading, and only what the car's screen draws while a route guides: the next turn, the
+    arrival, the path, the destination and the car. With no route, not even where the car is (CTO review of navcel-02,
+    item 4). Every answer, yes or no, carries the next challenge, so the app polls with one request."""
     with self.lock:
-      ok = self._car_challenges.redeem(challenge) and phone.car_reader(self._tokens(), phone_id, challenge, mac) is not None
-      nxt = self._car_challenges.issue()
+      ok = self._car_challenges.redeem(challenge, who) and phone.car_reader(self._tokens(), phone_id, challenge, mac) is not None
+      nxt = self._car_challenges.issue(who)
     if not ok:
       return 401, {"v": 1, "n": nxt}
     s = self.nav_state()
-    d = s.get("destination")
-    return 200, {"v": 1, "n": nxt, "route": s.get("route") or {"active": False}, "car": s.get("near"),
-                 "destination": {"name": d["place_name"], "latitude": d["latitude"], "longitude": d["longitude"]} if d else None}
+    route, d = s.get("route") or {}, s.get("destination")
+    if not (route.get("active") and d):
+      return 200, {"v": 1, "n": nxt, "route": {"active": False}, "car": None, "destination": None, "computing": bool(d)}
+    return 200, {"v": 1, "n": nxt, "route": {k: route[k] for k in CAR_ROUTE_KEYS if k in route}, "car": s.get("near"), "computing": False,
+                 # the comma connect's destination has only the point (athenad.py): no name is fine (review item 2)
+                 "destination": {"name": str(d.get("place_name") or ""), "latitude": d["latitude"], "longitude": d["longitude"]}}
 
   def pair(self, pin: str, name: str) -> tuple[int, dict]:
     with self.lock:
@@ -1714,7 +1720,8 @@ def make_handler(backend: PanelBackend):
         self._json(*backend.ident((q.get("p") or [""])[0], (q.get("n") or [""])[0]))
       elif path == "/api/car/route":  # the LizPilot app's car screen (Android Auto): no token, the pairing's hash answers a challenge
         q = parse_qs(query)
-        self._json(*backend.car_route((q.get("p") or [""])[0], (q.get("n") or [""])[0], (q.get("m") or [""])[0]))
+        self._json(*backend.car_route((q.get("p") or [""])[0], (q.get("n") or [""])[0], (q.get("m") or [""])[0],
+                                      self.client_address[0]))
       elif path == "/api/fixed/nonce":  # before pairing: carries no secret and opens nothing
         self._json(200, backend.fixed_nonce(self.client_address[0]))
       elif path == "/api/fixed/check":  # asked by a page served by address: it may read only this yes or no

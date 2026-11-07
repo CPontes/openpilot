@@ -97,15 +97,30 @@ def test_ident_refuses_a_malformed_question():
 def test_a_car_challenge_is_good_once_and_for_a_while():  # NAV-03 step 2, Android Auto
   now = [0.]
   ch = phone.Challenges(lambda: now[0])
-  c = ch.issue()
+  app = "192.168.43.20"
+  c = ch.issue(app)
   assert phone.IDENT_NONCE.fullmatch(c)
-  assert ch.redeem(c) and not ch.redeem(c)  # once
-  late = ch.issue()
+  assert ch.redeem(c, app) and not ch.redeem(c, app)  # once
+  late = ch.issue(app)
   now[0] += phone.CHALLENGE_TTL_S
-  assert not ch.redeem(late)
-  many = [ch.issue() for _ in range(phone.CHALLENGE_KEEP + 5)]  # someone asking in a loop: the oldest leave
-  assert not ch.redeem(many[0]) and ch.redeem(many[-1])
-  assert not ch.redeem(None) and not ch.redeem("") and not ch.redeem("x" * 22)
+  assert not ch.redeem(late, app)
+  many = [ch.issue(app) for _ in range(phone.CHALLENGE_PER_ADDRESS + 5)]  # asking in a loop: its own oldest leave
+  assert not ch.redeem(many[0], app) and ch.redeem(many[-1], app)
+  assert not ch.redeem(None, app) and not ch.redeem("", app) and not ch.redeem("x" * 22, app)
+
+
+def test_another_device_can_neither_push_out_nor_use_up_the_apps_challenge():  # CTO review of navcel-02, item 3
+  ch = phone.Challenges(lambda: 0.)
+  app, other = "192.168.43.20", "192.168.43.66"
+  c = ch.issue(app)
+  for _ in range(phone.CHALLENGE_KEEP):  # a whole pool's worth of asking from one other device
+    ch.issue(other)
+  assert not ch.redeem(c, other)  # handed to the app: another address can't use it up
+  assert ch.redeem(c, app)
+  for i in range(phone.CHALLENGE_KEEP // phone.CHALLENGE_PER_ADDRESS + 1):  # only many addresses at once push the oldest out
+    for _ in range(phone.CHALLENGE_PER_ADDRESS):
+      ch.issue(f"10.0.{i}.1")
+  assert len(ch._open) <= phone.CHALLENGE_KEEP
 
 
 def test_the_car_reader_is_a_protocol_of_its_own():

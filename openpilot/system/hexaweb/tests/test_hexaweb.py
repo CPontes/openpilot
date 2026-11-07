@@ -1847,8 +1847,8 @@ def _nav_panel(panel, results=None):
 def _car_panel(panel):  # an invented route at sea, near 0°, 0°
   from openpilot.selfdrive.hexa import nav
   panel.backend.navigator = nav.Navigator(panel.store, position=lambda: (0.012345, -0.045678))
-  panel.backend._route_state = lambda: {"active": True, "next": "Rua Inventada", "in_m": 150, "left_m": 8400, "left_s": 760,
-                                        "path": [[0.0123, -0.0456], [0.0133, -0.0456]]}
+  panel.backend._route_state = lambda: {"active": True, "next": "Rua Inventada", "then": "Avenida Inventada", "in_m": 150, "left_m": 8400,
+                                        "left_s": 760, "path": [[0.0123, -0.0456], [0.0133, -0.0456]]}
   panel.store.put("NavigationEnabled", True)
   panel.store.put("NavDestination", {"latitude": 0.0213, "longitude": -0.0456, "place_name": "Praça Inventada"})
 
@@ -1859,6 +1859,10 @@ def _car_ask(token, challenge, prefix="lizpilot-car|v1|"):  # the protocol writt
   return f"/api/car/route?p={me}&n={challenge}&m={hmac.new(key.encode(), (prefix + challenge).encode(), hashlib.sha256).hexdigest()}"
 
 
+def _car_read(panel, token):  # one poll of the app's car part: a challenge, then the answer
+  return panel.json(_car_ask(token, panel.json("/api/car/route")[1]["n"]))
+
+
 def test_the_car_screen_reads_the_route_without_the_token(panel):  # NAV-03 step 2, Android Auto
   _car_panel(panel)
   token = panel.pair()
@@ -1867,9 +1871,33 @@ def test_the_car_screen_reads_the_route_without_the_token(panel):  # NAV-03 step
   status, body = panel.json(_car_ask(token, first["n"]))
   assert status == 200 and body["route"]["next"] == "Rua Inventada" and body["car"] == [0.0123, -0.0457]
   assert body["destination"] == {"name": "Praça Inventada", "latitude": 0.0213, "longitude": -0.0456}
-  assert set(body) == {"v", "n", "route", "car", "destination"}  # what /api/nav shows of the route: no places, no key
+  assert set(body) == {"v", "n", "route", "car", "destination", "computing"} and body["computing"] is False  # no places, no key
+  assert set(body["route"]) == {"active", "next", "in_m", "left_m", "left_s", "path"}  # only what the car's screen draws
   assert body["n"] != first["n"] and panel.json(_car_ask(token, body["n"]))[0] == 200  # each answer carries the next challenge
   assert panel.json(_car_ask(token, first["n"]))[0] == 401  # a challenge once
+
+
+def test_the_car_screen_reads_a_destination_without_a_name(panel):  # CTO review of navcel-02, item 2
+  _car_panel(panel)
+  token = panel.pair()
+  panel.store.put("NavDestination", {"latitude": 0.0213, "longitude": -0.0456})  # as the comma connect sets it (athenad.py)
+  status, body = _car_read(panel, token)
+  assert status == 200 and body["destination"] == {"name": "", "latitude": 0.0213, "longitude": -0.0456}
+
+
+def test_without_a_route_the_car_screen_doesnt_learn_where_the_car_is(panel):  # CTO review of navcel-02, item 4
+  _car_panel(panel)
+  token = panel.pair()
+  panel.backend._route_state = lambda: {"active": False, "path": [[0.0123, -0.0456], [0.0133, -0.0456]]}  # navd computing it
+  status, body = _car_read(panel, token)
+  assert status == 200 and body["computing"] is True
+  assert body["car"] is None and body["destination"] is None and body["route"] == {"active": False}
+  panel.store.remove("NavDestination")  # no destination at all
+  status, body = _car_read(panel, token)
+  assert status == 200 and body["computing"] is False and body["car"] is None and body["destination"] is None
+  panel.backend._route_state = lambda: {"active": True, "next": "Rua Inventada", "in_m": 150, "left_m": 8400, "left_s": 760}
+  status, body = _car_read(panel, token)  # a stale instruction without a destination guides nobody
+  assert status == 200 and body["car"] is None and body["route"] == {"active": False}
 
 
 def test_the_car_screen_refuses_what_didnt_answer_its_challenge(panel):
@@ -1890,6 +1918,35 @@ def test_the_car_screen_refuses_what_didnt_answer_its_challenge(panel):
   c = panel.json("/api/car/route")[1]["n"]
   panel.store.put(phone.TOKENS_PARAM, [])  # the phone taken off the comma
   assert panel.json(_car_ask(token, c))[0] == 401
+
+
+def test_another_device_on_the_network_cant_spend_the_car_screens_challenge(panel):  # CTO review of navcel-02, item 3
+  _car_panel(panel)
+  token = panel.pair()
+  app, other = "192.168.43.20", "192.168.43.66"
+  b = panel.backend
+  c = b.car_route("", "", "", app)[1]["n"]  # the app's poll gets its challenge
+  for _ in range(phone.CHALLENGE_KEEP):  # someone asking in a loop from another address, before and after
+    b.car_route("", "", "", other)
+  assert b.car_route(*_car_args(token, c), other)[0] == 401  # the app's challenge, sent from another address: refused...
+  status, body = b.car_route(*_car_args(token, c), app)  # ...and not used up: the app still reads with it
+  assert status == 200 and body["route"]["next"] == "Rua Inventada"
+
+
+def _car_args(token, challenge):  # phone, challenge, answer: what the app's query string carries
+  q = dict(kv.split("=", 1) for kv in _car_ask(token, challenge).split("?", 1)[1].split("&"))
+  return q["p"], q["n"], q["m"]
+
+
+def test_the_pairings_hash_is_in_no_answer(panel):  # CTO review of navcel-02, item 5: the hash now reads the route
+  _car_panel(panel)
+  token = panel.pair()
+  h = phone.hash_token(token)
+  me = phone.ident_phone(h)
+  bodies = [panel.request(path, token=token)[2] for path in ("/api/phones", "/api/nav", "/api/state", f"/api/ident?p={me}&n={'c' * 22}")]
+  bodies += [panel.request(_car_ask(token, panel.json("/api/car/route")[1]["n"]))[2], panel.request("/api/car/route")[2]]
+  assert all(b and h.encode() not in b for b in bodies)
+  assert h not in json.dumps(panel.logged)
 
 
 def test_the_car_screen_is_local_only(panel, monkeypatch):
