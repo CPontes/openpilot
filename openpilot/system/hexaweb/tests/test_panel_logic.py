@@ -1335,9 +1335,9 @@ def test_the_map_centres_and_reads_back_the_place_under_the_pin():
 
 
 def test_a_place_reads_short():
-  # owner's print, 05/11: the whole Nominatim name over the title
-  long = "Estrada Leopoldo Fróes, São Francisco, Região Praias da Baía, Niterói, Rio de Janeiro, Região Sudeste, 24360-022, Brasil"
-  assert run("shortPlace", long) == {"title": "Estrada Leopoldo Fróes", "sub": "São Francisco, Niterói"}
+  # the shape Nominatim gave on 05/11, with a public place and a placeholder CEP: the whole name over the title
+  long = "Jardim Botânico de Curitiba, Rua Engenheiro Ostoja Roguski, Região Geográfica Imediata de Curitiba, Curitiba, Paraná, Região Sul, 00000-000, Brasil"
+  assert run("shortPlace", long) == {"title": "Jardim Botânico de Curitiba", "sub": "Rua Engenheiro Ostoja Roguski, Curitiba"}
   assert run("shortPlace", "Praia de Icaraí, Icaraí, Niterói") == {"title": "Praia de Icaraí", "sub": "Icaraí, Niterói"}
   assert run("shortPlace", "-22.90350, -43.10910") == {"title": "-22.90350, -43.10910", "sub": ""}
   assert [run("maneuverKind", *a) for a in [("turn", "right"), ("turn", "slight left"), ("arrive", ""), ("turn", "uturn"), ("depart", "")]] == \

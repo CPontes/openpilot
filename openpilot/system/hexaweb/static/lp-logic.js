@@ -347,8 +347,8 @@
     const h = Math.sin(dl / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dn / 2) ** 2;
     return Math.round(2 * 6371000 * Math.asin(Math.sqrt(h)));
   }
-  // The search's long name, short: the first two parts, then the city. Nominatim gives "Estrada Leopoldo Fróes, São Francisco,
-  // Região Praias da Baía, Niterói, Rio de Janeiro, Região Sudeste, 24360-022, Brasil" (owner's print, 05/11).
+  // The search's long name, short: the first two parts, then the city. Nominatim gives names like "Jardim Botânico de Curitiba,
+  // Rua Engenheiro Ostoja Roguski, Região Geográfica Imediata de Curitiba, Curitiba, Paraná, Região Sul, 00000-000, Brasil".
   const PLACE_DROP = /^(brasil|brazil|regi[ãa]o\b.*|\d{5}-?\d{3}|\d{8}|região metropolitana.*|microrregião.*|mesorregião.*)$/i;
   const STATES = new Set(["acre", "alagoas", "amapá", "amazonas", "bahia", "ceará", "distrito federal", "espírito santo", "goiás", "maranhão", "mato grosso",
     "mato grosso do sul", "minas gerais", "pará", "paraíba", "paraná", "pernambuco", "piauí", "rio de janeiro", "rio grande do norte", "rio grande do sul",
