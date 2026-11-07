@@ -1966,5 +1966,11 @@
  "Não começou: {motivo}": "No empezó: {motivo}",
  "Pronto: {regiao}, baixado em {data}.": "Listo: {regiao}, descargado el {data}.",
  "Parar o download": "Detener la descarga",
- "Sem rede no comma: conecte o comma a um Wi-Fi.": "Sin red en el comma: conecta el comma a un Wi-Fi."
+ "Sem rede no comma: conecte o comma a um Wi-Fi.": "Sin red en el comma: conecta el comma a un Wi-Fi.",
+ "Instalar o mapd e baixar o mapa, vendo até o fim": "Instalar mapd y descargar el mapa, viendo hasta el final",
+ "Instalar o mapd: o celular diz «instalando», depois «instalado» com a versão, ou o motivo de não instalar": "Instalar mapd: el celular dice «instalando», luego «instalado» con la versión, o por qué no se instaló",
+ "Baixar o mapa: «baixando X de Y partes», depois «pronto» com a região e a data, guardadas no comma": "Descargar el mapa: «descargando X de Y partes», luego «listo» con la región y la fecha, guardadas en el comma",
+ "Se o download parar, o celular diz por quê: o carro ligou, você cancelou, a rede caiu, falta espaço ou faltaram partes": "Si la descarga se detiene, el celular dice por qué: el auto se encendió, cancelaste, la red se cayó, falta espacio o faltaron partes",
+ "Sem notícia do comma, o celular diz «o comma não respondeu» e oferece tentar de novo": "Sin noticias del comma, el celular dice «el comma no respondió» y ofrece intentar de nuevo",
+ "Botão novo «Parar o download»; nada muda ao dirigir": "Botón nuevo «Detener la descarga»; nada cambia al conducir"
 }

@@ -1966,5 +1966,11 @@
  "Não começou: {motivo}": "Didn't start: {motivo}",
  "Pronto: {regiao}, baixado em {data}.": "Ready: {regiao}, downloaded on {data}.",
  "Parar o download": "Stop the download",
- "Sem rede no comma: conecte o comma a um Wi-Fi.": "No network on the comma: connect the comma to a Wi-Fi."
+ "Sem rede no comma: conecte o comma a um Wi-Fi.": "No network on the comma: connect the comma to a Wi-Fi.",
+ "Instalar o mapd e baixar o mapa, vendo até o fim": "Install mapd and download the map, seeing it through to the end",
+ "Instalar o mapd: o celular diz «instalando», depois «instalado» com a versão, ou o motivo de não instalar": "Installing mapd: the phone says «installing», then «installed» with the version, or why it didn't install",
+ "Baixar o mapa: «baixando X de Y partes», depois «pronto» com a região e a data, guardadas no comma": "Downloading the map: «downloading X of Y parts», then «ready» with the region and the date, kept on the comma",
+ "Se o download parar, o celular diz por quê: o carro ligou, você cancelou, a rede caiu, falta espaço ou faltaram partes": "If the download stops, the phone says why: the car turned on, you cancelled, the network dropped, no space or parts missing",
+ "Sem notícia do comma, o celular diz «o comma não respondeu» e oferece tentar de novo": "With no word from the comma, the phone says «the comma didn't answer» and offers to try again",
+ "Botão novo «Parar o download»; nada muda ao dirigir": "New «Stop the download» button; nothing changes while driving"
 }
