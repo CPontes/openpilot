@@ -4,9 +4,13 @@ mapd truncates every queue it opens to its own size plus its own header (gomsgq 
 grows with the reader slots. A queue whose size or reader slots differ from openpilot's (cereal/services.py, msgq/msgq.h) leaves
 the header off (MAP-01: 15 slots against 25, 240 bytes, and loggerd never read a mapdOut) or resizes a queue the car reads.
 
-mapd's side is copied here from its source at MAPD_VERSION: settings/const.go of pfeiferj/mapd 8e5eee6 (ServiceQueueSize; on a
-prefixed msgq, the comma's, any other queue gets QUEUE_SIZE_SMALL), the queues main.go and cereal/gps.go open, and the reader
-slots of tools/lizpilot/mapd/0001-msgq-25-reader-slots.patch. A new mapd pin must bring its table here.
+mapd's side is copied here from its source at MAPD_VERSION, pfeiferj/mapd 8e5eee6 with tools/lizpilot/mapd/0001-msgq-25-reader-slots.patch
+(the build's clone at 8864312): settings/const.go (ServiceQueueSize; on a prefixed msgq, the comma's, any other queue gets
+QUEUE_SIZE_SMALL), the queues main.go and cereal/gps.go open, and the patch's reader slots. A new mapd pin must bring its table here.
+
+The table only holds on a prefixed msgq (MAP-04). gomsgq v0.1.12 (msgq.go, IsPrefixedMsgq) takes USE_MSGQ_PREFIX=true, or else
+guesses from /dev/shm/msgq_logMessage being there when mapd starts. A wrong guess sends every queue to /dev/shm/<name>, which
+openpilot never opens, at 10 MB each (QUEUE_SIZE_LEGACY): mapd silently cut off. So the manager starts it with the variable.
 """
 import importlib.util
 import re
@@ -70,3 +74,12 @@ def test_mapd_and_the_msgq_of_this_checkout_have_the_same_reader_slots():
   assert m is not None, f"NUM_READERS not found in {header}"
   assert int(m.group(1)) == MAPD_MAX_READERS, \
     f"msgq has {m.group(1)} reader slots and mapd {MAPD_MAX_READERS}: the queue header would be off, as in MAP-01"
+
+
+def test_the_manager_tells_mapd_the_msgq_is_prefixed():
+  # the only way mapd picks the comma's queues without depending on logmessaged starting first (MAP-04)
+  from openpilot.system.manager.process_config import managed_processes  # here: the other tests don't need the manager
+  cmd = list(managed_processes["mapd"].cmdline)
+  assert cmd[-1] == "./mapd" and "env" in cmd, cmd
+  env = cmd[cmd.index("env") + 1:-1]
+  assert "USE_MSGQ_PREFIX=true" in env, f"mapd starts without USE_MSGQ_PREFIX=true: {cmd}"
