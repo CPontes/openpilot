@@ -1967,6 +1967,120 @@ def test_the_car_turning_on_stops_a_map_download(panel):
   assert panel.backend.limit_tick() is False and len(sent) == 1
 
 
+# *** UI-19: installing mapd and downloading the map, followed until the end ***
+
+def _map_panel(panel, tmp_path, **kw):
+  sent = _limit_panel(panel, **kw)
+  panel.backend._maps_path = tmp_path / "maps.json"
+  return sent
+
+
+def test_limit_install_says_installed_or_why_not(panel, tmp_path):
+  from openpilot.selfdrive.hexa import speed_limit
+  _map_panel(panel, tmp_path, installed=False, install=lambda: "abc")
+  token = panel.pair()
+  panel.vs = VehicleState(onroad=True)
+  assert panel.json("/api/limit/install", {}, token)[0] == 409
+  state = panel.json("/api/limit", token=token)[1]
+  assert state["job"] == {"busy": False, "error": "Só com o carro desligado.", "ok": False} and state["version"] == ""
+  panel.vs = VehicleState(onroad=False)
+  panel.backend._network_kind = lambda: "none"
+  panel.limit["wifi"] = False
+  assert panel.json("/api/limit/install", {}, token) == (409, {"error": "Sem rede no comma: conecte o comma a um Wi-Fi."})
+  panel.backend._network_kind = lambda: "metered"
+  assert "dados móveis" in panel.json("/api/limit/install", {}, token)[1]["error"]
+  panel.limit["wifi"] = True
+  panel.backend._network_kind = lambda: "wifi"
+  assert panel.json("/api/limit/install", {}, token)[0] == 200
+  assert panel.json("/api/limit", token=token)[1]["job"] == {"busy": False, "error": "", "ok": True}
+  _limit_panel(panel)  # installed: the version of the pin, which binary_ok checked by its sha256
+  assert panel.json("/api/limit", token=token)[1]["version"] == speed_limit.MAPD_VERSION
+
+
+def test_map_download_until_ready_is_kept_with_its_date(panel, tmp_path):
+  _map_panel(panel, tmp_path)
+  token = panel.pair()
+  assert panel.json("/api/limit/download", {"area": "br_state.RJ"}, token) == (200, {"ok": True})
+  state = panel.json("/api/limit", token=token)[1]
+  assert (state["map"]["state"], state["map"]["area"], state["saved"]) == ("asked", "br_state.RJ", [])
+  panel.limit["download"] = {"active": True, "done": 3, "total": 40}
+  m = panel.json("/api/limit", token=token)[1]["map"]
+  assert (m["state"], m["done"], m["total"]) == ("downloading", 3, 40)
+  panel.limit["download"] = {"active": False, "done": 40, "total": 40}
+  panel.now = 5000.
+  assert panel.backend.limit_tick() is False  # the worker sees the end, with the phone closed
+  state = panel.json("/api/limit", token=token)[1]
+  assert state["map"]["state"] == "done" and state["saved"] == [{"area": "br_state.RJ", "date": 5000., "files": 40}]
+  # another panel process (the comma restarted): the map is still there, with its date, without downloading it again
+  again = hexaweb.PanelBackend(panel.store, lambda: panel.vs, clock=lambda: panel.now, mono=lambda: panel.now, maps_path=tmp_path / "maps.json")
+  again._limit_state = panel.backend._limit_state
+  assert again.limit_state()["saved"] == [{"area": "br_state.RJ", "date": 5000., "files": 40}]
+  assert again.limit_state()["map"]["state"] == "idle"
+
+
+def test_map_download_says_why_it_stopped(panel, tmp_path):
+  sent = _map_panel(panel, tmp_path)
+  token = panel.pair()
+
+  def ask():
+    panel.limit.update(wifi=True, free=50 * 1024 ** 3, download=None)
+    panel.vs = VehicleState(onroad=False)
+    assert panel.json("/api/limit/download", {"area": "br_state.RJ"}, token)[0] == 200
+    panel.limit["download"] = {"active": True, "done": 1, "total": 40}
+    assert panel.json("/api/limit", token=token)[1]["map"]["state"] == "downloading"
+
+  def end(done=5, **limit):
+    panel.limit.update(download={"active": False, "done": done, "total": 40}, **limit)
+    return panel.json("/api/limit", token=token)[1]["map"]
+
+  ask()
+  m = end(12, wifi=False)  # mapd skips a file it can't get, and ends with files missing
+  assert (m["state"], m["reason"], m["done"]) == ("stopped", "network", 12)
+  ask()
+  assert end(30, free=10 * 1024 ** 2)["reason"] == "space"
+  ask()
+  assert end(39)["reason"] == "partial"
+  ask()
+  assert panel.json("/api/limit/cancel", {}, token) == (200, {"ok": True}) and str(sent[-1].mapdIn.type) == "cancelDownload"
+  assert end()["reason"] == "you"
+  ask()
+  panel.vs = VehicleState(onroad=True)
+  assert panel.backend.limit_tick() is True and str(sent[-1].mapdIn.type) == "cancelDownload"
+  assert end()["reason"] == "car"
+  assert panel.json("/api/limit", token=token)[1]["saved"] == []  # nothing whole, nothing kept
+  assert panel.json("/api/limit/cancel", {})[0] == 401
+
+
+def test_map_download_without_word_from_mapd(panel, tmp_path):
+  _map_panel(panel, tmp_path, download={"active": False, "done": 40, "total": 40})  # an old download's last word
+  token = panel.pair()
+  panel.json("/api/limit/download", {"area": "br_state.RJ"}, token)
+  panel.now += hexaweb.MapJob.START_S - 1
+  assert panel.json("/api/limit", token=token)[1]["map"]["state"] == "asked"
+  panel.now += 2
+  m = panel.json("/api/limit", token=token)[1]["map"]
+  assert (m["state"], m["reason"]) == ("silent", "start")  # "o comma não respondeu", not "começou" forever
+  panel.limit["download"] = {"active": True, "done": 2, "total": 40}  # mapd took it late
+  assert panel.json("/api/limit", token=token)[1]["map"]["state"] == "downloading"
+  panel.limit["download"] = None  # no word for 10 s in the middle
+  m = panel.json("/api/limit", token=token)[1]["map"]
+  assert (m["state"], m["reason"], m["done"]) == ("silent", "middle", 2)
+  panel.limit["download"] = {"active": False, "done": 40, "total": 40}
+  assert panel.json("/api/limit", token=token)[1]["map"]["state"] == "done"
+
+
+def test_a_refused_download_stays_on_the_card(panel, tmp_path):
+  sent = _map_panel(panel, tmp_path, free=5 * 1024 ** 3)  # room for Rio, not for Brazil
+  token = panel.pair()
+  status, body = panel.json("/api/limit/download", {"area": "nation.BR"}, token)
+  assert status == 409 and sent == []
+  m = panel.json("/api/limit", token=token)[1]["map"]
+  assert (m["state"], m["area"], m["error"]) == ("refused", "nation.BR", body["error"])
+  assert panel.json("/api/limit/download", {"area": "br_state.RJ"}, token)[0] == 200
+  assert panel.json("/api/limit/download", {"area": "nation.BR"}, token)[0] == 409
+  assert panel.json("/api/limit", token=token)[1]["map"]["state"] == "asked"  # a refusal never hides the download going on
+
+
 def test_the_panel_never_puts_mapd_in_its_submaster():
   src = (Path(hexaweb.__file__)).read_text()
   sub = src.split("sm = messaging.SubMaster(")[1].split("])")[0]

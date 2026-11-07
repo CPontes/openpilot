@@ -123,6 +123,64 @@ SECURITY_HEADERS = {
 }
 
 
+class MapJob:
+  """A map download as the phone sees it, from the tap to the end (UI-19, owner 07/11: "começou, e depois não tinha como
+  acompanhar"). mapd only says how many files it has, about once a second (mapdExtendedOut.downloadProgress; view() drops it
+  after 10 s without one). The ask, the end, why it stopped and mapd's silence are kept here.
+
+  idle → asked → downloading → done (every file), or stopped (car: the car turned on; you: Parar; network, space or partial:
+  files missing at the end, mapd skips a file it can't get). silent: no word from mapd START_S after the ask (start), or in
+  the middle of a download (middle); a word from it goes back to downloading. refused: the comma said no before asking."""
+  START_S = 20.  # mapd answers a download in about a second (the first progress, then one a second)
+
+  def __init__(self):
+    self.state, self.area, self.asked, self.done, self.total, self.reason, self.error, self.stop_asked = "idle", "", 0., 0, 0, "", "", ""
+
+  def ask(self, area: str, now: float) -> None:
+    self.state, self.area, self.asked, self.done, self.total, self.reason, self.error, self.stop_asked = "asked", area, now, 0, 0, "", "", ""
+
+  def refuse(self, area: str, error: str) -> None:
+    if self.state not in ("asked", "downloading"):
+      self.state, self.area, self.error, self.reason = "refused", area, error, ""
+
+  def stop(self, why: str) -> None:
+    if self.state in ("asked", "downloading", "silent"):
+      self.stop_asked = why
+
+  def update(self, progress: dict | None, now: float, network_ok: Callable[[], bool], room: Callable[[], bool]) -> dict | None:
+    """progress: decode(..., "mapdExtendedOut") if fresh, else None. Returns {"area", "files"} when a download just ended whole."""
+    p = progress
+    if self.state == "asked" and not (p and p["active"]):
+      if self.stop_asked:
+        self.state, self.reason = "stopped", self.stop_asked
+      elif now - self.asked >= self.START_S:  # an old download's progress, or none at all: mapd didn't take the ask
+        self.state, self.reason = "silent", "start"
+      return None
+    if self.state == "silent":
+      if p is None or (self.reason == "start" and not p["active"]):
+        return None
+      self.reason = ""
+    if self.state not in ("asked", "silent", "downloading"):
+      return None
+    if p is None:
+      self.state, self.reason = "silent", "middle"
+      return None
+    self.state, self.done, self.total = "downloading", p["done"], p["total"]
+    if p["active"]:
+      return None
+    if self.stop_asked:
+      self.state, self.reason = "stopped", self.stop_asked
+    elif self.total > 0 and self.done >= self.total:
+      self.state = "done"
+      return {"area": self.area, "files": self.total}
+    else:
+      self.state, self.reason = "stopped", "network" if not network_ok() else "space" if not room() else "partial"
+    return None
+
+  def view(self) -> dict:
+    return {"state": self.state, "area": self.area, "done": self.done, "total": self.total, "reason": self.reason, "error": self.error}
+
+
 def clip_window(mark: dict) -> tuple[float, float]:
   """Seconds of video [before, after] the mark, from the window chosen in Marcar (marks.py clean_window)."""
   win = hexa_marks.clean_window(mark.get("win"))
@@ -158,7 +216,8 @@ class PanelBackend:
                navigator: hexa_nav.Navigator | None = None, route_state: Callable[[], dict] | None = None,
                limit_state: Callable[[], dict] | None = None, send_mapd: Callable[[object], None] | None = None,
                install_mapd: Callable[[], str] = speed_limit.install, network_ok: Callable[[], bool] | None = None,
-               free_bytes: Callable[[], int] | None = None):
+               free_bytes: Callable[[], int] | None = None, network_kind: Callable[[], str] | None = None,
+               maps_path: Path | None = None):
     self.store = store  # Params, or anything with get/put/get_bool/put_bool/remove
     self._vehicle_state = vehicle_state
     self.clock = clock  # wall clock: token, audit and mark dates
@@ -210,6 +269,10 @@ class PanelBackend:
     self._free_bytes = free_bytes or (lambda: 0)  # free space under /data
     self._limit_job = {"busy": False, "error": "", "ok": False}
     self._download_guard = speed_limit.DownloadGuard()
+    self._network_kind = network_kind or (lambda: "")  # "wifi", "metered", "none", or "" before the first deviceState
+    self._maps_path = maps_path or speed_limit.MAPD_DIR / "maps.json"  # the maps downloaded whole: area -> date and files
+    self._maps = MapJob()
+    self._maps_lock = threading.Lock()
 
   def vehicle_state(self) -> VehicleState:
     with self._vs_lock:
@@ -1388,15 +1451,50 @@ class PanelBackend:
       state = self._limit_state()
     except Exception:
       state = {"fresh": False}
-    return {**state, "job": dict(self._limit_job), "areas": [{"key": k, "name": n} for k, n, _ in speed_limit.AREAS]}
+    with self._maps_lock:
+      ended = self._maps.update(state.get("download"), self.mono(), self._network_ok,
+                                lambda: self._free_bytes() >= speed_limit.INSTALL_FREE_BYTES)
+      if ended:
+        self._map_saved(ended)
+      job = self._maps.view()
+    saved = self._saved_maps()
+    return {**state, "job": dict(self._limit_job), "areas": [{"key": k, "name": n} for k, n, _ in speed_limit.AREAS],
+            "version": speed_limit.MAPD_VERSION if state.get("installed") else "",  # installed = the pin's sha256 (binary_ok)
+            "map": job, "saved": [{"area": k, **saved[k]} for k, _, _ in speed_limit.AREAS if k in saved]}
+
+  def _saved_maps(self) -> dict:
+    try:
+      got = json.loads(self._maps_path.read_text())
+      return {k: {"date": float(v["date"]), "files": int(v["files"])} for k, v in got.items() if isinstance(v, dict)}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+      return {}
+
+  def _map_saved(self, ended: dict) -> None:
+    """A map downloaded whole, with the date: closing and opening the phone still says what is on the comma."""
+    saved = self._saved_maps()
+    saved[ended["area"]] = {"date": self.clock(), "files": ended["files"]}
+    try:
+      self._maps_path.parent.mkdir(parents=True, exist_ok=True)
+      tmp = self._maps_path.with_suffix(".tmp")
+      tmp.write_text(json.dumps(saved) + "\n")
+      os.replace(tmp, self._maps_path)
+    except OSError:
+      from openpilot.common.swaglog import cloudlog
+      cloudlog.exception("hexaweb: could not keep the downloaded map")
 
   def _limit_ready(self, need_bytes: int) -> None:
-    speed_limit.check_conditions(not self.vehicle_state().onroad, self._network_ok(), self._free_bytes(), need_bytes)
+    offroad = not self.vehicle_state().onroad
+    if offroad and self._network_kind() == "none":
+      raise speed_limit.InstallError("Sem rede no comma: conecte o comma a um Wi-Fi.")
+    speed_limit.check_conditions(offroad, self._network_ok(), self._free_bytes(), need_bytes)
 
   def limit_install(self, who: dict) -> tuple[int, dict]:
     try:
       self._limit_ready(speed_limit.INSTALL_FREE_BYTES)
     except speed_limit.InstallError as e:
+      with self.lock:
+        if not self._limit_job["busy"]:  # the card says why it didn't install, not only a toast that goes away
+          self._limit_job = {"busy": False, "error": str(e), "ok": False}
       return 409, {"error": str(e)}
     with self.lock:
       if self._limit_job["busy"]:
@@ -1426,15 +1524,29 @@ class PanelBackend:
       self._limit_ready(need)
       msg = speed_limit.download_message(area)
     except speed_limit.InstallError as e:
+      with self._maps_lock:
+        self._maps.refuse(area, str(e))
       return 409, {"error": str(e)}
     self._send_mapd(msg)
+    with self._maps_lock:
+      self._maps.ask(area, self.mono())
+    return 200, {"ok": True}
+
+  def limit_cancel(self, who: dict) -> tuple[int, dict]:
+    """Parar: mapd stops after the file it is on."""
+    self._send_mapd(speed_limit.mapd_in("cancelDownload"))
+    with self._maps_lock:
+      self._maps.stop("you")
     return 200, {"ok": True}
 
   def limit_tick(self) -> bool:
-    """The worker's turn: a map download stops when the car turns on (mapd downloads only parked). True if it asked."""
+    """The worker's turn: a map download stops when the car turns on (mapd downloads only parked), and a download that
+    ends with the phone closed is kept with its date. True if it asked mapd to stop."""
     download = self.limit_state().get("download") or {}
     if self._download_guard.update(self.vehicle_state().onroad, bool(download.get("active"))):
       self._send_mapd(speed_limit.mapd_in("cancelDownload"))
+      with self._maps_lock:
+        self._maps.stop("car")
       return True
     return False
 
@@ -1683,6 +1795,7 @@ def make_handler(backend: PanelBackend):
         "/api/nav/token": lambda who, b: backend.nav_token(who, b.get("token", "")),
         "/api/limit/install": lambda who, b: backend.limit_install(who),
         "/api/limit/download": lambda who, b: backend.limit_download(who, str(b.get("area", ""))),
+        "/api/limit/cancel": lambda who, b: backend.limit_cancel(who),
       }
       if path not in routes and path != "/api/logout":
         self._json(404, {"error": "Não encontrado."})
@@ -1765,6 +1878,13 @@ def main():
     ds = sm["deviceState"]
     return sm.recv_frame["deviceState"] > 0 and str(ds.networkType) != "none" and not ds.networkMetered
 
+  def network_kind() -> str:  # why a download can't start: no network at all, or a metered one (UI-19)
+    sm.update(0)
+    ds = sm["deviceState"]
+    if sm.recv_frame["deviceState"] <= 0:
+      return ""
+    return "none" if str(ds.networkType) == "none" else "metered" if ds.networkMetered else "wifi"
+
   def free_bytes() -> int:
     import shutil
     try:
@@ -1830,7 +1950,8 @@ def main():
                          health_state=health_state, navigator=hexa_nav.Navigator(params, position=car_position), route_state=route_state,
                          sharer=hexa_share.Sharer(params, Paths.log_root(), edition=edition.EDITION,
                                                   offroad=lambda: not backend.vehicle_state().onroad),  # the car on stops a cut
-                         limit_state=limit_view, send_mapd=send_mapd, network_ok=unmetered, free_bytes=free_bytes)
+                         limit_state=limit_view, send_mapd=send_mapd, network_ok=unmetered, free_bytes=free_bytes,
+                         network_kind=network_kind)
 
   def share_worker():
     # one cut or one send at a time, car off for the cut, a network that isn't metered for the send
