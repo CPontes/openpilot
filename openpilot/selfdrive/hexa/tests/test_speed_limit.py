@@ -188,12 +188,12 @@ def test_install_checks_the_hash_and_writes_for_good(tmp_path, monkeypatch):
   monkeypatch.setattr(sl.os, "fsync", lambda fd: synced.append(fd) or real_fsync(fd))
   assert sl.install("https://x/mapd", good, dest, fetch=lambda u: data) == good
   assert synced and dest.read_bytes() == data and os.access(dest, os.X_OK) and sl.binary_ok(dest, good)
-  assert json.loads((dest.parent / "VERSION").read_text()) == {"version": "8e5eee6", "sha256": good}
+  assert json.loads((dest.parent / "VERSION").read_text()) == {"version": sl.MAPD_VERSION, "sha256": good}
 
 
 def test_the_shipped_pins_are_empty_or_complete():
   assert (sl.MAPD_URL == "" and sl.MAPD_SHA256 == "") or (sl.MAPD_URL.startswith("https://") and len(sl.MAPD_SHA256) == 64)
-  assert sl.MAPD_VERSION == "8e5eee6"
+  assert sl.MAPD_VERSION == "8e5eee6-msgq25"  # the source commit of the schema, plus our msgq patch (MAP-02)
 
 
 # *** downloads: car off, unmetered network, free space, and stopped when the car turns on (finding 5) ***
