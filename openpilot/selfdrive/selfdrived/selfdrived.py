@@ -21,6 +21,10 @@ from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 from openpilot.selfdrive.selfdrived.events import Events, ET
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
+from openpilot.selfdrive.selfdrived.always_on_lateral import LongitudinalPause, reverse_is_parking
+from openpilot.selfdrive.selfdrived.traffic_alerts import AccLostAlert, AutoResume, BumpSlowdown, LeadDepartAlert, StopHoldAlert, driver_attentive
+from openpilot.selfdrive.hexa import radars, speed_limit
+from opendbc.car.gwm.values import GwmSafetyFlags
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
 
 from openpilot.common.version import get_build_metadata
@@ -44,6 +48,7 @@ AlertLevel = log.DriverMonitoringState.AlertLevel
 MonitoringPolicy = log.DriverMonitoringState.MonitoringPolicy
 
 IGNORED_SAFETY_MODES = (SafetyModel.silent, SafetyModel.noOutput)
+NON_DRIVING_PROCESSES = {"hexaweb", "mapd"}  # nothing restarts a dead process: the phone panel or the map going down must never stop openpilot
 
 
 class SelfdriveD:
@@ -103,6 +108,37 @@ class SelfdriveD:
     self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
 
     car_recognized = self.CP.brand != 'mock'
+
+    # always-on lateral (GWM): the brake pauses longitudinal instead of disengaging, the lever resumes it
+    self.always_on_lateral = self.CP.brand == 'gwm' and len(self.CP.safetyConfigs) > 0 and \
+                             bool(self.CP.safetyConfigs[-1].safetyParam & GwmSafetyFlags.ALWAYS_ON_LATERAL)
+    self.long_pause = LongitudinalPause()
+    self.lead_depart_alert = LeadDepartAlert() if self.params.get_bool("LeadDepartAlert") else None
+    self.stop_hold_alert = StopHoldAlert()
+    # the panda only lets the pull out with the same flag
+    self.auto_resume = AutoResume() if self.CP.brand == 'gwm' and len(self.CP.safetyConfigs) > 0 and \
+                                       bool(self.CP.safetyConfigs[-1].safetyParam & GwmSafetyFlags.AUTO_RESUME) else None
+    self.bump_slowdown = BumpSlowdown() if self.CP.brand == 'gwm' and len(self.CP.safetyConfigs) > 0 and \
+                         bool(self.CP.safetyConfigs[-1].safetyParam & GwmSafetyFlags.ACC_MINUS) else None
+    self.acc_lost_alert = AccLostAlert() if self.CP.brand == 'gwm' and not self.CP.openpilotLongitudinalControl and \
+                          self.params.get_bool("AccLostAlert") else None
+    # the road's limit from the map: mapd's own socket, never in the SubMaster (a mapd of another schema must not reach
+    # data_sample()), read and decoded inside check_speed_limit's try. Only when the option is "avisar" or "ajustar"
+    self.speed_limit_watch = None
+    # "ajustar" (CRUISE-01): the set speed follows the limit, only if the panda lets the plus and the minus out
+    self.limit_follow = speed_limit.LimitFollow(DT_CTRL) if speed_limit.option(self.params) == speed_limit.ADJUST and \
+                        self.CP.brand == 'gwm' and len(self.CP.safetyConfigs) > 0 and \
+                        bool(self.CP.safetyConfigs[-1].safetyParam & GwmSafetyFlags.ACC_PLUS) else None
+    if speed_limit.option(self.params) in (speed_limit.WARN, speed_limit.ADJUST):
+      self.speed_limit_watch = speed_limit.SpeedLimitWatch(DT_CTRL)
+      self.mapd_sock = messaging.sub_sock('mapdOut', conflate=True)
+      self.mapd_limit = (0., -1e9)  # (m/s, monotonic time it came)
+    self.radar_watch = None
+    if self.params.get_bool("RadarAlert"):
+      try:
+        self.radar_watch = radars.RadarWatch(radars.load_current(self.params.get(radars.EDITS_PARAM), time.time()))  # noqa: TID251
+      except Exception:
+        cloudlog.exception("radar list failed")
 
     # cleanup old params
     if not self.CP.alphaLongitudinalAvailable:
@@ -201,9 +237,51 @@ class SelfdriveD:
       paired = prime_type is not None and int(prime_type) >= 0
       self.events.add(EventName.userBookmark if paired else EventName.userBookmarkNotPaired)
 
+    if self.radar_watch is not None and self.sm.updated[self.gps_location_service]:
+      self.check_radars()
+
+    if self.speed_limit_watch is not None:
+      self.check_speed_limit(CS)
+
+    if self.lead_depart_alert is not None:
+      lead = self.sm['radarState'].leadOne
+      in_drive = CS.gearShifter == car.CarState.GearShifter.drive
+      if self.lead_depart_alert.update(CS.standstill, in_drive, CS.gasPressed, lead.present, lead.dRel, lead.vLead):
+        self.events.add(EventName.leadDeparted)
+
     # Don't add any more events while in dashcam mode
     if self.CP.passive:
       return
+
+    if self.bump_slowdown is not None and self.bump_slowdown.update(self.enabled, CS.cruiseState.speedCluster * 3.6, CS.gasPressed, CS.brakePressed):
+      self.events.add(EventName.bumpSlowdown)
+
+    if self.limit_follow is not None and self.speed_limit_watch is not None:
+      # CTO review of codeweb-14: like the warning, following the limit is never worth taking selfdrived down
+      try:
+        bump = self.bump_slowdown is not None and self.bump_slowdown.target is not None
+        step = self.limit_follow.update(self.enabled, CS.cruiseState.driving, not CS.standstill, CS.cruiseState.speedCluster * 3.6,
+                                        self.speed_limit_watch.limit_kph, CS.gasPressed, CS.brakePressed, bump)
+        if step > 0:
+          self.events.add(EventName.speedLimitUp)
+        elif step < 0:
+          self.events.add(EventName.speedLimitDown)
+      except Exception:
+        cloudlog.exception("speed limit follow failed")
+        self.limit_follow = None
+
+    if self.acc_lost_alert is not None and self.acc_lost_alert.update(self.enabled, CS.cruiseState.driving, CS.vEgo, CS.gasPressed, CS.brakePressed):
+      self.events.add(EventName.accLost)
+
+    if self.stop_hold_alert.update(self.sm['longitudinalPlan'].stopFinishGo):
+      self.events.add(EventName.stopHold)
+
+    if self.auto_resume is not None:
+      lead = self.sm['radarState'].leadOne
+      in_drive = CS.gearShifter == car.CarState.GearShifter.drive
+      if self.auto_resume.update(self.enabled, CS.standstill, in_drive, CS.gasPressed, CS.brakePressed, lead.present, lead.dRel, lead.vLead,
+                                 driver_attentive(self.sm['driverMonitoringState'])):
+        self.events.add(EventName.autoResume)
 
     # Block resume if cruise never previously enabled
     resume_pressed = any(be.type in (ButtonType.accelCruise, ButtonType.resumeCruise) for be in CS.buttonEvents)
@@ -246,10 +324,17 @@ class SelfdriveD:
           # body always wants to enable
           self.events.add(EventName.pcmEnable)
 
+      brake_disengage = (CS.brakePressed and (not self.CS_prev.brakePressed or not CS.standstill)) or \
+                        (CS.regenBraking and (not self.CS_prev.regenBraking or not CS.standstill))
+      if self.always_on_lateral:
+        # pause longitudinal until the next lever pull, keep steering
+        if self.long_pause.update(self.enabled, brake_disengage, CS):
+          self.events.add(EventName.gasPressedOverride)
+        brake_disengage = False
+        reverse_is_parking(self.events, self.enabled, CS.brakePressed)
+
       # Disable on rising edge of accelerator or brake. Also disable on brake when speed > 0
-      if (CS.gasPressed and not self.CS_prev.gasPressed and self.disengage_on_accelerator) or \
-        (CS.brakePressed and (not self.CS_prev.brakePressed or not CS.standstill)) or \
-        (CS.regenBraking and (not self.CS_prev.regenBraking or not CS.standstill)):
+      if (CS.gasPressed and not self.CS_prev.gasPressed and self.disengage_on_accelerator) or brake_disengage:
         self.events.add(EventName.pedalPressed)
 
     # Create events for temperature, disk space, and memory
@@ -346,7 +431,7 @@ class SelfdriveD:
     if self.big_model_active and big_failed:
       self.events.add(EventName.bigModelFailed)
 
-    not_running = {p.name for p in self.sm['managerState'].processes if not p.running and p.shouldBeRunning}
+    not_running = {p.name for p in self.sm['managerState'].processes if not p.running and p.shouldBeRunning} - NON_DRIVING_PROCESSES
     if self.sm.recv_frame['managerState'] and len(not_running):
       if not_running != self.not_running_prev:
         cloudlog.event("process_not_running", not_running=not_running, error=True)
@@ -560,6 +645,36 @@ class SelfdriveD:
     self.publish_selfdriveState(CS)
 
     self.CS_prev = CS
+
+  def check_radars(self):
+    # a warning is never worth taking selfdrived down: on any failure it just stops warning
+    try:
+      gps = self.sm[self.gps_location_service]
+      hit = self.radar_watch.update(time.monotonic(), gps.latitude, gps.longitude, gps.bearingDeg, gps.speed, gps.horizontalAccuracy) if gps.hasFix else None
+    except Exception:
+      cloudlog.exception("radar check failed")
+      self.radar_watch = None
+      return
+    if hit is not None:
+      radars.last_hit = hit
+      self.events.add(EventName.radarAhead)
+      if self.bump_slowdown is not None and hit["kind"] == radars.BUMP and hit["limit"] is not None:
+        self.bump_slowdown.start(hit["limit"], gps.speed * 3.6)
+
+  def check_speed_limit(self, CS):
+    # the road's limit from the map (mapd): a warning is never worth taking selfdrived down
+    try:
+      out = speed_limit.decode(self.mapd_sock.receive(non_blocking=True), 'mapdOut')
+      if out is not None:
+        self.mapd_limit = (out['speedLimit'], time.monotonic())
+      limit, at = self.mapd_limit
+      fresh = time.monotonic() - at < speed_limit.STALE_S
+      if self.speed_limit_watch.update(CS.vEgoCluster, limit, fresh):
+        speed_limit.last_limit_kph = round(limit * speed_limit.KPH)
+        self.events.add(EventName.speedLimitOver)
+    except Exception:
+      cloudlog.exception("speed limit check failed")
+      self.speed_limit_watch = None
 
   def params_thread(self, evt):
     while not evt.is_set():

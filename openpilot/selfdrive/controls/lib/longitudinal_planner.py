@@ -5,13 +5,20 @@ import openpilot.cereal.messaging as messaging
 from opendbc.car.interfaces import ACCEL_MIN, ACCEL_MAX
 from openpilot.common.constants import CV
 from openpilot.common.filter_simple import FirstOrderFilter
+from openpilot.common.params import Params
 from openpilot.common.realtime import DT_MDL
 from openpilot.selfdrive.modeld.constants import ModelConstants
 from openpilot.selfdrive.controls.lib.accel_boost import AccelBoost
+from openpilot.selfdrive.controls.lib.lead_boost import LeadBoost
+from openpilot.selfdrive.controls.lib.haval_shadow import HavalShadow
+from openpilot.selfdrive.controls.lib.lead_closing import LeadClosing
 from openpilot.selfdrive.controls.lib.longcontrol import LongCtrlState
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import LongitudinalMpc, LongitudinalPlanSource
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import T_IDXS as T_IDXS_MPC
 from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N, get_accel_from_plan, should_stop
+from openpilot.selfdrive.controls.lib.stop_closer import StopCloser
+from openpilot.selfdrive.controls.lib.stop_finish import StopFinish
+from openpilot.selfdrive.controls.lib.stop_point import StopPoint
 from openpilot.selfdrive.car.cruise import V_CRUISE_MAX, V_CRUISE_UNSET
 from openpilot.common.swaglog import cloudlog
 
@@ -36,6 +43,15 @@ class LongitudinalPlanner:
     self.fcw = False
     self.dt = dt
     self.accel_boost = AccelBoost()
+    self.stop_point = StopPoint(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl else None
+    self.lead_boost = LeadBoost(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl else None
+    self.lead_closing = LeadClosing(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl and Params().get_bool("LeadClosing") else None
+    self.stop_finish = StopFinish(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl and Params().get_bool("StopFinish") else None
+    self.stop_closer = StopCloser(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl and Params().get_bool("StopCloser") else None
+    self.stop_closer_extra = 0.
+    # only written to the log: never a candidate (haval_shadow.py)
+    self.haval_shadow = HavalShadow(dt) if CP.brand == "gwm" and CP.openpilotLongitudinalControl else None
+    self.haval_shadow_accel = 0.
 
     self.v_desired_filter = FirstOrderFilter(init_v, 2.0, self.dt)
     self.a_cruise = init_a
@@ -65,6 +81,18 @@ class LongitudinalPlanner:
       self.v_desired_filter.x = v_ego
       self.output_a_target = np.clip(sm['carState'].aEgo, ACCEL_MIN, ACCEL_MAX)
       self.a_cruise = self.output_a_target
+      if self.stop_point is not None:
+        self.stop_point.reset()
+      if self.lead_boost is not None:
+        self.lead_boost.reset()
+      if self.lead_closing is not None:
+        self.lead_closing.reset()
+      if self.stop_finish is not None:
+        self.stop_finish.long_off(v_ego, sm['carState'].gasPressed)
+      if self.stop_closer is not None:
+        self.stop_closer.reset()
+      if self.haval_shadow is not None:
+        self.haval_shadow.reset()
 
     # Prevent divergence, smooth in current v_ego
     self.v_desired_filter.x = max(0.0, self.v_desired_filter.update(v_ego))
@@ -77,7 +105,15 @@ class LongitudinalPlanner:
       self.mpc.set_cur_state(self.v_desired_filter.x, self.output_a_target)
     else:
       self.mpc.set_cur_state(v_ego, sm['carState'].aEgo)
-    self.mpc.update(sm['radarState'], personality=sm['selfdriveState'].personality)
+    self.stop_closer_extra = 0.
+    if self.stop_closer is not None and not reset_state:
+      self.stop_closer_extra = self.stop_closer.update(v_ego, sm['carState'].camLeadDistance, sm['radarState'].leadOne, sm['carState'].gasPressed,
+                                                       self.output_a_target)
+    self.mpc.update(sm['radarState'], personality=sm['selfdriveState'].personality, lead_extra=self.stop_closer_extra)
+    self.haval_shadow_accel = 0.
+    if self.haval_shadow is not None and not reset_state:
+      pedal = sm['carState'].gasPressed or sm['carState'].brakePressed
+      self.haval_shadow_accel = self.haval_shadow.update(v_ego, sm['carState'].camLeadDistance, sm['radarState'].leadOne, pedal)
 
     self.v_desired_trajectory = np.interp(CONTROL_N_T_IDX, T_IDXS_MPC, self.mpc.v_solution)
     self.a_desired_trajectory = np.interp(CONTROL_N_T_IDX, T_IDXS_MPC, self.mpc.a_solution)
@@ -101,11 +137,24 @@ class LongitudinalPlanner:
     self.a_cruise = get_cruise_accel(v_cruise, v_ego, self.a_cruise, self.output_a_target, self.dt)
     cruise_should_stop = should_stop(v_ego, self.a_cruise)
 
+    a_model = output_a_target_e2e
     output_a_target_e2e = self.accel_boost.update(sm, output_a_target_e2e, output_a_target_mpc, self.a_cruise)
+    if self.lead_boost is not None and not reset_state:
+      lat_accel = abs(sm['modelV2'].action.desiredCurvature) * v_ego ** 2
+      output_a_target_e2e += self.lead_boost.update(a_model, output_should_stop_e2e, v_ego, sm['radarState'].leadOne, lat_accel)
 
     candidates = [(output_a_target_mpc, self.mpc.source, output_should_stop_mpc),
                   (self.a_cruise, LongitudinalPlanSource.cruise, cruise_should_stop),
                   (output_a_target_e2e, LongitudinalPlanSource.e2e, output_should_stop_e2e)]
+    if self.stop_point is not None:
+      a_stop = self.stop_point.update(v_ego, sm['radarState'].leadOne.present, sm['carState'].gasPressed, sm['modelV2'])
+      candidates.append((a_stop, LongitudinalPlanSource.e2e, False))
+    if self.lead_closing is not None and not reset_state:
+      a_closing = self.lead_closing.update(v_ego, sm['carState'].camLeadDistance, sm['radarState'].leadOne, sm['carState'].gasPressed, a_prev)
+      candidates.append((a_closing, LongitudinalPlanSource.lead0, False))
+    if self.stop_finish is not None and not reset_state:
+      a_finish = self.stop_finish.update(v_ego, sm['radarState'].leadOne, sm['carState'].gasPressed, sm['modelV2'])
+      candidates.append((a_finish, LongitudinalPlanSource.e2e, should_stop(v_ego, a_finish)))
 
     output_a_target, self.mpc.source, _ = min(candidates, key=lambda c: c[0])
     self.output_should_stop = any(should_stop for _, _, should_stop in candidates)
@@ -133,6 +182,9 @@ class LongitudinalPlanner:
 
     longitudinalPlan.aTarget = float(self.output_a_target)
     longitudinalPlan.accelBoost = float(self.accel_boost.total_boost)
+    longitudinalPlan.stopFinishGo = self.stop_finish is not None and self.stop_finish.go_asked
+    longitudinalPlan.stopCloserExtra = float(self.stop_closer_extra)
+    longitudinalPlan.havalShadowAccel = float(self.haval_shadow_accel)
     longitudinalPlan.shouldStop = bool(self.output_should_stop)
     longitudinalPlan.allowBrake = True
 

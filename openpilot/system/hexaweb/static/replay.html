@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B0E11">
+<link rel="stylesheet" href="/lp.css">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="LizPilot">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="icon" type="image/png" href="/favicon.png">
+<title>Hexa · Replay</title>
+<style>
+  :root { --road: #1A2128; --info: #6CB4FF; --purple: #B49BFF; --pink: #FF8FC0; --off: #8C97A3; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 var(--font); }
+  main { max-width: 560px; margin: 0 auto; padding: 12px 12px 40px; }
+  header { display: flex; align-items: baseline; gap: 10px; }
+  h1 { font-size: 20px; margin: 4px 0; }
+  a { color: var(--accent); }
+  select { font: inherit; padding: 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--text); width: 100%; }
+  .sub { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px; margin-bottom: 8px; }
+  .status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .chip { padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; color: #fff; background: var(--off); }
+  .chip.on { background: var(--accent); color: var(--on-accent); } .chip.alert { background: var(--danger); }
+  .big { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .alerttxt { color: var(--danger); font-weight: 600; font-size: 14px; flex-basis: 100%; min-height: 1.2em; }
+  canvas { display: block; width: 100%; touch-action: none; }
+  .gauges { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .gauge { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 8px 10px; }
+  .gauge .label { font-size: 12px; color: var(--muted); }
+  .gauge .val { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .controls { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .controls button { font: inherit; font-weight: 700; border: 1px solid var(--line); background: var(--card); color: var(--text);
+                     border-radius: 10px; padding: 10px 14px; min-width: 48px; }
+  .controls button.play { background: var(--accent); color: var(--on-accent); border-color: var(--accent); flex: 1; }
+  .controls select { width: auto; }
+  ul.events { list-style: none; margin: 0; padding: 0; }
+  ul.events li { display: flex; gap: 8px; align-items: baseline; padding: 8px 4px; border-top: 1px solid var(--line); cursor: pointer; }
+  ul.events li:first-child { border-top: 0; }
+  ul.events li.now { background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 8px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: none; transform: translateY(1px); }
+  .time { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; min-width: 42px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .msg { padding: 16px; text-align: center; color: var(--muted); }
+  .filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  .hidden { display: none; }
+  .filters label { font-size: 13px; border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; display: inline-flex; gap: 6px; align-items: center; }
+</style>
+</head>
+<body>
+<main>
+  <header><h1>Replay</h1><a href="/" class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>LizPilot</a></header>
+  <select id="seg" data-t-aria="Trecho gravado" aria-label="Trecho gravado"></select>
+  <p class="sub" id="summary"></p>
+  <div id="msg" class="msg hidden"></div>
+
+  <div id="view">
+    <div class="card status">
+      <span class="chip" id="chip">—</span>
+      <span class="big" id="speed">—</span><span class="muted" id="setspeed"></span>
+      <span class="muted" style="margin-left:auto" id="clock">0:00</span>
+      <span class="alerttxt" id="alert"></span>
+    </div>
+    <div class="card"><canvas id="road" height="340" data-t-aria="Vista de cima: faixas, caminho do openpilot e carro da frente" aria-label="Vista de cima: faixas, caminho do openpilot e carro da frente"></canvas></div>
+    <div class="gauges">
+      <div class="gauge"><div class="label" data-t>volante</div><canvas id="wheel" height="90"></canvas><div class="val" id="wheelv"></div></div>
+      <div class="gauge"><div class="label" data-t>força do openpilot (aplicada · pedida)</div><canvas id="torque" height="40"></canvas><div class="val" id="torquev"></div>
+        <div class="label" style="margin-top:6px" data-t>você no volante</div><canvas id="driver" height="28"></canvas><div class="val" id="driverv"></div></div>
+    </div>
+    <div class="gauge" style="margin-top:8px"><div class="label" data-t>curva: pedida × feita (m/s²) · faixa cinza = o que a direção consegue (~1,15)</div>
+      <canvas id="lat" height="36"></canvas><div class="val" id="latv"></div></div>
+
+    <div class="card" style="margin-top:8px">
+      <canvas id="tl" height="110" data-t-aria="Linha do tempo: toque para ir ao momento" aria-label="Linha do tempo: toque para ir ao momento"></canvas>
+      <div class="legend" id="legend"></div>
+      <div class="controls">
+        <button id="prevBtn" data-t-aria="Evento anterior" aria-label="Evento anterior">⏮</button>
+        <button id="playBtn" class="play">▶</button>
+        <button id="nextBtn" data-t-aria="Próximo evento" aria-label="Próximo evento">⏭</button>
+        <select id="rate" data-t-aria="Velocidade" aria-label="Velocidade"><option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="filters" id="filters"></div>
+      <ul class="events" id="events"></ul>
+    </div>
+  </div>
+</main>
+
+<script src="/i18n.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const T = (x) => LP.t(x), TF = (x, v) => LP.tf(x, v);
+const KINDS = {
+  mark: ["bandeira", "--pink"], limit: ["no limite", "--warn"], oscillation: ["balanço", "--purple"],
+  alert: ["alerta", "--danger"], brake: ["freio", "--danger"], disengage: ["desengate", "--off"],
+  engage: ["engate", "--accent"], driver: ["você", "--info"], gas: ["acelerador", "--gas"],
+};
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+let token = null;
+try { token = localStorage.getItem("hexaToken"); } catch (e) {}
+let data = null, t = 0, playing = false, rate = 1, lastTs = null, idx = 0;
+const hidden = new Set(["driver"]);
+
+async function get(path) {
+  const r = await fetch(path, { headers: token ? { Authorization: "Bearer " + token } : {} });
+  let body = {};
+  try { body = await r.json(); } catch (e) {}
+  return { status: r.status, body };
+}
+
+function showMsg(text) { $("msg").textContent = text; $("msg").classList.toggle("hidden", !text); $("view").style.display = text ? "none" : ""; }
+function fmt(s) { s = Math.max(0, s); return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`; }
+
+async function loadList() {
+  const r = await get("/api/replay/list");
+  if (r.status === 401) { showMsg(T("Pareie este celular no painel primeiro.")); return; }
+  if (r.status !== 200) { showMsg(T(r.body.error || "Não foi possível listar os trechos.")); return; }
+  const sel = $("seg"); sel.replaceChildren();
+  for (const s of r.body.segments) { const o = document.createElement("option"); o.value = s.id; o.textContent = s.label || s.id; sel.appendChild(o); }
+  if (!r.body.segments.length) { showMsg(T("Nenhum trecho gravado encontrado.")); return; }
+  const query = new URLSearchParams(location.search), want = query.get("id");
+  if (want) sel.value = want;
+  loadSeg(sel.value, Number(query.get("t")) || 0);
+}
+
+async function loadSeg(id, start = 0) {
+  showMsg(T("Carregando…"));
+  const r = await get("/api/replay/data?id=" + encodeURIComponent(id));
+  if (r.status !== 200) { showMsg(T(r.body.error || "Não foi possível abrir o trecho.")); return; }
+  data = r.body; t = start; idx = 0; playing = false; $("playBtn").textContent = "▶ " + T("tocar");
+  const s = data.summary, c = s.counts || {};
+  $("summary").textContent = `${fmt(data.duration)} · ` + TF("openpilot ativo {pct}% do trecho, parado incluído", { pct: s.lat_pct }) + ` · ${T("máx")} ${Math.round(s.v_max)} km/h · ` +
+    Object.keys(KINDS).filter(k => c[k]).map(k => `${c[k]} ${T(KINDS[k][0])}`).join(" · ");
+  showMsg("");
+  buildFilters(); renderEvents(); drawTimelineBase(); render();
+}
+
+function frameAt(time) {
+  const fr = data.frames;
+  let lo = 0, hi = fr.length - 1;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (fr[mid].t <= time) lo = mid; else hi = mid - 1; }
+  return lo;
+}
+
+// the height attribute holds the CSS height; the backing store is resized to device pixels, which
+// rewrites that attribute, so the CSS height is kept in data-h
+function cssHeight(c) {
+  if (!c.dataset.h) c.dataset.h = c.getAttribute("height");
+  return c.dataset.h * 1;
+}
+function sizeCanvas(c) {
+  const dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = cssHeight(c);
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+    c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.height = h + "px";
+  }
+  const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h); return [g, w, h];
+}
+
+// *** road, from above: forward is up, sqrt scale so the near field is readable ***
+function drawRoad(f) {
+  const [g, W, H] = sizeCanvas($("road"));
+  g.fillStyle = css("--road"); g.fillRect(0, 0, W, H);
+  const maxX = data.xs.length ? data.xs[data.xs.length - 1] : 75, half = 6;
+  const py = (x) => H - 18 - Math.sqrt(Math.max(x, 0) / maxX) * (H - 30);
+  const px = (y) => W / 2 + (y / half) * (W / 2);
+  const line = (ys, color, width, dash) => {
+    if (!ys || !ys.length) return;
+    g.beginPath(); g.setLineDash(dash || []); g.strokeStyle = color; g.lineWidth = width;
+    ys.forEach((y, i) => { const X = px(y), Y = py(data.xs[i]); i ? g.lineTo(X, Y) : g.moveTo(X, Y); });
+    g.stroke(); g.setLineDash([]);
+  };
+  (f.edges || []).forEach(e => line(e, "rgba(255,90,80,.75)", 2, [6, 6]));
+  (f.lanes || []).forEach((l, i) => line(l, `rgba(255,255,255,${Math.max(0.12, (f.lp || [])[i] || 0)})`, 3));
+  if (f.path && f.path.length) {
+    g.beginPath(); g.fillStyle = f.lat ? "rgba(63,178,122,.38)" : "rgba(200,200,200,.18)";
+    f.path.forEach((y, i) => { const X = px(y - 0.9), Y = py(data.xs[i]); i ? g.lineTo(X, Y) : g.moveTo(X, Y); });
+    for (let i = f.path.length - 1; i >= 0; i--) g.lineTo(px(f.path[i] + 0.9), py(data.xs[i]));
+    g.closePath(); g.fill();
+  }
+  // blind spots and blinkers
+  const ego = { w: (1.9 / half) * (W / 2), y: py(0) };
+  if (f.bsl) { g.fillStyle = "rgba(239,107,98,.45)"; g.fillRect(px(-3.4) - ego.w / 2, ego.y - 34, ego.w, 40); }
+  if (f.bsr) { g.fillStyle = "rgba(239,107,98,.45)"; g.fillRect(px(3.4) - ego.w / 2, ego.y - 34, ego.w, 40); }
+  // lead car
+  if (f.lead) {
+    const ly = py(f.lead[0]), lw = ego.w * 0.9;
+    g.fillStyle = "#e9edf1"; g.fillRect(W / 2 - lw / 2, ly - 10, lw, 14);
+    g.fillStyle = "#fff"; g.font = "600 12px system-ui"; g.textAlign = "left";
+    g.fillText(`${Math.round(f.lead[0])} m · ${f.lead[1] > 0 ? "+" : ""}${Math.round(f.lead[1])} km/h`, W / 2 + lw / 2 + 6, ly + 1);
+  }
+  // ego car
+  g.fillStyle = f.en ? css("--accent") : "#c9ced4";
+  g.fillRect(W / 2 - ego.w / 2, ego.y - 8, ego.w, 22);
+  g.fillStyle = "#ffb000";
+  if (f.bl) { g.beginPath(); g.moveTo(W / 2 - ego.w / 2 - 14, ego.y + 3); g.lineTo(W / 2 - ego.w / 2 - 4, ego.y - 4); g.lineTo(W / 2 - ego.w / 2 - 4, ego.y + 10); g.fill(); }
+  if (f.br) { g.beginPath(); g.moveTo(W / 2 + ego.w / 2 + 14, ego.y + 3); g.lineTo(W / 2 + ego.w / 2 + 4, ego.y - 4); g.lineTo(W / 2 + ego.w / 2 + 4, ego.y + 10); g.fill(); }
+  g.fillStyle = "rgba(255,255,255,.5)"; g.font = "11px system-ui"; g.textAlign = "right";
+  g.fillText(`${Math.round(maxX)} m`, W - 6, 14);
+}
+
+function centeredBar(id, value, max, color, marker) {
+  const [g, W, H] = sizeCanvas($(id));
+  g.fillStyle = css("--line"); g.fillRect(0, H / 2 - 6, W, 12);
+  const v = Math.max(-1, Math.min(1, value / max));
+  g.fillStyle = color; g.fillRect(W / 2, H / 2 - 6, v * W / 2, 12);
+  g.fillStyle = css("--muted"); g.fillRect(W / 2 - 1, H / 2 - 10, 2, 20);
+  if (marker !== undefined) { const m = Math.max(-1, Math.min(1, marker / max)); g.fillStyle = css("--text"); g.fillRect(W / 2 + m * W / 2 - 1.5, H / 2 - 11, 3, 22); }
+}
+
+function drawWheel(ang, lat) {
+  const [g, W, H] = sizeCanvas($("wheel"));
+  const r = Math.min(W, H) / 2 - 6, cx = W / 2, cy = H / 2;
+  g.lineWidth = 7; g.strokeStyle = lat ? css("--accent") : css("--off");
+  g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.stroke();
+  const a = -ang * Math.PI / 180;  // positive angle = wheel turned left
+  g.save(); g.translate(cx, cy); g.rotate(a);
+  g.lineWidth = 5; g.beginPath(); g.moveTo(-r, 0); g.lineTo(r, 0); g.moveTo(0, 0); g.lineTo(0, r); g.stroke();
+  g.fillStyle = css("--danger"); g.fillRect(-3, -r - 4, 6, 10);
+  g.restore();
+}
+
+function drawLat(f) {
+  const [g, W, H] = sizeCanvas($("lat"));
+  const max = 3, x = (v) => W / 2 + (Math.max(-max, Math.min(max, v)) / max) * (W / 2 - 6);
+  g.fillStyle = css("--line"); g.fillRect(x(-1.15), 6, x(1.15) - x(-1.15), H - 12);
+  g.fillStyle = css("--muted"); g.fillRect(W / 2 - 1, 2, 2, H - 4);
+  const dot = (v, color, y) => { g.fillStyle = color; g.beginPath(); g.arc(x(v), y, 6, 0, Math.PI * 2); g.fill(); };
+  dot(f.lad, css("--purple"), H / 2 - 6); dot(f.laa, css("--info"), H / 2 + 6);
+}
+
+// *** timeline ***
+let tlBase = null;
+function drawTimelineBase() {
+  const c = $("tl");
+  if (!c.clientWidth) { tlBase = null; return; }  // hidden (loading or error message)
+  const [g, W, H] = sizeCanvas(c);
+  const D = data.duration || 1, fr = data.frames, tx = (s) => (s / D) * W, top = 22, h = H - top - 4;
+  // engaged band
+  g.fillStyle = "rgba(63,178,122,.16)";
+  for (let i = 1; i < fr.length; i++) if (fr[i].lat) g.fillRect(tx(fr[i - 1].t), top, tx(fr[i].t) - tx(fr[i - 1].t) + 1, h);
+  // torque and wheel traces
+  const trace = (key, scale, color) => {
+    g.beginPath(); g.strokeStyle = color; g.lineWidth = 1.4;
+    fr.forEach((f, i) => { const X = tx(f.t), Y = top + h / 2 - Math.max(-1, Math.min(1, f[key] / scale)) * (h / 2 - 2); i ? g.lineTo(X, Y) : g.moveTo(X, Y); });
+    g.stroke();
+  };
+  trace("ang", 30, css("--warn")); trace("tq", 1, css("--info"));
+  // events
+  for (const e of data.events) {
+    if (hidden.has(e.kind)) continue;
+    const color = css(KINDS[e.kind] ? KINDS[e.kind][1] : "--muted");
+    g.fillStyle = color;
+    if (e.dur) { g.globalAlpha = 0.25; g.fillRect(tx(e.t), top, Math.max(2, tx(e.dur)), h); g.globalAlpha = 1; }
+    g.beginPath(); g.arc(tx(e.t), 10, 5, 0, Math.PI * 2); g.fill();
+  }
+  tlBase = g.getImageData(0, 0, c.width, c.height);
+}
+
+function drawPlayhead() {
+  const c = $("tl"), g = c.getContext("2d"), dpr = window.devicePixelRatio || 1;
+  if (tlBase) { g.setTransform(1, 0, 0, 1, 0, 0); g.putImageData(tlBase, 0, 0); g.setTransform(dpr, 0, 0, dpr, 0, 0); }
+  const W = c.clientWidth, x = (t / (data.duration || 1)) * W;
+  g.fillStyle = css("--text"); g.fillRect(x - 1, 0, 2, cssHeight(c));
+}
+
+function seekFromEvent(ev) {
+  const r = $("tl").getBoundingClientRect(), p = (ev.touches ? ev.touches[0] : ev).clientX - r.left;
+  t = Math.max(0, Math.min(data.duration, (p / r.width) * data.duration)); render();
+}
+let dragging = false;
+$("tl").addEventListener("pointerdown", (e) => { dragging = true; seekFromEvent(e); });
+window.addEventListener("pointermove", (e) => { if (dragging) seekFromEvent(e); });
+window.addEventListener("pointerup", () => { dragging = false; });
+
+function buildFilters() {
+  const box = $("filters"); box.replaceChildren();
+  const lg = $("legend"); lg.replaceChildren();
+  for (const [k, [label, color]] of Object.entries(KINDS)) {
+    const n = (data.summary.counts || {})[k] || 0;
+    const s = document.createElement("span"); s.innerHTML = `<i class="dot" style="background:var(${color})"></i>`; s.append(T(label)); lg.appendChild(s);
+    if (!n) continue;
+    const l = document.createElement("label"); const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !hidden.has(k);
+    cb.addEventListener("change", () => { cb.checked ? hidden.delete(k) : hidden.add(k); renderEvents(); drawTimelineBase(); render(); });
+    l.append(cb, `${T(label)} (${n})`); box.appendChild(l);
+  }
+}
+
+function visibleEvents() { return data.events.filter(e => !hidden.has(e.kind)); }
+
+function renderEvents() {
+  const ul = $("events"); ul.replaceChildren();
+  for (const e of visibleEvents()) {
+    const li = document.createElement("li"); li.dataset.t = e.t;
+    const dot = document.createElement("i"); dot.className = "dot"; dot.style.background = `var(${(KINDS[e.kind] || ["", "--muted"])[1]})`;
+    const tm = document.createElement("span"); tm.className = "time"; tm.textContent = fmt(e.t);
+    const tx = document.createElement("span"); tx.textContent = T(e.text) + (e.dur ? ` (${String(e.dur).replace(".", ",")} s)` : "");
+    li.append(dot, tm, tx);
+    li.addEventListener("click", () => { t = Math.max(0, e.t - 2); render(); window.scrollTo({ top: 0, behavior: "smooth" }); });
+    ul.appendChild(li);
+  }
+}
+
+function jump(dir) {
+  const ev = visibleEvents();
+  const target = dir > 0 ? ev.find(e => e.t - 2 > t + 0.05) : [...ev].reverse().find(e => e.t - 2 < t - 0.5);
+  if (target) { t = Math.max(0, target.t - 2); render(); }
+}
+
+function render() {
+  if (!data || !data.frames.length) return;
+  idx = frameAt(t); const f = data.frames[idx];
+  const chip = $("chip");
+  chip.textContent = T(f.alert ? "ALERTA" : f.lat ? (f.en ? "DIRIGINDO" : "SÓ DIREÇÃO") : (f.en ? "ACC" : "DESLIGADO"));
+  chip.className = "chip" + (f.alert ? " alert" : f.lat ? " on" : "");
+  $("speed").textContent = `${Math.round(f.v)} km/h`;
+  $("setspeed").textContent = f.set ? `ACC ${f.set}` : "";
+  $("clock").textContent = `${fmt(t)} / ${fmt(data.duration)}`;
+  $("alert").textContent = f.alert || "";
+  drawRoad(f); drawWheel(f.ang, f.lat);
+  $("wheelv").textContent = `${f.ang > 0 ? "◀ " : f.ang < 0 ? "▶ " : ""}${Math.abs(f.ang).toFixed(0)}°`;
+  const atLimit = f.sat || Math.abs(f.tq) >= 0.99;
+  // torque and driver torque are + left (like the wheel angle): drawn to the left so they point where the wheel turns
+  centeredBar("torque", -f.tq, 1, atLimit ? css("--danger") : css("--info"), -f.tqc);
+  $("torquev").textContent = `${Math.round(Math.abs(f.tq) * 100)}%${atLimit ? " · " + T("no limite") : ""}`;
+  centeredBar("driver", -f.drv, 300, css("--warn"));
+  const helping = f.drv * f.tqc > 0;
+  $("driverv").textContent = Math.abs(f.drv) < 50 ? T("mãos leves ou soltas") : `${(Math.abs(f.drv) / 100).toFixed(1)} Nm · ${T(helping ? "ajudando" : "contra")}`;
+  drawLat(f);
+  // numbers only (no log text) go through innerHTML
+  $("latv").innerHTML = `<i class="dot" style="background:var(--purple);margin-right:4px"></i>${T("pedida")} ${f.lad.toFixed(2)} · ` +
+    `<i class="dot" style="background:var(--info);margin-right:4px"></i>${T("feita")} ${f.laa.toFixed(2)}${Math.abs(f.lad) > 1.15 ? " · " + T("acima do que a direção consegue") : ""}`;
+  drawPlayhead();
+  // highlight the latest event at or before now
+  let current = null;
+  for (const li of $("events").children) { li.classList.remove("now"); if (li.dataset.t * 1 <= t + 0.05) current = li; }
+  if (current) current.classList.add("now");
+}
+
+function loop(ts) {
+  if (playing && data) {
+    if (lastTs !== null) t = Math.min(data.duration, t + ((ts - lastTs) / 1000) * rate);
+    if (t >= data.duration) { playing = false; $("playBtn").textContent = "▶ " + T("tocar"); }
+    render();
+  }
+  lastTs = ts; requestAnimationFrame(loop);
+}
+
+$("playBtn").addEventListener("click", () => {
+  if (!data) return;
+  if (t >= data.duration) t = 0;
+  playing = !playing; $("playBtn").textContent = playing ? "⏸ " + T("pausar") : "▶ " + T("tocar"); lastTs = null;
+});
+$("prevBtn").addEventListener("click", () => jump(-1));
+$("nextBtn").addEventListener("click", () => jump(1));
+$("rate").addEventListener("change", (e) => { rate = e.target.value * 1; });
+$("seg").addEventListener("change", (e) => loadSeg(e.target.value));
+window.addEventListener("resize", () => { if (data) { drawTimelineBase(); render(); } });
+requestAnimationFrame(loop);
+LP.ready.then(() => { LP.apply(); $("playBtn").textContent = "▶ " + T("tocar"); loadList(); });
+</script>
+</body>
+</html>
