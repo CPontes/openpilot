@@ -101,6 +101,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"SoftHandoff", {PERSISTENT, BOOL, "0"}},
     {"SteerReversalEase", {PERSISTENT, BOOL, "0"}},
     {"GasTouchHold", {PERSISTENT, BOOL, "0"}},
+    {"GasTapHold", {PERSISTENT, BOOL, "0"}},
     {"LanguageSetting", {PERSISTENT, STRING, "en"}},
     {"LastAthenaPingTime", {CLEAR_ON_MANAGER_START, INT}},
     {"LastGPSPosition", {PERSISTENT, BYTES}},

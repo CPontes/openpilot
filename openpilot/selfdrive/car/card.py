@@ -143,6 +143,10 @@ class Car:
         # stopped and held by us, back from a touch of the gas with the car never moving: the stock hold at once and no frame
         # of gas (LONG-06); the panda doesn't change
         self.CP.flags |= GwmFlags.GAS_TOUCH_HOLD.value
+      if is_on(self.params, "GasTapHold"):
+        # stopped and held by us, a touch of the gas (short and light) doesn't take the hold away, and openpilot comes back at the
+        # stock hold (LONG-07); longer or firmer, as before; the panda doesn't change
+        self.CP.flags |= GwmFlags.GAS_TAP_HOLD.value
 
     if self.CP.secOcRequired:
       # Copy user key if available
