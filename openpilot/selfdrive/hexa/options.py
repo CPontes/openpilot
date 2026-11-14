@@ -214,7 +214,8 @@ OPTIONS: tuple[HexaOption, ...] = (
     title="não soltar o freio num toque no acelerador",
     description="Parado e seguro pelo comma, um toque curto no acelerador não solta o freio: o comma segura por até 0,35 s com o pé no " +
                 "pedal e volta a segurar quando você tira, sem o carro andar. Inclui o \"segurar parado depois de um toque no acelerador\".\n" +
-                "Para sair, mantenha o pé no acelerador: o carro sai depois de 0,35 s, uns 0,2 s mais tarde que hoje. Pisando mais fundo " +
+                "Um toque curto não faz o carro sair: ele espera o comma pedir. Para sair, mantenha o pé no acelerador: o carro sai " +
+                "depois de 0,35 s, uns 0,2 s mais tarde que hoje. Pisando mais fundo " +
                 "(mais de um terço do pedal), sai na hora. O pé no freio e o desengate soltam na hora, como sempre.\n" +
                 "Não cobre a alavanca puxada com o carro parado: se o carro não sair, pé no freio.\n" +
                 "Em teste: o panda não muda. Precisa do longitudinal do comma.",
