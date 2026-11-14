@@ -223,6 +223,20 @@ OPTIONS: tuple[HexaOption, ...] = (
     testing=True,
   ),
   HexaOption(
+    key="StartWait",
+    brands=edition.GWM_ONLY,
+    group="velocidade",
+    title="não soltar o freio parado numa hesitação do comma",
+    description="Parado e seguro pelo comma, quando ele hesita entre sair e ficar (o carro da frente anda devagar, ou a alavanca foi puxada), " +
+                "ele só solta o freio depois de pedir para sair por 0,15 s seguidos. As hesitações mais curtas não soltam o freio. Toda " +
+                "saída do comma a partir do carro parado começa 0,15 s mais tarde. O pé no acelerador, o freio e o cancelar valem na hora, " +
+                "como sempre.\n" +
+                "Não cobre todas as hesitações, nem a alavanca puxada: se o carro não sair, pé no freio.\n" +
+                "Em teste: o panda não muda. Precisa do longitudinal do comma.",
+    restart_needed=True,
+    testing=True,
+  ),
+  HexaOption(
     key="StopCloser",
     brands=edition.GWM_ONLY,
     group="velocidade",

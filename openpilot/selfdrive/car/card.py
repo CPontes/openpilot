@@ -147,6 +147,10 @@ class Car:
         # stopped and held by us, a touch of the gas (short and light) doesn't take the hold away, and openpilot comes back at the
         # stock hold (LONG-07); longer or firmer, as before; the panda doesn't change
         self.CP.flags |= GwmFlags.GAS_TAP_HOLD.value
+      if is_on(self.params, "StartWait"):
+        # stopped and held by us, the planner asking for gas lets the hold go only once the request has lasted 0.15 s: a flicker
+        # between stopping and going keeps the hold (LONG-08); the driver's gas, brake and cancel win at once; the panda doesn't change
+        self.CP.flags |= GwmFlags.START_WAIT.value
 
     if self.CP.secOcRequired:
       # Copy user key if available
