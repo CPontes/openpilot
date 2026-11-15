@@ -6,7 +6,7 @@ import unittest
 from openpilot.common.test import OpenpilotTestCase
 from openpilot.cereal import messaging, log
 from opendbc.car.structs import car
-from openpilot.selfdrive.locationd.lagd import LateralLagEstimator, retrieve_initial_lag, masked_normalized_cross_correlation, \
+from openpilot.selfdrive.locationd.lagd import LateralLagEstimator, retrieve_initial_lag, masked_normalized_cross_correlation, learned_lag_allowed, \
                                                BLOCK_NUM_NEEDED, BLOCK_SIZE, MIN_OKAY_WINDOW_SEC, VERSION, MIN_LAG, MAX_LAG
 from openpilot.common.params import Params
 from openpilot.common.hardware import PC
@@ -127,6 +127,26 @@ class TestLagd(OpenpilotTestCase):
         assert np.allclose(msg.lateralDelay.lateralDelayEstimateStd, 0.0, atol=0.01)
         assert msg.lateralDelay.validBlocks == BLOCK_NUM_NEEDED
         assert msg.lateralDelay.calPerc == 100
+
+  def test_frozen_lag_keeps_the_initial_one_and_still_reports_the_estimate(self):
+    # LAT-08: on the Haval the learned lag is not published unless the owner turns it on
+    mocked_CP = car.CarParams(steerActuatorDelay=0.3)
+    lag_frames = LAGD_MIN_LAG_FRAMES + 2
+    estimator = LateralLagEstimator(mocked_CP, DT, use_learned=False, min_recovery_buffer_sec=0.0, min_yr=0.0)
+    process_messages(estimator, lag_frames, int(MIN_OKAY_WINDOW_SEC / DT) + BLOCK_NUM_NEEDED * BLOCK_SIZE)
+    msg = estimator.get_msg(True)
+    assert msg.lateralDelay.status == 'estimated'
+    assert np.allclose(msg.lateralDelay.lateralDelay, estimator.initial_lag)
+    assert np.allclose(msg.lateralDelay.lateralDelayEstimate, lag_frames * DT, atol=0.01)
+    assert msg.lateralDelay.validBlocks == BLOCK_NUM_NEEDED
+
+  def test_learned_lag_is_off_only_on_the_haval_unless_turned_on(self):
+    class P:
+      def __init__(self, on): self.on = on
+      def get_bool(self, k): return k == "HexaLearnedLatDelay" and self.on
+    assert not learned_lag_allowed(car.CarParams(brand="gwm"), P(False))
+    assert learned_lag_allowed(car.CarParams(brand="gwm"), P(True))
+    assert learned_lag_allowed(car.CarParams(brand="honda"), P(False))
 
   def test_estimator_masking(self):
     mocked_CP, lag_frames = car.CarParams(steerActuatorDelay=0.5), random.randint(LAGD_MIN_LAG_FRAMES, LAGD_MAX_LAG_FRAMES - 1)

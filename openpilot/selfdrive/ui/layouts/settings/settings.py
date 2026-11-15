@@ -7,6 +7,7 @@ from openpilot.selfdrive.ui.layouts.settings.device import DeviceLayout
 from openpilot.selfdrive.ui.layouts.settings.firehose import FirehoseLayout
 from openpilot.selfdrive.ui.layouts.settings.software import SoftwareLayout
 from openpilot.selfdrive.ui.layouts.settings.toggles import TogglesLayout
+from openpilot.common.swaglog import cloudlog
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos
 from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.system.ui.lib.text_measure import measure_text_cached
@@ -37,6 +38,7 @@ class PanelType(IntEnum):
   SOFTWARE = 3
   FIREHOSE = 4
   DEVELOPER = 5
+  LIZPILOT = 6
 
 
 @dataclass
@@ -59,6 +61,7 @@ class SettingsLayout(Widget):
       PanelType.DEVICE: PanelInfo(tr_noop("Device"), DeviceLayout()),
       PanelType.NETWORK: PanelInfo(tr_noop("Network"), NetworkUI(wifi_manager)),
       PanelType.TOGGLES: PanelInfo(tr_noop("Toggles"), TogglesLayout()),
+      **self._hexa_panel(),
       PanelType.SOFTWARE: PanelInfo(tr_noop("Software"), SoftwareLayout()),
       PanelType.FIREHOSE: PanelInfo(tr_noop("Firehose"), FirehoseLayout()),
       PanelType.DEVELOPER: PanelInfo(tr_noop("Developer"), DeveloperLayout()),
@@ -69,6 +72,16 @@ class SettingsLayout(Widget):
 
     # Callbacks
     self._close_callback: Callable | None = None
+
+  @staticmethod
+  def _hexa_panel() -> dict:
+    # LizPilot (Hexa), our fork: same page as on the comma 4. A failure here must never take the settings screen down.
+    try:
+      from openpilot.selfdrive.ui.layouts.settings.hexa import HexaLayout
+      return {PanelType.LIZPILOT: PanelInfo("LizPilot", HexaLayout())}
+    except Exception:
+      cloudlog.exception("hexa settings unavailable")
+      return {}
 
   def set_callbacks(self, on_close: Callable):
     self._close_callback = on_close

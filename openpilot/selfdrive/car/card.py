@@ -18,8 +18,11 @@ from opendbc.car.carlog import carlog
 from opendbc.car.fw_versions import ObdCallback
 from opendbc.car.car_helpers import get_car, interfaces
 from opendbc.car.interfaces import CarInterfaceBase, RadarInterfaceBase
+from opendbc.car.gwm.values import GwmFlags, GwmSafetyFlags
 from openpilot.selfdrive.pandad import can_capnp_to_list, can_list_to_can_capnp
 from openpilot.selfdrive.car.cruise import VCruiseHelper
+from openpilot.selfdrive.hexa import speed_limit
+from openpilot.selfdrive.hexa.options import is_on
 
 REPLAY = "REPLAY" in os.environ
 
@@ -116,6 +119,38 @@ class Car:
       safety_config = structs.CarParams.SafetyConfig()
       safety_config.safetyModel = structs.CarParams.SafetyModel.noOutput
       self.CP.safetyConfigs = [safety_config]
+    elif self.CP.brand == 'gwm':
+      if is_on(self.params, "AlwaysOnLateral"):
+        # brake pauses longitudinal only, steering stays engaged until cancel
+        self.CP.safetyConfigs[-1].safetyParam |= GwmSafetyFlags.ALWAYS_ON_LATERAL.value
+      if self.params.get_bool("AutoResume"):
+        # one pull of the stalk per stop, after the car ahead left
+        self.CP.safetyConfigs[-1].safetyParam |= GwmSafetyFlags.AUTO_RESUME.value
+      if self.params.get_bool("BumpSlowdown"):
+        # the minus button of the ACC, at a speed bump
+        self.CP.safetyConfigs[-1].safetyParam |= GwmSafetyFlags.ACC_MINUS.value
+      if speed_limit.option(self.params) == speed_limit.ADJUST:
+        # the set speed follows the road's limit (CRUISE-01): the plus and the minus, the plus under the panda's ceiling
+        self.CP.safetyConfigs[-1].safetyParam |= GwmSafetyFlags.ACC_PLUS.value | GwmSafetyFlags.ACC_MINUS.value
+      if is_on(self.params, "SoftHandoff"):
+        # a light push against the wheel fades openpilot's torque out instead of cutting it; the panda doesn't change
+        self.CP.flags |= GwmFlags.SOFT_HANDOFF.value
+      if is_on(self.params, "SteerReversalEase"):
+        # in a reversal, with the driver against the request but with the torque going out, the torque comes down instead
+        # of dropping (LAT-01); the panda doesn't change
+        self.CP.flags |= GwmFlags.OPPOSE_BOTH.value
+      if is_on(self.params, "GasTouchHold"):
+        # stopped and held by us, back from a touch of the gas with the car never moving: the stock hold at once and no frame
+        # of gas (LONG-06); the panda doesn't change
+        self.CP.flags |= GwmFlags.GAS_TOUCH_HOLD.value
+      if is_on(self.params, "GasTapHold"):
+        # stopped and held by us, a touch of the gas (short and light) doesn't take the hold away, and openpilot comes back at the
+        # stock hold (LONG-07); longer or firmer, as before; the panda doesn't change
+        self.CP.flags |= GwmFlags.GAS_TAP_HOLD.value
+      if is_on(self.params, "StartWait"):
+        # stopped and held by us, the planner asking for gas lets the hold go only once the request has lasted 0.15 s: a flicker
+        # between stopping and going keeps the hold (LONG-08); the driver's gas, brake and cancel win at once; the panda doesn't change
+        self.CP.flags |= GwmFlags.START_WAIT.value
 
     if self.CP.secOcRequired:
       # Copy user key if available

@@ -11,6 +11,7 @@ import openpilot.cereal.messaging as messaging
 from openpilot.common.constants import CV
 from openpilot.common.git import get_short_branch
 from openpilot.common.realtime import DT_CTRL
+from openpilot.selfdrive.hexa import radars, speed_limit
 from openpilot.selfdrive.locationd.calibrationd import MIN_SPEED_FILTER
 from openpilot.common.hardware import HARDWARE
 
@@ -284,6 +285,23 @@ def posenet_invalid_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.Sub
   return NoEntryAlert(msg, alert_text_1="Posenet Speed Invalid")
 
 
+def radar_ahead_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
+  title, detail = radars.alert_lines(radars.last_hit)
+  return Alert(
+    title,
+    detail,
+    AlertStatus.normal, AlertSize.mid if detail else AlertSize.small,
+    Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 4.)
+
+
+def speed_limit_over_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
+  return Alert(
+    f"Acima do limite: {speed_limit.last_limit_kph} km/h",
+    "",
+    AlertStatus.normal, AlertSize.small,
+    Priority.LOWEST, VisualAlert.none, AudibleAlert.prompt, 3.)  # under the radar's: a radar ahead says more
+
+
 def process_not_running_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
   not_running = [p.name for p in sm['managerState'].processes if not p.running and p.shouldBeRunning]
   msg = ', '.join(not_running)
@@ -496,6 +514,73 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
       "Risk of Collision",
       AlertStatus.critical, AlertSize.full,
       Priority.HIGHEST, VisualAlert.fcw, AudibleAlert.warningSoft, 2.),
+  },
+
+  EventName.radarAhead: {
+    ET.PERMANENT: radar_ahead_alert,
+  },
+
+  EventName.bumpSlowdown: {
+    ET.PERMANENT: Alert(
+      "Reduzindo para a lombada",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOWEST, VisualAlert.none, AudibleAlert.none, .2),
+  },
+
+  EventName.autoResume: {
+    ET.PERMANENT: Alert(
+      "Saindo sozinho",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 3.),
+  },
+
+  EventName.stopHold: {
+    ET.PERMANENT: Alert(
+      "Parado: toque no acelerador para sair",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 3.),
+  },
+
+  # above a radar or bump alert: nobody asked and the car starts to slow down
+  EventName.accLost: {
+    ET.PERMANENT: Alert(
+      "ACC desligou",
+      "A velocidade é sua",
+      AlertStatus.userPrompt, AlertSize.mid,
+      Priority.MID, VisualAlert.none, AudibleAlert.prompt, 4.),
+  },
+
+  # the road's limit from the map (HexaSpeedLimit "avisar"): once per overshoot, never while a louder alert is up
+  EventName.speedLimitOver: {
+    ET.PERMANENT: speed_limit_over_alert,
+  },
+
+  # "ajustar" (CRUISE-01): the ACC's set speed going to the road's limit. Shown, never a sound: it's what was asked
+  EventName.speedLimitUp: {
+    ET.PERMANENT: Alert(
+      "Ajustando ao limite da via",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOWEST, VisualAlert.none, AudibleAlert.none, .2),
+  },
+
+  EventName.speedLimitDown: {
+    ET.PERMANENT: Alert(
+      "Ajustando ao limite da via",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOWEST, VisualAlert.none, AudibleAlert.none, .2),
+  },
+
+  EventName.leadDeparted: {
+    ET.PERMANENT: Alert(
+      "Carro da frente saiu",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 3.),
   },
 
   EventName.ldw: {

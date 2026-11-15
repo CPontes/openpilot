@@ -71,6 +71,7 @@ PROCS = {
   "openpilot.system.timed": 0,
   "openpilot.selfdrive.pandad.pandad": 0,
   "openpilot.system.loggerd.uploader": 15.0,
+  "openpilot.system.hexaweb.hexaweb": 2.0,  # only runs with the "painel no celular" option on
   "openpilot.system.loggerd.deleter": 1.0,
   "./pandad": 40.0,
   "openpilot.system.qcomgpsd.qcomgpsd": 1.0,

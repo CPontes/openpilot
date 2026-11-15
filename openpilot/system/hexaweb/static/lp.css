@@ -1,0 +1,34 @@
+/* LizPilot: colors, fonts and the parts every page of the phone panel shares. Always dark: it lives in the car. */
+@font-face { font-family: "Barlow"; font-weight: 400; font-display: swap; src: url("/fonts/barlow-400.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 600; font-display: swap; src: url("/fonts/barlow-600.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 700; font-display: swap; src: url("/fonts/barlow-700.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Semi Condensed"; font-weight: 700; font-display: swap; src: url("/fonts/barlow-semi-condensed-700.woff2") format("woff2"); }
+
+:root {
+  color-scheme: dark;
+  --bg: #0B0E11; --card: #141A1F; --card-2: #0E1317; --line: #26303A; --line-2: #2C3640;
+  --text: #EEF2F5; --muted: #A3AEB9; --dim: #8C97A3;
+  --accent: #2FD07F; --on-accent: #06210F;   /* openpilot dirigindo */
+  --you: #6CB4FF;                            /* você dirigindo */
+  --warn: #F5B53D; --on-warn: #241703;       /* atenção, marcas */
+  --danger: #FF6B5E;                         /* falha, desengate */
+  --switch-off: #3A4550;
+  --ok-bg: #10201A; --ok-line: #1F4A34; --warn-bg: #1E1A12; --warn-line: #4A3A1A; --tag-warn: #2A2110;
+  /* names the trip and replay pages already use */
+  --off: var(--you); --mark: var(--warn); --gas: #B49BFF; --wheel: #FF8FC0;
+  --font: "Barlow", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Barlow Semi Condensed", "Barlow", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.45 var(--font); }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 700; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { opacity: .45; cursor: default; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+.hidden { display: none !important; }
+/* back to the panel: a big target, it's the way out of every page (owner, 02/11: it was too small) */
+.back { display: inline-flex; align-items: center; gap: 6px; min-height: 52px; padding: 0 18px 0 10px; border-radius: 999px; background: var(--card);
+        border: 1px solid var(--line-2); color: var(--accent); font-family: var(--font-display); font-size: 20px; font-weight: 700; text-decoration: none; }

@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B0E11">
+<link rel="stylesheet" href="/lp.css">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="LizPilot">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="icon" type="image/png" href="/favicon.png">
+<title>Rever viagem</title>
+<style>
+  /* Rever viagem in Início's language (MAP-UX-01, owner's D6): the trip card, its map with Ruas, the same legend, numbers in the phone's language */
+  main { max-width: 560px; margin: 0 auto; padding: calc(12px + env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom)); }
+  a { color: inherit; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px; margin-bottom: 10px; }
+  .stack { display: flex; flex-direction: column; gap: 10px; }
+  .row { display: flex; align-items: center; gap: 12px; } .row > .grow { flex: 1; min-width: 0; }
+  .label { font-family: var(--font-display); font-weight: 700; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin: 0; }
+  .title { font-weight: 700; font-size: 17px; } .desc { color: var(--muted); font-size: 15px; } .small { color: var(--dim); font-size: 13px; }
+  .navbtn { flex: none; width: 48px; height: 48px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+  .navbtn:disabled { opacity: .3; }
+  .map { position: relative; height: 300px; margin: 0 -16px; overflow: hidden; background: var(--card-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); touch-action: none; }
+  .map .tiles { position: absolute; inset: 0; }
+  .map .tiles img { position: absolute; max-width: none; user-select: none; -webkit-user-drag: none; pointer-events: none;
+                    filter: invert(1) hue-rotate(180deg) brightness(.8) contrast(.9) saturate(.5); }  /* the street map, dark like the panel */
+  .map canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .map .mapchip { position: absolute; top: 8px; right: 8px; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line-2); background: rgba(11, 14, 17, .82); color: var(--muted); font-weight: 700; font-size: 14px; }
+  .map .mapchip[aria-pressed="true"] { color: var(--text); }
+  .map .attrib { position: absolute; right: 0; bottom: 0; font-size: 11px; line-height: 1; padding: 4px 6px; background: rgba(11, 14, 17, .8); color: var(--muted); text-decoration: none; border-top-left-radius: 8px; }
+  .maplegend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+  .maplegend > span { display: inline-flex; align-items: center; gap: 6px; }
+  .maplegend .sw { display: inline-block; width: 16px; height: 6px; border-radius: 3px; }
+  .sw.op { background: var(--accent); } .sw.help { background: repeating-linear-gradient(135deg, var(--accent) 0 5px, var(--you) 5px 10px); } .sw.you { background: var(--you); }
+  .maplegend .pin { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--warn); } .maplegend .pin.off { background: var(--danger); }
+  input[type=range] { width: 100%; margin: 4px 0 0; accent-color: var(--accent); }
+  .where { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; color: var(--muted); }
+  .warn { color: var(--warn); font-size: 14px; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  li { display: flex; gap: 12px; align-items: center; padding: 10px 0; min-height: 52px; border-top: 1px solid var(--line); cursor: pointer; }
+  li:first-child { border-top: 0; } li.none { cursor: default; color: var(--muted); }
+  li .ico { width: 36px; height: 36px; border-radius: 10px; background: #222B33; display: flex; align-items: center; justify-content: center; flex: none; }
+  li .t { font-weight: 600; font-size: 16px; } li .s { color: var(--muted); font-size: 14px; }
+  .btn { display: flex; align-items: center; justify-content: center; min-height: 54px; width: 100%; border: 0; border-radius: 16px; background: var(--card-2);
+         color: var(--text); border: 1px solid var(--line-2); font-size: 17px; font-weight: 600; margin: 0 0 10px; }
+  .btn.warn { background: var(--warn); color: var(--on-warn); border: 0; }
+  .link { background: none; border: 0; color: var(--accent); font-weight: 600; min-height: 44px; padding: 0 2px; }
+  .hidebox { text-align: center; } .hidebox .link { color: var(--muted); }
+  .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; } .duo .btn { margin: 0; }
+</style>
+</head>
+<body>
+<main>
+  <p class="sub" style="margin:0 0 8px"><a href="/" class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span data-t>Início</span></a></p>
+  <p class="sub" id="msg" data-t>Carregando…</p>
+  <div id="view" class="hidden">
+    <section class="card stack" style="gap:10px">
+      <div class="row" style="gap:8px">
+        <span class="label grow" data-t>Rever viagem</span>
+        <button class="navbtn" id="older" type="button" data-t-aria="Viagem anterior" aria-label="Viagem anterior"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <span class="small num" id="tripPos" style="min-width:52px;text-align:center"></span>
+        <button class="navbtn" id="newer" type="button" data-t-aria="Viagem seguinte" aria-label="Viagem seguinte"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+      </div>
+      <div class="stack" style="gap:0"><span class="title num" id="tWhen"></span><span class="small num" id="tMeta"></span></div>
+      <div class="map" id="mapCard">
+        <div class="tiles" id="tiles"></div>
+        <canvas id="map" role="img" data-t-aria="Caminho da viagem" aria-label="Caminho da viagem"></canvas>
+        <button class="mapchip" id="streetsBtn" type="button" aria-pressed="false" data-t>Ruas</button>
+        <a class="attrib hidden" id="attrib" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a>
+      </div>
+      <div class="maplegend">
+        <span><i class="sw op"></i><span data-t>openpilot</span></span>
+        <span><i class="sw help"></i><span data-t>com a sua ajuda</span></span>
+        <span><i class="sw you"></i><span data-t>você</span></span>
+        <span><i class="pin"></i><span data-t>marca</span></span>
+        <span><i class="pin off"></i><span data-t>desengate</span></span>
+      </div>
+      <div class="small hidden" id="streetsNote"></div>
+      <input id="pos" type="range" min="0" max="0" value="0" data-t-aria="Percorrer o caminho" aria-label="Percorrer o caminho">
+      <div class="where"><span class="num" id="whereT">—</span><span id="whereV"></span></div>
+      <div class="warn hidden" id="noGps" data-t>Sem GPS nesta viagem: caminho aproximado, feito pelas rodas e pelo volante.</div>
+      <div class="desc" id="tSplit"></div>
+      <div class="small" id="tNums"></div>
+    </section>
+    <section class="card"><div class="label" style="margin:0 0 4px" data-t>Marcas e desengates</div><ul id="events"></ul></section>
+    <button class="btn" id="openReplay" type="button" data-t>Ver este momento no replay</button>
+    <div class="hidebox" id="hideCard">
+      <button class="link" id="hideTrip" type="button"></button>
+      <div class="hidden" id="hideAsk"><div class="desc" id="hideWhat"></div>
+        <div class="duo"><button class="btn warn" id="hideOk" type="button"></button><button class="btn" id="hideNo" type="button" data-t>Cancelar</button></div></div>
+    </div>
+  </div>
+</main>
+<script src="/i18n.js"></script>
+<script src="/lp-logic.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const T = (x) => LP.t(x), TF = (x, v) => LP.tf(x, v);
+let token = null, keepMap = false, streets = false;
+try { token = localStorage.getItem("hexaToken"); keepMap = localStorage.getItem("lpKeepMap") === "1"; streets = localStorage.getItem("lpStreets") === "1"; } catch (e) {}
+let points = [], events = [], drawn = [], loading = 0, offline = false;
+let order = [], current = null;  // the drives shown, newest first (as Início), and the one open
+const meta = {};  // route → the drive from the list, with the summary the comma already made
+const CODE_WHO = ["op", "wheel", "pedal", "you"];  // the path kept for the map (hexaweb.trip_path): who drove, as a number
+
+// The phone's copy: the IndexedDB "lizpilot" of index.html (APP-01), on this address only. A drive read to the end with the
+// comma near stays here (APP-02, LPL.rideKeep), so it opens again without the comma. Unpaired, nothing is written; any error:
+// nothing kept, as before.
+const DB = (() => {
+  const ready = new Promise((ok) => {
+    try {
+      const r = indexedDB.open("lizpilot", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("kv");
+      r.onsuccess = () => ok(r.result);
+      r.onerror = r.onblocked = () => ok(null);
+    } catch (e) { ok(null); }
+  });
+  function run(mode, fn) {
+    return ready.then((db) => new Promise((ok) => {
+      if (!db) { ok(undefined); return; }
+      try {
+        const tx = db.transaction("kv", mode), req = fn(tx.objectStore("kv"));
+        tx.oncomplete = () => ok(mode === "readwrite" ? true : req.result);
+        tx.onerror = tx.onabort = () => ok(undefined);
+      } catch (e) { ok(undefined); }
+    }));
+  }
+  return {
+    get: (k) => run("readonly", (st) => st.get(k)),
+    put: (k, v) => token ? run("readwrite", (st) => st.put(v, k)).then((x) => x === true) : Promise.resolve(false),
+    del: (k) => run("readwrite", (st) => st.delete(k)),
+  };
+})();
+
+// status 0: no answer, so no comma near (the LizPilot app closes the connection; a browser gives up after ms)
+async function get(path, ms) {
+  const ctl = ms ? new AbortController() : null, timer = ctl && setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(path, { headers: token ? { Authorization: "Bearer " + token } : {}, signal: ctl ? ctl.signal : undefined });
+    let body = {};
+    try { body = await r.json(); } catch (e) {}
+    return { status: r.status, body };
+  } catch (e) {
+    return { status: 0, body: {} };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+// the phone's language, as Início writes them
+const L = () => LP.locale;
+const hhmm = (s) => new Date(s * 1000).toLocaleTimeString(L(), { hour: "2-digit", minute: "2-digit" });
+const hhmmss = (s) => new Date(s * 1000).toLocaleTimeString(L(), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const num = (v, d) => Number(v).toLocaleString(L(), { maximumFractionDigits: d });
+function when(ms) { return new Date(ms).toLocaleString(L(), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); }
+function day(s) {  // "hoje, 16:21" or "05/11, 16:21", as the trip card on Início
+  const d = new Date(s * 1000);
+  return d.toDateString() === new Date().toDateString() ? TF("hoje, {hora}", { hora: hhmm(s) }) : when(s * 1000);
+}
+function color(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+const WHO = { op: "openpilot dirigindo", you: "você dirigindo", wheel: "você no volante", gas: "você no acelerador", brake: "você no freio", pedal: T("você nos pedais") };  // T(): so the catalogs find it
+function whoText(p) { return WHO[p.who] || WHO[p.on ? "op" : "you"]; }
+const SHOWN = ["mark", "off", "hardbrake"];
+const EV_ICON = {
+  mark: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>',
+  off: '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6" fill="var(--danger)"/></svg>',
+  hardbrake: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v5M12 16v.5"/></svg>',
+};
+
+async function loadTrips() {
+  const r = await get("/api/trips", 8000);
+  if (r.status === 401 || (r.status === 0 && !token)) { $("msg").textContent = T("Pareie este celular no painel primeiro."); return; }
+  let list = r.body.trips;
+  if (r.status === 0) {  // no comma near: the list Início keeps on the phone (APP-01), read only
+    const base = await DB.get("trips");
+    list = base && Array.isArray(base.trips) ? base.trips : [];
+    if (!list.length) { $("msg").textContent = T("Sem o comma, e nada guardado neste celular ainda."); return; }
+    offline = true;
+  } else if (r.status !== 200) { $("msg").textContent = T(r.body.error || "Não foi possível listar as viagens."); return; }
+  if (!list.length) { $("msg").textContent = T("Nenhuma viagem gravada."); return; }
+  $("openReplay").classList.toggle("hidden", offline);  // the replay and hiding need the comma
+  $("hideCard").classList.toggle("hidden", offline);
+  const wanted = new URLSearchParams(location.search).get("trip");  // opened from a trip card on the panel
+  // newest first and the same drives as Início's ‹ 1 de N › (LPL.listed: not hidden, not a turn on and off in the garage);
+  // hidden or idle only when asked for by name; with only idle ones, those
+  const all = [...list].sort((a, b) => b.mtime - a.mtime), shown = LPL.listed(all).length ? LPL.listed(all) : all.filter((t) => !t.hidden);
+  order = [];
+  for (const t of all) {
+    if (!shown.includes(t) && t.id !== wanted) continue;
+    meta[t.id] = t; order.push(t.id);
+  }
+  if (!order.length) { $("msg").textContent = T("Todas as viagens estão ocultas. Elas aparecem no Início, em “mostrar”."); return; }
+  current = wanted && order.includes(wanted) ? wanted : order[0];
+  $("view").classList.remove("hidden");
+  openTrip(current);
+}
+
+function openTrip(route) {
+  current = route; listed = -1; $("pos").value = 0; closeHide();
+  try { history.replaceState(null, "", "/viagens?trip=" + encodeURIComponent(route)); } catch (e) {}  // a reload opens the same drive
+  head(); hideLabel(); loadTrip();
+}
+function head() {  // the trip card's top, as on Início: ‹ i de N ›, when, minutes, km and version
+  const t = meta[current], i = order.indexOf(current), sm = t.summary;
+  $("tripPos").textContent = TF("{i} de {n}", { i: i + 1, n: order.length });
+  $("older").disabled = i >= order.length - 1; $("newer").disabled = i <= 0;
+  $("tWhen").textContent = `${day(LPL.tripStart(t))} → ${hhmm(t.mtime)}`;
+  const m = [`${t.minutes} min`];
+  if (sm && sm.km != null) m.push(`${num(sm.km, 1)} km`);
+  if (LPL.versionOf(t)) m.push(TF("versão {v}", { v: LPL.versionOf(t) }));
+  if (t.hidden) m.push(T("oculta"));
+  $("tMeta").textContent = m.join(" · ");
+  const split = LPL.tripSplit(sm);  // who had the wheel, in one line
+  $("tSplit").textContent = split ? [...split.parts.map((x) => `${TF("{m} min", { m: x.min })} ${T(x.label)}`),
+                                      ...(split.stopMin ? [TF("{m} min parado", { m: split.stopMin })] : [])].join(" · ") : "";
+}
+$("older").addEventListener("click", () => { const i = order.indexOf(current); if (i < order.length - 1) openTrip(order[i + 1]); });
+$("newer").addEventListener("click", () => { const i = order.indexOf(current); if (i > 0) openTrip(order[i - 1]); });
+
+// Hiding is a change: it asks first, in the page (owner: "tudo que fizer tem que pedir confirmação")
+function hideLabel() {
+  const hidden = !!meta[current].hidden;
+  $("hideTrip").textContent = T(hidden ? "Mostrar de novo nas listas" : "Ocultar viagem");
+}
+function closeHide() { $("hideAsk").classList.add("hidden"); $("hideTrip").classList.remove("hidden"); }
+$("hideTrip").addEventListener("click", () => {
+  const hidden = !!meta[current].hidden;
+  $("hideWhat").textContent = T(hidden ? "Mostrar esta viagem de novo nas listas do celular?" : "Ocultar esta viagem? Sai das listas do celular. O log continua no comma: dá para mostrar de novo no Início.");
+  $("hideOk").textContent = T(hidden ? "Mostrar" : "Ocultar");
+  $("hideTrip").classList.add("hidden"); $("hideAsk").classList.remove("hidden");
+});
+$("hideNo").addEventListener("click", closeHide);
+$("hideOk").addEventListener("click", async () => {
+  const t = meta[current], hidden = !t.hidden;
+  const r = await fetch("/api/trip/hide", { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+                                            body: JSON.stringify({ route: current, hidden }) }).catch(() => null);
+  closeHide();
+  if (!r || r.status !== 200) { $("msg").textContent = T("Não deu para ocultar a viagem."); return; }
+  if (hidden) { location.href = "/"; return; }  // back to the list, without it
+  t.hidden = false; hideLabel(); head();
+});
+
+async function loadTrip() {
+  const load = ++loading;
+  const route = current, segments = meta[route].segments || [];  // an old copy without them still opens
+  points = []; events = []; render();
+  let sum = { km: 0, s: 0, moving_s: 0, on_s: 0, driver: 0, gas: 0, brake: 0, off: 0, marks: 0 };
+  // At once: the numbers and the path the comma kept when the drive ended. The minutes, read one by one, replace them at the end.
+  const known = meta[route] && meta[route].summary;
+  if (known) summary(Object.fromEntries(Object.keys(sum).map((k) => [k, known[k] || 0])));
+  $("mapCard").classList.remove("hidden");
+  if (offline) return openKept(route, load);
+  let preview = false;
+  const pr = await get(`/api/trip/path?route=${encodeURIComponent(route)}`);
+  if (load !== loading) return;
+  if (pr.status === 0) return openKept(route, load);  // the comma went away after the list
+  if (pr.status === 200 && pr.body.points.length > 1) {
+    points = pr.body.points.map(([lat, lon, w, s]) => ({ lat, lon, who: CODE_WHO[w], on: w < 3, v: null, t: s,  // s from minute 0
+                                                         n: Math.floor(s / 60), step: 0, dpsi: 0 }));
+    preview = true; render();
+  }
+  const got = [], evs = [];
+  for (const [i, n] of segments.entries()) {
+    $("msg").textContent = TF("Lendo minuto {i} de {n}…", { i: i + 1, n: segments.length });
+    const r = await get(`/api/trip/segment?route=${encodeURIComponent(route)}&n=${n}`);
+    if (load !== loading) return;  // another trip was picked
+    if (r.status === 0) return openKept(route, load);  // the comma went away midway: what the phone kept, if anything
+    if (r.status !== 200) { $("msg").textContent = T(r.body.error || "Não foi possível ler a viagem."); return; }
+    const d = r.body, offset = n * 60;
+    for (const p of d.points) got.push({ ...p, t: p.t + offset, n });
+    for (const e of d.events) evs.push({ ...e, t: e.t + offset, n });
+    for (const k of Object.keys(sum)) sum[k] += d.summary[k] || 0;
+    if (!preview) { points = got; events = evs; summary(sum); render(); }  // nothing kept yet: draw as it reads
+  }
+  if (got.length > 1) { points = got; events = evs; listed = -1; summary(sum); render(); }
+  if (!got.length && !preview) { listed = -1; summary(sum); render(); }
+  $("msg").textContent = T("Arraste a barra para percorrer o caminho.");
+  keep(route, sum, evs, got);
+}
+
+// Read to the end with the comma near: the phone keeps it for "Rever viagem" without the comma (LPL.rideKeep: the map only
+// with "Guardar os mapas neste celular" on). Past LPL.RIDE_KEEP drives, the one opened longest ago leaves.
+async function keep(route, sum, evs, got) {
+  const k = LPL.rideKeys(route), kept = LPL.rideKeep(meta[route], sum, evs, got, keepMap, Date.now());
+  if (!await DB.put(k.ride, kept.ride)) return;  // unpaired, or the phone didn't let it: nothing kept
+  if (kept.map) await DB.put(k.map, kept.map); else await DB.del(k.map);
+  const o = LPL.rideOrder(await DB.get("rides"), route);
+  await DB.put("rides", o.order);
+  for (const id of o.drop) { const d = LPL.rideKeys(id); await DB.del(d.ride); await DB.del(d.map); }
+}
+
+// Without the comma: the drive as the phone kept it, read only. No map unless it was kept with the option on.
+async function openKept(route, load) {
+  offline = true;
+  $("openReplay").classList.add("hidden"); $("hideCard").classList.add("hidden");
+  const k = LPL.rideKeys(route), [ride, map] = await Promise.all([DB.get(k.ride), keepMap ? DB.get(k.map) : null]);
+  if (load !== loading) return;
+  points = map && Array.isArray(map.points) ? map.points : []; events = []; listed = -1;
+  if (!ride) {
+    $("mapCard").classList.add("hidden"); list();
+    $("msg").textContent = T("Sem o comma, esta viagem não está no celular. Ela fica guardada quando você a abre com o comma por perto.");
+    return;
+  }
+  events = Array.isArray(ride.events) ? ride.events : [];
+  if (ride.summary) summary(Object.assign({ km: 0, s: 0, moving_s: 0, on_s: 0, driver: 0, gas: 0, brake: 0, off: 0, marks: 0 }, ride.summary));
+  $("mapCard").classList.toggle("hidden", points.length < 2);
+  render(); list();
+  $("msg").textContent = TF(points.length > 1 ? "Sem o comma: guardada em {hora}. Arraste a barra para percorrer o caminho."
+                                              : "Sem o comma: guardada em {hora}. O mapa só fica no celular com “Guardar os mapas neste celular” ligado.",
+                            { hora: when(ride.at) });
+}
+
+function summary(s) {  // the counts of the minutes read, in one line under who drove
+  const plural = (n, one, many) => `${n} ${T(n === 1 ? one : many)}`;
+  $("tNums").textContent = [plural(s.marks, "marca", "marcas"), plural(s.off, "desengate", "desengates"),
+                            TF("você no volante {v}×, no acelerador {a}×, no freio {f}×", { v: s.driver, a: s.gas, f: s.brake })].join(" · ");
+}
+
+// GPS when most of the trip has it: the map's projection, with the streets behind if turned on (the same as Início, lpStreets).
+// Otherwise the path from the wheels and the steering, with no streets.
+function layout(w, h) {
+  const fixes = points.filter((p) => p.lat !== null && p.lat !== undefined);
+  const useGps = fixes.length > 0.6 * points.length;
+  $("noGps").classList.toggle("hidden", useGps || !points.length);
+  if (useGps) {
+    let last = fixes[0];
+    const ll = points.map((p) => { if (p.lat !== null && p.lat !== undefined) last = p; return [last.lat, last.lon]; });
+    const fit = LPL.mapFit(ll, w, h, 26);
+    if (fit) return { xy: fit.xy, fit };
+  }
+  let x = 0, y = 0, psi = Math.PI / 2;
+  const xy = points.map((p) => { psi += p.dpsi || 0; x += (p.step || 0) * Math.cos(psi); y += (p.step || 0) * Math.sin(psi); return [x, y]; });
+  const pad = 26, xs = xy.map((p) => p[0]), ys = xy.map((p) => p[1]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const scale = Math.min((w - 2 * pad) / Math.max(x1 - x0, 1), (h - 2 * pad) / Math.max(y1 - y0, 1));
+  const ox = (w - (x1 - x0) * scale) / 2, oy = (h - (y1 - y0) * scale) / 2;
+  return { xy: xy.map(([a, b]) => [ox + (a - x0) * scale, h - oy - (b - y0) * scale]), fit: null };
+}
+
+function nearest(t) {
+  let best = 0;
+  for (let i = 0; i < points.length; i++) if (Math.abs(points[i].t - t) < Math.abs(points[best].t - t)) best = i;
+  return best;
+}
+
+let tileSig = "";
+function tiles(fit, w, h) {  // the street map behind the path: only with "Ruas" on, as on Início
+  const on = streets && fit, sig = on ? [fit.z, Math.round(fit.ox), Math.round(fit.oy), w, h].join() : "";
+  $("attrib").classList.toggle("hidden", !on);
+  $("streetsBtn").classList.toggle("hidden", !fit);
+  $("streetsBtn").setAttribute("aria-pressed", streets ? "true" : "false");
+  $("streetsNote").classList.toggle("hidden", !fit);
+  $("streetsNote").textContent = streets  // what the tiles tell OpenStreetMap, in both states (the same words as Início)
+    ? T("Ruas ligadas: o OpenStreetMap recebe o IP deste celular, o nome do painel e a área de cada viagem aberta. O caminho em si fica no comma.")
+    : T("Ruas desligadas. Ligadas, vêm do OpenStreetMap pela internet, que recebe o IP deste celular, o nome do painel e a área de cada viagem aberta.");
+  if (sig === tileSig) return;
+  tileSig = sig;
+  $("tiles").replaceChildren(...(on ? LPL.mapTiles(fit, w, h) : []).map((tl) => {
+    const im = new Image(); im.alt = ""; im.decoding = "async"; im.draggable = false;
+    im.referrerPolicy = "strict-origin";  // the page sends no Referer; the tile servers ask for one: only the panel's name, never a path
+    im.style.cssText = `left:${tl.left}px;top:${tl.top}px;width:${tl.size + .5}px;height:${tl.size + .5}px`;
+    im.onerror = () => im.remove();
+    im.src = `https://tile.openstreetmap.org/${tl.z}/${tl.x}/${tl.y}.png`;
+    return im;
+  }));
+}
+
+function render() {
+  const c = $("map"), ratio = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+  c.width = Math.round(w * ratio); c.height = Math.round(h * ratio);
+  const g = c.getContext("2d");
+  g.setTransform(ratio, 0, 0, ratio, 0, 0);
+  g.clearRect(0, 0, w, h);
+  $("pos").max = Math.max(points.length - 1, 0);
+  if (points.length < 2 || !w) { tiles(null, w, h); $("whereT").textContent = "—"; $("whereV").textContent = ""; list(); return; }
+  const lay = layout(w, h);
+  drawn = lay.xy; tiles(lay.fit, w, h);
+  const op = color("--accent"), you = color("--you");
+  g.lineCap = "round"; g.lineJoin = "round";
+  g.strokeStyle = "rgba(5, 7, 9, .8)"; g.lineWidth = 9;  // a dark edge, so the path reads over the streets
+  g.beginPath(); drawn.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
+  for (let i = 1; i < drawn.length; i++) {  // green openpilot, striped with your hand or foot, blue you: Início's legend
+    const k = LPL.rideWho(points[i]);
+    const seg = (col, dash) => { g.setLineDash(dash); g.strokeStyle = col; g.lineWidth = 5; g.beginPath(); g.moveTo(...drawn[i - 1]); g.lineTo(...drawn[i]); g.stroke(); };
+    seg(k === "you" ? you : op, []);
+    if (k === "help") seg(you, [6, 6]);
+  }
+  g.setLineDash([]);
+  const dot = ([x, y], r, fill, ring) => { g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = fill; g.fill(); if (ring) { g.lineWidth = 3; g.strokeStyle = ring; g.stroke(); } };
+  dot(drawn[0], 7, color("--bg"), color("--text"));  // start: a ring
+  dot(drawn[drawn.length - 1], 7, color("--text"), color("--bg"));  // end: filled
+  for (const e of events) {
+    if (!SHOWN.includes(e.kind)) continue;
+    dot(drawn[nearest(e.t)], 7, e.kind === "mark" ? color("--warn") : color("--danger"), color("--bg"));
+  }
+  const i = Math.min($("pos").value * 1, points.length - 1), p = points[i];
+  dot(drawn[i], 9, color("--text"), color("--bg"));
+  $("whereT").textContent = hhmmss(LPL.rideClock(meta[current], p.t));
+  $("whereV").textContent = `${p.v == null ? "—" : Math.round(p.v)} km/h · ${T(whoText(p))}`;
+  list();
+}
+
+let listed = -1;
+function list() {  // the marks and disengagements, at the hour they happened; a tap goes there on the map
+  if (listed === events.length) return;
+  listed = events.length;
+  const ul = $("events"); ul.replaceChildren();
+  for (const e of [...events].sort((a, b) => a.t - b.t)) {
+    if (!SHOWN.includes(e.kind)) continue;
+    const li = document.createElement("li"), ic = document.createElement("span"), tx = document.createElement("span"), tt = document.createElement("span");
+    ic.className = "ico"; ic.innerHTML = EV_ICON[e.kind];
+    tt.className = "t"; tt.textContent = `${hhmm(LPL.rideClock(meta[current], e.t))} · ${T(e.text)}`;
+    tx.style.minWidth = "0"; tx.append(tt);
+    li.append(ic, tx);
+    li.addEventListener("click", () => { $("pos").value = nearest(e.t); render(); $("mapCard").scrollIntoView({ behavior: "smooth", block: "center" }); });
+    ul.append(li);
+  }
+  if (!ul.children.length) { const li = document.createElement("li"); li.className = "none"; li.textContent = T("Sem marcas nem desengates."); ul.append(li); }
+}
+
+$("pos").addEventListener("input", render);
+$("map").addEventListener("pointerdown", (ev) => {
+  if (!drawn.length) return;
+  const r = $("map").getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
+  let best = 0, dist = Infinity;
+  drawn.forEach(([a, b], i) => { const d = (a - x) ** 2 + (b - y) ** 2; if (d < dist) { dist = d; best = i; } });
+  $("pos").value = best; render();
+});
+$("streetsBtn").addEventListener("click", () => {  // the same switch as Início's Ruas: one choice for both
+  streets = !streets;
+  try { localStorage.setItem("lpStreets", streets ? "1" : "0"); } catch (e) {}
+  render();
+});
+$("openReplay").addEventListener("click", () => {
+  const p = points[$("pos").value * 1];
+  if (p) location.href = `/replay?id=${encodeURIComponent(current + "--" + p.n)}&t=${Math.max(0, p.t - p.n * 60 - 2)}`;
+});
+window.addEventListener("resize", render);
+LP.ready.then(() => { LP.apply(); loadTrips(); });
+</script>
+</body>
+</html>

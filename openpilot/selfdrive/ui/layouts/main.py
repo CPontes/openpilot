@@ -1,6 +1,9 @@
+import time
+
 import pyray as rl
 from enum import IntEnum
 import openpilot.cereal.messaging as messaging
+from openpilot.common.swaglog import cloudlog
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.widgets import Widget
 from openpilot.selfdrive.ui.layouts.sidebar import Sidebar, SIDEBAR_WIDTH
@@ -10,6 +13,9 @@ from openpilot.selfdrive.ui.onroad.augmented_road_view import AugmentedRoadView
 from openpilot.selfdrive.ui.ui_state import device, ui_state
 from openpilot.selfdrive.ui.layouts.onboarding import OnboardingWindow
 from openpilot.selfdrive.ui.body.layouts.onroad import BodyLayout
+
+
+HEXA_BOOKMARK_CHECK = 0.5  # seconds between checks for a bookmark asked by the phone panel
 
 
 class MainState(IntEnum):
@@ -27,6 +33,7 @@ class MainLayout(Widget):
     self._sidebar = Sidebar()
     self._current_mode = MainState.HOME
     self._prev_onroad = False
+    self._last_hexa_check = 0.0
 
     # Initialize layouts
     self._home_layout = HomeLayout()
@@ -51,6 +58,7 @@ class MainLayout(Widget):
       gui_app.push_widget(self._onboarding_window)
 
   def _render(self, _):
+    self._check_hexa_bookmark()
     self._handle_onroad_transition()
     self._render_main_content()
 
@@ -113,6 +121,20 @@ class MainLayout(Widget):
     for service in ('bookmarkButton', 'userBookmark'):
       msg = messaging.new_message(service, valid=True)
       self._pm.send(service, msg)
+
+  def _check_hexa_bookmark(self):
+    # The phone panel (system/hexaweb) can't publish userBookmark itself: it asks here, and the bookmark
+    # goes out exactly like the one from the screen. Same as the comma 4 (mici/layouts/main.py).
+    now = time.monotonic()
+    if now - self._last_hexa_check < HEXA_BOOKMARK_CHECK:
+      return
+    self._last_hexa_check = now
+    try:
+      if ui_state.params.get_bool("HexaBookmarkRequest"):
+        ui_state.params.remove("HexaBookmarkRequest")
+        self._on_bookmark_clicked()
+    except Exception:
+      cloudlog.exception("hexa bookmark request failed")
 
   def _on_onroad_clicked(self):
     self._sidebar.set_visible(not self._sidebar.is_visible)
